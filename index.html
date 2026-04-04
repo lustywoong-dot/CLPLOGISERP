@@ -714,7 +714,7 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
         </div>
       </div>
 
-      <div id="memoArea" style="margin-top:8px;background:#fffef5;border:1px solid #e5e2c8;border-radius:var(--radius);padding:6px;width:140px;max-width:300px;transition:width 0.2s;position:relative;float:right">>
+      <div id="memoArea" style="margin-top:8px;background:#fffef5;border:1px solid #e5e2c8;border-radius:var(--radius);padding:6px;width:140px;max-width:300px;transition:width 0.2s;position:relative;float:right">
         <div style="font-size:11px;font-weight:700;color:var(--text);margin-bottom:4px;display:flex;justify-content:space-between;align-items:center">
           <span>📝 메모장</span>
           <span id="memoLinkedCode" style="font-size:10px;color:var(--text-light)"></span>
@@ -4591,7 +4591,7 @@ function exportExcel() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `배차이력_${new Date().toISOString().split('T')[0]}.csv`;
+  a.download = `배차이력_${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}.csv`;
   a.click();
   URL.revokeObjectURL(url);
   showToast('Excel(CSV) 다운로드 완료');
@@ -6459,7 +6459,7 @@ async function parseErpExcel(input) {
   
   try {
     const data = await file.arrayBuffer();
-    const wb = XLSX.read(data, { type: 'array' });
+    const wb = XLSX.read(data, { type: 'array', raw: false });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
     
@@ -8203,7 +8203,7 @@ function parseStlPaste() {
   const hasNO = firstData && /^\d{1,4}$/.test(firstData[0]) && firstData.length >= 10;
   console.log('   헤더:', isHeader ? 'YES' : 'NO', '/ NO칼럼:', hasNO ? 'YES' : 'NO');
   
-  const defaultYear = document.getElementById('stlPasteYear')?.value || new Date().getFullYear();
+  const defaultYear = String(document.getElementById('stlPasteYear')?.value || new Date().getFullYear());
   let addCount = 0, skipCount = 0, errorCount = 0, errorLines = [], zeroAmountCount = 0;
   const preview = []; // 미리보기 데이터
   
@@ -8309,7 +8309,7 @@ function parseFlexDate(val) {
   val = String(val).trim();
   
   // 연도 없을 때 사용할 기본 연도
-  const defaultYear = document.getElementById('stlPasteYear')?.value || new Date().getFullYear();
+  const defaultYear = String(document.getElementById('stlPasteYear')?.value || new Date().getFullYear());
   
   // 이미 YYYY-MM-DD
   if(/^\d{4}-\d{2}-\d{2}$/.test(val)) return val;
@@ -8332,7 +8332,7 @@ function parseFlexDate(val) {
   // 엑셀 시리얼 넘버 (5자리 숫자)
   if(/^\d{5}$/.test(val)) {
     const d = new Date((parseInt(val) - 25569) * 86400000);
-    if(!isNaN(d)) return d.toISOString().split('T')[0];
+    if(!isNaN(d)) return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   }
   
   return sanitizeDate(val);
@@ -10950,7 +10950,7 @@ async function autoSync() {
 // saveDispatch 정의 (구글 시트 저장 포함)
 async function saveDispatch() {
   try {
-  let code = document.getElementById('dispatchCode').value.trim();
+    let code = document.getElementById('dispatchCode').value.trim();
   
   // 코드 없으면 임시 코드 생성 (나중에 수정 가능)
   if(!code) {
@@ -11601,7 +11601,8 @@ function exportStatsExcel() {
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet(wsData);
   XLSX.utils.book_append_sheet(wb, ws, '통계');
-  XLSX.writeFile(wb, 'CLP_통계_' + statsPeriod + '_' + new Date().toISOString().split('T')[0] + '.xlsx');
+  const _now = new Date();
+  XLSX.writeFile(wb, 'CLP_통계_' + statsPeriod + '_' + _now.getFullYear() + '-' + String(_now.getMonth()+1).padStart(2,'0') + '-' + String(_now.getDate()).padStart(2,'0') + '.xlsx');
   showToast('✅ 통계 Excel 다운로드 완료');
 }
 
