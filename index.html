@@ -1097,7 +1097,7 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
     <div class="card">
       <div class="card-title"><span class="icon">📊</span> 단가 참고 (과거 실적 기반)</div>
       <div class="info-banner" style="margin-bottom:12px">
-        📌 정산 데이터를 기반으로 <b>지역별 × 차량톤수별 평균 기사 지불액</b>을 자동 집계합니다. 정산 데이터가 추가될수록 정확해집니다.
+        📌 정산 데이터를 기반으로 <b>지역별 × 차량톤수별 최소 기사 지불액</b>을 자동 집계합니다. 배차 시 최소 단가 기준으로 참고하세요. 데이터가 추가될수록 정확해집니다.
       </div>
       <!-- 필터 -->
       <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
@@ -1136,7 +1136,7 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
           <div id="rateRefDataCount" style="font-size:18px;font-weight:800;color:var(--accent)">0</div>
         </div>
         <div class="card" style="padding:10px;text-align:center;background:#f0fdf4">
-          <div style="font-size:10px;color:var(--text-light)">평균 지불액</div>
+          <div style="font-size:10px;color:var(--text-light)">전체 평균 지불액</div>
           <div id="rateRefAvgPay" style="font-size:18px;font-weight:800;color:var(--success)">0</div>
         </div>
         <div class="card" style="padding:10px;text-align:center;background:#fef2f2">
@@ -11605,9 +11605,9 @@ function renderRateRef() {
       const vd = info.vehicles[v];
       if(!vd || vd.count === 0) return '<td style="text-align:right;color:#d1d5db;font-size:11px;padding:5px 8px">-</td>';
       const avg = Math.round(vd.total / vd.count);
-      const tooltip = `건수: ${vd.count}\\n평균: ${avg.toLocaleString()}원\\n최소: ${vd.min.toLocaleString()}원\\n최대: ${vd.max.toLocaleString()}원`;
+      const tooltip = `건수: ${vd.count}\\n최소: ${vd.min.toLocaleString()}원\\n평균: ${avg.toLocaleString()}원\\n최대: ${vd.max.toLocaleString()}원`;
       const bg = vd.count >= 5 ? '#f0fdf4' : vd.count >= 2 ? '#fffbeb' : '';
-      return `<td style="text-align:right;font-size:11px;padding:5px 8px;cursor:pointer;font-weight:600;background:${bg}" title="${tooltip}" onclick="showRateRefDetail('${area.replace(/'/g,"\\'")}','${v}')">${avg.toLocaleString()}<span style="font-size:9px;color:var(--text-light);font-weight:400"> (${vd.count})</span></td>`;
+      return `<td style="text-align:right;font-size:11px;padding:5px 8px;cursor:pointer;font-weight:600;background:${bg}" title="${tooltip}" onclick="showRateRefDetail('${area.replace(/'/g,"\\'")}','${v}')">${vd.min.toLocaleString()}<span style="font-size:9px;color:var(--text-light);font-weight:400"> (${vd.count})</span></td>`;
     }).join('');
 
     return `<tr style="border-bottom:1px solid var(--border)">
