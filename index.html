@@ -1179,6 +1179,8 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
                 <th>배차코드</th>
                 <th>배송처</th>
                 <th>기사명</th>
+                <th>차량번호</th>
+                <th>전화번호</th>
                 <th>차량톤수</th>
                 <th style="text-align:right">지불액</th>
                 <th>거래처</th>
@@ -11636,7 +11638,7 @@ function showRateRefDetail(area, vehicle) {
 
   const tbody = document.getElementById('rateRefDetailBody');
   if(records.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-light)">데이터 없음</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--text-light)">데이터 없음</td></tr>';
   } else {
     tbody.innerHTML = records.map(d => {
       const veh = getVehicleFromCode(d.dispCode);
@@ -11645,6 +11647,8 @@ function showRateRefDetail(area, vehicle) {
         <td style="font-size:11px">${d.dispCode || '-'}</td>
         <td style="font-size:11px">${d.dest || '-'}</td>
         <td style="font-size:11px">${d.name || '-'}</td>
+        <td style="font-size:11px">${d.vehicle || '-'}</td>
+        <td style="font-size:11px">${d.phone || '-'}</td>
         <td style="font-size:11px;text-align:center">${veh || '-'}</td>
         <td style="font-size:11px;text-align:right;font-weight:600;color:var(--accent)">${(d.payment||0).toLocaleString()}</td>
         <td style="font-size:11px">${d.client || '-'}</td>
