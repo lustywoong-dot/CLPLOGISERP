@@ -12184,7 +12184,8 @@ function openNaverRoute() {
 
   if(!dest.trim()) { alert('하차지를 입력해주세요.'); return; }
 
-  const url = 'https://map.naver.com/p/directions/-/-/-/car?c=15.00,0,0,0,dh&destination=' + encodeURIComponent(dest) + '&origin=' + encodeURIComponent(pickup);
+  // 카카오맵 길찾기 (출발지/도착지 자동 입력)
+  const url = 'https://map.kakao.com/?sName=' + encodeURIComponent(pickup) + '&eName=' + encodeURIComponent(dest);
   window.open(url, '_blank');
 }
 
