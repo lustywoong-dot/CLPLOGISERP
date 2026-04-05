@@ -483,6 +483,7 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
   <div class="tab active" data-tab="dispatch" onclick="switchTab('dispatch')">📋 배차 등록</div>
   <div class="tab" data-tab="history" onclick="switchTab('history')">📊 배차 이력</div>
   <div class="tab" data-tab="rate" onclick="switchTab('rate')">💰 단가표 조회</div>
+  <div class="tab" data-tab="rateRef" onclick="switchTab('rateRef')">📊 단가 참고</div>
   <div class="tab" data-tab="drivers" onclick="switchTab('drivers')">차량 등록</div>
   <div class="tab" data-tab="settlement" onclick="switchTab('settlement')">📑 기사 정산</div>
   <div class="tab" data-tab="stats" onclick="switchTab('stats')">📈 통계</div>
@@ -1085,6 +1086,106 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
               </tr>
             </thead>
             <tbody id="mjimBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 단가 참고 패널 -->
+  <div id="panel-rateRef" class="panel">
+    <div class="card">
+      <div class="card-title"><span class="icon">📊</span> 단가 참고 (과거 실적 기반)</div>
+      <div class="info-banner" style="margin-bottom:12px">
+        📌 정산 데이터를 기반으로 <b>지역별 × 차량톤수별 평균 기사 지불액</b>을 자동 집계합니다. 정산 데이터가 추가될수록 정확해집니다.
+      </div>
+      <!-- 필터 -->
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <div style="display:flex;gap:4px;align-items:center">
+          <label style="font-size:11px;font-weight:600">거래처:</label>
+          <select id="rateRefClient" onchange="renderRateRef()" style="padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px">
+            <option value="all">전체</option>
+            <option value="락앤락">락앤락</option>
+            <option value="KCTC여주">KCTC여주</option>
+            <option value="KCTC덕평">KCTC덕평</option>
+            <option value="씨엘피">씨엘피</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center">
+          <label style="font-size:11px;font-weight:600">지역 검색:</label>
+          <input type="text" id="rateRefSearch" placeholder="지역명 입력..." oninput="renderRateRef()" style="padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px;width:140px">
+        </div>
+        <div style="display:flex;gap:4px;align-items:center">
+          <label style="font-size:11px;font-weight:600">정렬:</label>
+          <select id="rateRefSort" onchange="renderRateRef()" style="padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px">
+            <option value="count">건수 많은순</option>
+            <option value="area">지역명순</option>
+            <option value="pay">지불액 높은순</option>
+          </select>
+        </div>
+        <div style="margin-left:auto;font-size:11px;color:var(--text-light)" id="rateRefInfo"></div>
+      </div>
+      <!-- 요약 카드 -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px">
+        <div class="card" style="padding:10px;text-align:center;background:#f0f4ff">
+          <div style="font-size:10px;color:var(--text-light)">총 지역수</div>
+          <div id="rateRefAreaCount" style="font-size:18px;font-weight:800;color:var(--primary)">0</div>
+        </div>
+        <div class="card" style="padding:10px;text-align:center;background:#fff7ed">
+          <div style="font-size:10px;color:var(--text-light)">총 데이터 건수</div>
+          <div id="rateRefDataCount" style="font-size:18px;font-weight:800;color:var(--accent)">0</div>
+        </div>
+        <div class="card" style="padding:10px;text-align:center;background:#f0fdf4">
+          <div style="font-size:10px;color:var(--text-light)">평균 지불액</div>
+          <div id="rateRefAvgPay" style="font-size:18px;font-weight:800;color:var(--success)">0</div>
+        </div>
+        <div class="card" style="padding:10px;text-align:center;background:#fef2f2">
+          <div style="font-size:10px;color:var(--text-light)">최근 업데이트</div>
+          <div id="rateRefLastUpdate" style="font-size:14px;font-weight:800;color:#dc2626">-</div>
+        </div>
+      </div>
+      <!-- 테이블 -->
+      <div class="table-wrap" style="max-height:600px;overflow-y:auto">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:35px">NO</th>
+              <th>지역</th>
+              <th style="text-align:center">건수</th>
+              <th style="text-align:right">다마스</th>
+              <th style="text-align:right">라보</th>
+              <th style="text-align:right">1톤</th>
+              <th style="text-align:right">2.5톤</th>
+              <th style="text-align:right">3.5톤</th>
+              <th style="text-align:right">5톤</th>
+              <th style="text-align:right">5톤축</th>
+              <th style="text-align:right">11톤</th>
+            </tr>
+          </thead>
+          <tbody id="rateRefBody"></tbody>
+        </table>
+      </div>
+      <!-- 클릭 시 상세 내역 -->
+      <div id="rateRefDetail" class="card" style="margin-top:10px;padding:14px;display:none">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <div style="font-weight:700;font-size:13px" id="rateRefDetailTitle">상세 내역</div>
+          <button onclick="document.getElementById('rateRefDetail').style.display='none'" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:14px">✕</button>
+        </div>
+        <div class="table-wrap" style="max-height:300px;overflow-y:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>날짜</th>
+                <th>배차코드</th>
+                <th>배송처</th>
+                <th>기사명</th>
+                <th>차량톤수</th>
+                <th style="text-align:right">지불액</th>
+                <th style="text-align:right">매출</th>
+                <th>거래처</th>
+              </tr>
+            </thead>
+            <tbody id="rateRefDetailBody"></tbody>
           </table>
         </div>
       </div>
@@ -3177,10 +3278,10 @@ async function loadDispatchHistory() {
 // ============================================
 const ROLE_LABELS = { admin: '관리자', dispatcher: '배차 담당', settlement: '정산 담당', viewer: '조회' };
 const ROLE_TABS = {
-  admin: ['dispatch','history','rate','drivers','settlement','stats','attendance','settings'],
-  dispatcher: ['dispatch','history','rate','drivers','settings'],
+  admin: ['dispatch','history','rate','rateRef','drivers','settlement','stats','attendance','settings'],
+  dispatcher: ['dispatch','history','rate','rateRef','drivers','settings'],
   settlement: ['settlement','settings'],
-  viewer: ['history','rate','stats','settings']
+  viewer: ['history','rate','rateRef','stats','settings']
 };
 
 // 기본 계정 (구글시트 미연결 시 사용)
@@ -3481,6 +3582,7 @@ function switchTab(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-'+name).classList.add('active');
   if(name === 'stats') initStats();
+  if(name === 'rateRef') initRateRef();
   if(name === 'drivers') renderDrivers();
   if(name === 'attendance') initAttendance();
 }
@@ -11402,6 +11504,161 @@ async function deleteSelectedInline() {
   } else {
     showToast('✅ ' + idsToDelete.length + '건 삭제 완료 (로컬만)');
   }
+}
+
+// ============================================
+// 단가 참고 (과거 실적 기반)
+// ============================================
+const RATE_REF_VEHICLES = ['다마스','라보','1톤','2.5톤','3.5톤','5톤','5톤축','11톤'];
+
+function getVehicleFromCode(dispCode) {
+  if(!dispCode) return '';
+  const cleaned = dispCode.replace(/_/g, '');
+  const numPart = cleaned.replace(/^[A-Za-z]+/, '');
+  if(numPart.length < 3) return '';
+  const tonCode = numPart.substring(0, 3);
+  return CODE_TO_VEHICLE[tonCode] || '';
+}
+
+function buildRateRefData() {
+  const clientFilter = document.getElementById('rateRefClient').value;
+  let data = settlementData.filter(d => d.area && d.payment > 0);
+
+  if(clientFilter !== 'all') {
+    data = data.filter(d => d.client === clientFilter);
+  }
+
+  // 지역별 × 차량톤수별 집계
+  const areaMap = {};
+  data.forEach(d => {
+    const vehicle = getVehicleFromCode(d.dispCode);
+    if(!vehicle) return;
+    const area = d.area.trim();
+    if(!area) return;
+
+    if(!areaMap[area]) {
+      areaMap[area] = { totalCount: 0, vehicles: {} };
+      RATE_REF_VEHICLES.forEach(v => { areaMap[area].vehicles[v] = { count: 0, total: 0, min: Infinity, max: 0, records: [] }; });
+    }
+    areaMap[area].totalCount++;
+    const vData = areaMap[area].vehicles[vehicle];
+    if(vData) {
+      vData.count++;
+      vData.total += d.payment;
+      vData.min = Math.min(vData.min, d.payment);
+      vData.max = Math.max(vData.max, d.payment);
+      vData.records.push(d);
+    }
+  });
+
+  return { areaMap, totalRecords: data.length };
+}
+
+function renderRateRef() {
+  const { areaMap, totalRecords } = buildRateRefData();
+  const searchTerm = (document.getElementById('rateRefSearch').value || '').trim().toLowerCase();
+  const sortMode = document.getElementById('rateRefSort').value;
+
+  let areas = Object.entries(areaMap);
+
+  // 검색 필터
+  if(searchTerm) {
+    areas = areas.filter(([area]) => area.toLowerCase().includes(searchTerm));
+  }
+
+  // 정렬
+  if(sortMode === 'count') {
+    areas.sort((a, b) => b[1].totalCount - a[1].totalCount);
+  } else if(sortMode === 'area') {
+    areas.sort((a, b) => a[0].localeCompare(b[0]));
+  } else if(sortMode === 'pay') {
+    areas.sort((a, b) => {
+      const avgA = Object.values(a[1].vehicles).reduce((s, v) => s + v.total, 0) / Math.max(a[1].totalCount, 1);
+      const avgB = Object.values(b[1].vehicles).reduce((s, v) => s + v.total, 0) / Math.max(b[1].totalCount, 1);
+      return avgB - avgA;
+    });
+  }
+
+  // 요약 카드
+  document.getElementById('rateRefAreaCount').textContent = areas.length;
+  document.getElementById('rateRefDataCount').textContent = totalRecords.toLocaleString() + '건';
+  const totalPay = Object.values(areaMap).reduce((s, a) => s + Object.values(a.vehicles).reduce((ss, v) => ss + v.total, 0), 0);
+  const avgPay = totalRecords > 0 ? Math.round(totalPay / totalRecords) : 0;
+  document.getElementById('rateRefAvgPay').textContent = avgPay.toLocaleString() + '원';
+
+  // 최근 업데이트 날짜
+  let latestDate = '';
+  settlementData.forEach(d => { if(d.date && d.date > latestDate) latestDate = d.date; });
+  document.getElementById('rateRefLastUpdate').textContent = latestDate ? latestDate.substring(0, 10) : '-';
+
+  // 정보
+  document.getElementById('rateRefInfo').textContent = '지역 ' + areas.length + '개 / 데이터 ' + totalRecords.toLocaleString() + '건';
+
+  const tbody = document.getElementById('rateRefBody');
+  if(areas.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--text-light)">데이터가 없습니다. 정산 데이터가 입력되면 자동으로 표시됩니다.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = areas.map(([area, info], i) => {
+    const cells = RATE_REF_VEHICLES.map(v => {
+      const vd = info.vehicles[v];
+      if(!vd || vd.count === 0) return '<td style="text-align:right;color:#d1d5db;font-size:11px;padding:5px 8px">-</td>';
+      const avg = Math.round(vd.total / vd.count);
+      const tooltip = `건수: ${vd.count}\\n평균: ${avg.toLocaleString()}원\\n최소: ${vd.min.toLocaleString()}원\\n최대: ${vd.max.toLocaleString()}원`;
+      const bg = vd.count >= 5 ? '#f0fdf4' : vd.count >= 2 ? '#fffbeb' : '';
+      return `<td style="text-align:right;font-size:11px;padding:5px 8px;cursor:pointer;font-weight:600;background:${bg}" title="${tooltip}" onclick="showRateRefDetail('${area.replace(/'/g,"\\'")}','${v}')">${avg.toLocaleString()}<span style="font-size:9px;color:var(--text-light);font-weight:400"> (${vd.count})</span></td>`;
+    }).join('');
+
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="text-align:center;font-size:11px;padding:5px 6px;color:var(--text-light)">${i + 1}</td>
+      <td style="font-weight:700;font-size:12px;padding:5px 8px;cursor:pointer;color:var(--primary)" onclick="showRateRefDetail('${area.replace(/'/g,"\\'")}','')">${area}</td>
+      <td style="text-align:center;font-size:11px;padding:5px 6px">${info.totalCount}건</td>
+      ${cells}
+    </tr>`;
+  }).join('');
+}
+
+function showRateRefDetail(area, vehicle) {
+  const clientFilter = document.getElementById('rateRefClient').value;
+  let records = settlementData.filter(d => d.area && d.area.trim() === area && d.payment > 0);
+
+  if(clientFilter !== 'all') {
+    records = records.filter(d => d.client === clientFilter);
+  }
+  if(vehicle) {
+    records = records.filter(d => getVehicleFromCode(d.dispCode) === vehicle);
+  }
+
+  records.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+  const title = vehicle ? `${area} — ${vehicle} 상세 내역 (${records.length}건)` : `${area} 전체 상세 내역 (${records.length}건)`;
+  document.getElementById('rateRefDetailTitle').textContent = title;
+
+  const tbody = document.getElementById('rateRefDetailBody');
+  if(records.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-light)">데이터 없음</td></tr>';
+  } else {
+    tbody.innerHTML = records.map(d => {
+      const veh = getVehicleFromCode(d.dispCode);
+      return `<tr>
+        <td style="font-size:11px">${d.date || '-'}</td>
+        <td style="font-size:11px">${d.dispCode || '-'}</td>
+        <td style="font-size:11px">${d.dest || '-'}</td>
+        <td style="font-size:11px">${d.name || '-'}</td>
+        <td style="font-size:11px;text-align:center">${veh || '-'}</td>
+        <td style="font-size:11px;text-align:right;font-weight:600;color:var(--accent)">${(d.payment||0).toLocaleString()}</td>
+        <td style="font-size:11px;text-align:right;color:#1d4ed8">${(d.kctcAmount||0).toLocaleString()}</td>
+        <td style="font-size:11px">${d.client || '-'}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  document.getElementById('rateRefDetail').style.display = 'block';
+}
+
+function initRateRef() {
+  renderRateRef();
 }
 
 // ============================================
