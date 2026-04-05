@@ -1599,10 +1599,18 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
         <button class="btn btn-sm btn-outline" id="btnViewList" onclick="setSettlementView('list')" style="padding:4px 12px;font-size:11px">📋 전체 리스트</button>
         <button class="btn btn-sm btn-outline" id="btnViewCalendar" onclick="setSettlementView('calendar')" style="padding:4px 12px;font-size:11px">📅 날짜별</button>
         <!-- 월 빠른 이동 -->
-        <div style="display:flex;gap:2px;align-items:center;margin-left:4px;background:#f1f5f9;border-radius:5px;padding:2px 4px">
+        <div id="stlMonthNav" style="display:flex;gap:2px;align-items:center;margin-left:4px;background:#f1f5f9;border-radius:5px;padding:2px 4px">
           <button onclick="moveStlMonth(-1)" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--primary);padding:0 4px">◀</button>
           <span id="stlMonthDisplay" style="font-size:11px;font-weight:700;color:var(--primary);min-width:60px;text-align:center"></span>
           <button onclick="moveStlMonth(1)" style="background:none;border:none;cursor:pointer;font-size:14px;color:var(--primary);padding:0 4px">▶</button>
+        </div>
+        <!-- 전체 리스트 날짜 범위 검색 -->
+        <div id="stlListDateRange" style="display:none;gap:6px;align-items:center;margin-left:4px">
+          <input type="date" id="stlListDateFrom" style="padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px">
+          <span style="font-size:11px">~</span>
+          <input type="date" id="stlListDateTo" style="padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px">
+          <button class="btn btn-sm btn-secondary" onclick="applyStlListDateRange()" style="padding:3px 8px;font-size:10px">조회</button>
+          <button class="btn btn-sm btn-outline" onclick="resetStlListDateRange()" style="padding:3px 8px;font-size:10px">초기화</button>
         </div>
         <div id="stlCodeFilter" style="display:none;margin-left:4px;gap:2px;background:#f1f5f9;border-radius:4px;padding:2px">
           <button class="btn btn-sm" id="stlCodeAll" onclick="setStlCodeFilter('all')" style="padding:2px 8px;font-size:10px;background:var(--primary);color:white;border-radius:3px">전체</button>
@@ -8077,6 +8085,28 @@ try {
   if(stlMigrated) saveSettlementLocal();
 } catch(e) { console.error('정산 데이터 로딩 오류:', e); }
 
+// 전체 리스트 날짜 범위 검색
+let stlListRangeMode = false;
+
+function applyStlListDateRange() {
+  const from = document.getElementById('stlListDateFrom').value;
+  const to = document.getElementById('stlListDateTo').value;
+  if(!from && !to) { alert('시작일 또는 종료일을 입력하세요.'); return; }
+  stlListRangeMode = true;
+  // 범위 모드에서는 월 이동 숨기기
+  document.getElementById('stlMonthNav').style.display = 'none';
+  renderSettlement();
+}
+
+function resetStlListDateRange() {
+  stlListRangeMode = false;
+  document.getElementById('stlListDateFrom').value = '';
+  document.getElementById('stlListDateTo').value = '';
+  // 월 이동 복원
+  document.getElementById('stlMonthNav').style.display = 'flex';
+  renderSettlement();
+}
+
 // 정산 기간 모드
 let stlPeriodMode = 'month'; // 'month' or 'day'
 
@@ -9190,6 +9220,13 @@ function setSettlementView(view) {
   document.getElementById('settlementListArea').style.display = view === 'list' ? 'block' : 'none';
   document.getElementById('stlDateNavWrap').style.display = view === 'list' ? 'flex' : 'none';
   document.getElementById('settlementCalendarArea').style.display = view === 'calendar' ? 'block' : 'none';
+  // 전체 리스트 날짜 범위 검색 UI 표시/숨김
+  document.getElementById('stlListDateRange').style.display = view === 'list' ? 'flex' : 'none';
+  // 전체 리스트 아닐 때 범위 모드 해제
+  if(view !== 'list') {
+    stlListRangeMode = false;
+    document.getElementById('stlMonthNav').style.display = 'flex';
+  }
   
   if(view === 'calendar') {
     renderSettlementCalendar();
@@ -9572,6 +9609,16 @@ function renderSettlement() {
     const from = document.getElementById('stlDateFrom').value;
     const to = document.getElementById('stlDateTo').value;
     if(!from && !to) return;
+    filtered = settlementData.filter(d => {
+      if(!d.date) return false;
+      if(from && d.date < from) return false;
+      if(to && d.date > to) return false;
+      return true;
+    });
+  } else if(stlListRangeMode && settlementView === 'list') {
+    // 전체 리스트: 날짜 범위 필터
+    const from = document.getElementById('stlListDateFrom').value;
+    const to = document.getElementById('stlListDateTo').value;
     filtered = settlementData.filter(d => {
       if(!d.date) return false;
       if(from && d.date < from) return false;
