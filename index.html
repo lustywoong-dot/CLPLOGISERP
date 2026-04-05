@@ -1721,11 +1721,18 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
       <div id="settlementCalendarArea" style="display:none">
         <div class="card" style="padding:12px">
           <!-- 월 네비 + 날짜 칩 -->
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
             <button onclick="moveCalMonth(-1)" style="background:none;border:none;font-size:16px;cursor:pointer;color:var(--primary)">◀</button>
             <span id="stlDateMonthLabel" style="font-size:15px;font-weight:800;color:var(--primary)"></span>
             <button onclick="moveCalMonth(1)" style="background:none;border:none;font-size:16px;cursor:pointer;color:var(--primary)">▶</button>
             <span id="stlDateTotalInfo" style="font-size:11px;color:var(--text-light);margin-left:8px"></span>
+            <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+              <input type="date" id="stlCalDateFrom" style="padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px">
+              <span style="font-size:11px;color:var(--text-light)">~</span>
+              <input type="date" id="stlCalDateTo" style="padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px">
+              <button class="btn btn-sm" onclick="searchCalByRange()" style="padding:4px 10px;font-size:11px;background:var(--primary);color:white">조회</button>
+              <button class="btn btn-sm btn-outline" onclick="resetCalRange()" style="padding:4px 8px;font-size:10px">초기화</button>
+            </div>
           </div>
           <div id="stlDateStrip" class="date-strip"></div>
           <!-- 선택된 날짜 리스트 -->
@@ -9193,59 +9200,122 @@ function setSettlementView(view) {
 
 // 달력 뷰
 let stlCalSelectedDate = '';
+let stlCalRangeMode = false; // 날짜 범위 검색 모드
+
+function searchCalByRange() {
+  const from = document.getElementById('stlCalDateFrom').value;
+  const to = document.getElementById('stlCalDateTo').value;
+  if(!from && !to) { alert('시작일 또는 종료일을 입력하세요.'); return; }
+  if(from && to && from > to) { alert('시작일이 종료일보다 클 수 없습니다.'); return; }
+  stlCalRangeMode = true;
+  stlCalSelectedDate = '';
+  document.getElementById('stlCalendarDetail').style.display = 'none';
+  renderSettlementCalendar();
+}
+
+function resetCalRange() {
+  stlCalRangeMode = false;
+  document.getElementById('stlCalDateFrom').value = '';
+  document.getElementById('stlCalDateTo').value = '';
+  stlCalSelectedDate = '';
+  document.getElementById('stlCalendarDetail').style.display = 'none';
+  renderSettlementCalendar();
+}
 
 function renderSettlementCalendar() {
   const month = document.getElementById('settlementMonth').value;
   if(!month) return;
-  
+
   const [yearStr, monStr] = month.split('-');
   const year = parseInt(yearStr);
   const mon = parseInt(monStr);
   const monthNames = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
-  
-  // 해당 월 데이터 필터
-  let filtered = settlementData.filter(d => d.date && d.date.startsWith(month));
+
+  // 범위 모드 vs 월별 모드
+  let filtered;
+  const rangeFrom = stlCalRangeMode ? document.getElementById('stlCalDateFrom').value : '';
+  const rangeTo = stlCalRangeMode ? document.getElementById('stlCalDateTo').value : '';
+
+  if(stlCalRangeMode && (rangeFrom || rangeTo)) {
+    filtered = settlementData.filter(d => {
+      if(!d.date) return false;
+      if(rangeFrom && d.date < rangeFrom) return false;
+      if(rangeTo && d.date > rangeTo) return false;
+      return true;
+    });
+  } else {
+    filtered = settlementData.filter(d => d.date && d.date.startsWith(month));
+  }
+
   if(stlActiveClient && stlActiveClient !== '전체') filtered = filtered.filter(d => d.client === stlActiveClient);
   if(stlCodeFilterMode !== 'all') {
     if(stlCodeFilterMode === 'P') filtered = filtered.filter(d => d.dispCode && /^P[_\d]/i.test(d.dispCode));
     else filtered = filtered.filter(d => d.dispCode && d.dispCode.toUpperCase().startsWith(stlCodeFilterMode));
   }
-  
+
   // 날짜별 집계
   const dateMap = {};
   filtered.forEach(d => {
-    const dt = (d.date||'').substring(0, 10); // ISO 안전 처리
+    const dt = (d.date||'').substring(0, 10);
     if(!dt) return;
     if(!dateMap[dt]) dateMap[dt] = { count: 0, kctc: 0, pay: 0 };
     dateMap[dt].count++;
     dateMap[dt].kctc += parseInt(d.kctcAmount) || 0;
     dateMap[dt].pay += parseInt(d.payment) || 0;
   });
-  
-  document.getElementById('stlDateMonthLabel').textContent = year + '년 ' + monthNames[mon-1];
+
+  if(stlCalRangeMode && (rangeFrom || rangeTo)) {
+    const fromLabel = rangeFrom || '처음';
+    const toLabel = rangeTo || '끝';
+    document.getElementById('stlDateMonthLabel').textContent = fromLabel + ' ~ ' + toLabel;
+  } else {
+    document.getElementById('stlDateMonthLabel').textContent = year + '년 ' + monthNames[mon-1];
+  }
   document.getElementById('stlDateTotalInfo').textContent = '총 ' + filtered.length + '건 / ' + Object.keys(dateMap).length + '일';
-  
+
   // 날짜 칩 생성
-  const lastDate = new Date(year, mon, 0).getDate();
   const days = ['일','월','화','수','목','금','토'];
   const today = new Date();
   const todayStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
-  
+
   let chipHtml = '';
-  for(let d = 1; d <= lastDate; d++) {
-    const dateStr = `${year}-${String(mon).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const dow = new Date(year, mon-1, d).getDay();
-    const info = dateMap[dateStr];
-    const isActive = dateStr === stlCalSelectedDate;
-    const isToday = dateStr === todayStr;
-    const dowClass = dow === 0 ? 'dc-sun' : dow === 6 ? 'dc-sat' : '';
-    
-    if(!info && !isToday) continue; // 데이터 없는 날짜 숨김 (오늘 제외)
-    
-    chipHtml += `<div class="date-chip ${isActive?'active':''} ${dowClass}" onclick="selectCalDate('${dateStr}')" ${isToday?'style="border-color:#f59e0b;'+(isActive?'':'background:#fffbeb;')+'"':''}>
-      <div class="dc-day">${d}(${days[dow]})</div>
-      ${info ? `<div class="dc-count">${info.count}건</div>` : '<div class="dc-count" style="opacity:0.3">0건</div>'}
-    </div>`;
+
+  if(stlCalRangeMode && (rangeFrom || rangeTo)) {
+    // 범위 모드: dateMap의 날짜들을 정렬해서 표시
+    const sortedDates = Object.keys(dateMap).sort();
+    sortedDates.forEach(dateStr => {
+      const dt = new Date(dateStr);
+      const d = dt.getDate();
+      const m = dt.getMonth() + 1;
+      const dow = dt.getDay();
+      const info = dateMap[dateStr];
+      const isActive = dateStr === stlCalSelectedDate;
+      const isToday = dateStr === todayStr;
+      const dowClass = dow === 0 ? 'dc-sun' : dow === 6 ? 'dc-sat' : '';
+
+      chipHtml += `<div class="date-chip ${isActive?'active':''} ${dowClass}" onclick="selectCalDate('${dateStr}')" ${isToday?'style="border-color:#f59e0b;'+(isActive?'':'background:#fffbeb;')+'"':''}>
+        <div class="dc-day">${m}/${d}(${days[dow]})</div>
+        ${info ? `<div class="dc-count">${info.count}건</div>` : '<div class="dc-count" style="opacity:0.3">0건</div>'}
+      </div>`;
+    });
+  } else {
+    // 기존 월별 모드
+    const lastDate = new Date(year, mon, 0).getDate();
+    for(let d = 1; d <= lastDate; d++) {
+      const dateStr = `${year}-${String(mon).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      const dow = new Date(year, mon-1, d).getDay();
+      const info = dateMap[dateStr];
+      const isActive = dateStr === stlCalSelectedDate;
+      const isToday = dateStr === todayStr;
+      const dowClass = dow === 0 ? 'dc-sun' : dow === 6 ? 'dc-sat' : '';
+
+      if(!info && !isToday) continue;
+
+      chipHtml += `<div class="date-chip ${isActive?'active':''} ${dowClass}" onclick="selectCalDate('${dateStr}')" ${isToday?'style="border-color:#f59e0b;'+(isActive?'':'background:#fffbeb;')+'"':''}>
+        <div class="dc-day">${d}(${days[dow]})</div>
+        ${info ? `<div class="dc-count">${info.count}건</div>` : '<div class="dc-count" style="opacity:0.3">0건</div>'}
+      </div>`;
+    }
   }
   document.getElementById('stlDateStrip').innerHTML = chipHtml;
   
@@ -9452,6 +9522,9 @@ function updateCalField(idx, field, value, dateStr) {
 }
 
 function moveCalMonth(dir) {
+  stlCalRangeMode = false;
+  document.getElementById('stlCalDateFrom').value = '';
+  document.getElementById('stlCalDateTo').value = '';
   const el = document.getElementById('settlementMonth');
   const [y, m] = el.value.split('-').map(Number);
   const d = new Date(y, m - 1 + dir, 1);
