@@ -1181,7 +1181,6 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
                 <th>기사명</th>
                 <th>차량톤수</th>
                 <th style="text-align:right">지불액</th>
-                <th style="text-align:right">매출</th>
                 <th>거래처</th>
               </tr>
             </thead>
@@ -11637,7 +11636,7 @@ function showRateRefDetail(area, vehicle) {
 
   const tbody = document.getElementById('rateRefDetailBody');
   if(records.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:20px;color:var(--text-light)">데이터 없음</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:20px;color:var(--text-light)">데이터 없음</td></tr>';
   } else {
     tbody.innerHTML = records.map(d => {
       const veh = getVehicleFromCode(d.dispCode);
@@ -11648,7 +11647,6 @@ function showRateRefDetail(area, vehicle) {
         <td style="font-size:11px">${d.name || '-'}</td>
         <td style="font-size:11px;text-align:center">${veh || '-'}</td>
         <td style="font-size:11px;text-align:right;font-weight:600;color:var(--accent)">${(d.payment||0).toLocaleString()}</td>
-        <td style="font-size:11px;text-align:right;color:#1d4ed8">${(d.kctcAmount||0).toLocaleString()}</td>
         <td style="font-size:11px">${d.client || '-'}</td>
       </tr>`;
     }).join('');
