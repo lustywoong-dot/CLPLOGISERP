@@ -497,6 +497,23 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
   <!-- 배차 등록 패널 -->
   <div id="panel-dispatch" class="panel active">
 
+    <!-- 오늘의 배차 현황 -->
+    <div id="todayDashboard" class="card" style="margin-bottom:6px;padding:8px 14px;background:linear-gradient(135deg,#f0f4ff,#e8f4f8)">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+        <div style="font-weight:700;font-size:12px;color:var(--primary)">📋 오늘 배차</div>
+        <div style="display:flex;gap:12px;align-items:center">
+          <span style="font-size:12px;font-weight:700"><span id="todayCount" style="color:var(--primary);font-size:16px">0</span>건</span>
+          <span style="font-size:11px;color:var(--text-light)">매출 <span id="todayRevenue" style="color:var(--accent);font-weight:600">0</span>원</span>
+          <span style="font-size:11px;color:var(--text-light)">매입 <span id="todayDriverPay" style="color:#6b7280;font-weight:600">0</span>원</span>
+        </div>
+        <button onclick="toggleTodayDetail()" style="background:none;border:none;cursor:pointer;font-size:10px;color:var(--primary);text-decoration:underline" id="todayDetailBtn">기사별 현황 ▼</button>
+        <div style="margin-left:auto;font-size:10px;color:var(--text-light)" id="todayDate"></div>
+      </div>
+      <div id="todayDetailArea" style="display:none;margin-top:6px;max-height:120px;overflow-y:auto">
+        <div id="todayDriverList" style="display:flex;gap:4px;flex-wrap:wrap"></div>
+      </div>
+    </div>
+
     <!-- ① 오더 붙여넣기 (상단 독립 카드, 접이식) -->
     <div class="card" id="orderPasteCard" style="margin-bottom:6px">
       <div class="card-title" onclick="toggleOrderPaste()" style="cursor:pointer;user-select:none;font-size:12px">
@@ -758,7 +775,7 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
         </div>
         <div class="form-group">
           <label>하차지</label>
-          <input type="text" id="deliveryRegion" list="regionList" placeholder="권역" onchange="calculate();generateSMS()" oninput="calculate();generateSMS()">
+          <input type="text" id="deliveryRegion" list="regionList" placeholder="권역" onchange="calculate();generateSMS();updateDriverRecommend()" oninput="calculate();generateSMS()">
           <datalist id="regionList"></datalist>
         </div>
         <div class="form-group">
@@ -937,6 +954,13 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
             </div>
           </div>
           <button class="btn btn-sm" onclick="addDriverRow()" style="margin-top:2px;background:#059669;color:white;padding:2px 8px;font-size:10px;border:none;border-radius:3px">+ 차량 추가</button>
+          <!-- 기사 추천 (접이식) -->
+          <div id="driverRecommendArea" style="margin-top:4px;display:none">
+            <div onclick="toggleDriverRecommend()" style="cursor:pointer;font-size:10px;color:#7c3aed;text-decoration:underline;user-select:none;display:inline-block">💡 이 지역 배차 실적 기사 ▼</div>
+            <div id="driverRecommendList" style="display:none;margin-top:4px;padding:6px 8px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:5px;max-height:100px;overflow-y:auto">
+              <div style="font-size:10px;color:var(--text-light)">지역을 선택하면 표시됩니다</div>
+            </div>
+          </div>
           <input type="hidden" id="dispatchRoute"><input type="hidden" id="driverName"><input type="hidden" id="driverPhone"><input type="hidden" id="vehicleNo"><input type="hidden" id="driverPay">
           <datalist id="driverHistoryList"></datalist>
           <datalist id="vehicleNoList"></datalist>
@@ -3623,6 +3647,7 @@ function switchTab(name) {
   });
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-'+name).classList.add('active');
+  if(name === 'dispatch') updateTodayDashboard();
   if(name === 'stats') initStats();
   if(name === 'rateRef') initRateRef();
   if(name === 'drivers') renderDrivers();
@@ -11148,6 +11173,9 @@ function initApp() {
   })();
   document.getElementById('ilDateFrom').value = todayDefault;
   document.getElementById('ilDateTo').value = tomorrowDefault;
+
+  // 오늘의 배차 현황 초기 로드
+  updateTodayDashboard();
 }
 
 
@@ -12094,6 +12122,122 @@ function exportStatsExcel() {
 }
 
 // 통계 탭 진입 시 자동 로드
+// ============================================
+// 오늘의 배차 현황
+// ============================================
+function updateTodayDashboard() {
+  const now = new Date();
+  const todayStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0');
+  const days = ['일','월','화','수','목','금','토'];
+  document.getElementById('todayDate').textContent = todayStr + ' (' + days[now.getDay()] + ')';
+
+  const todayData = dispatchLog.filter(d => d.date === todayStr);
+  const count = todayData.length;
+  const revenue = todayData.reduce((s, d) => s + (parseInt(d.total) || 0), 0);
+  const driverPay = todayData.reduce((s, d) => s + (parseInt(d.driverPay) || 0), 0);
+
+  document.getElementById('todayCount').textContent = count;
+  document.getElementById('todayRevenue').textContent = revenue.toLocaleString();
+  document.getElementById('todayDriverPay').textContent = driverPay.toLocaleString();
+
+  // 기사별 현황
+  const driverMap = {};
+  todayData.forEach(d => {
+    const name = d.driverName || '미배정';
+    if(!driverMap[name]) driverMap[name] = 0;
+    driverMap[name]++;
+  });
+
+  const sorted = Object.entries(driverMap).sort((a, b) => b[1] - a[1]);
+  const listEl = document.getElementById('todayDriverList');
+  if(sorted.length === 0) {
+    listEl.innerHTML = '<span style="font-size:10px;color:var(--text-light)">오늘 배차 데이터 없음</span>';
+  } else {
+    listEl.innerHTML = sorted.map(([name, cnt]) => {
+      const bg = name === '미배정' ? '#fecaca' : '#e0e7ff';
+      const color = name === '미배정' ? '#dc2626' : '#3730a3';
+      return `<span style="padding:2px 8px;font-size:10px;background:${bg};color:${color};border-radius:3px;font-weight:600">${name} ${cnt}건</span>`;
+    }).join('');
+  }
+}
+
+function toggleTodayDetail() {
+  const area = document.getElementById('todayDetailArea');
+  const btn = document.getElementById('todayDetailBtn');
+  if(area.style.display === 'none') {
+    area.style.display = 'block';
+    btn.textContent = '기사별 현황 ▲';
+  } else {
+    area.style.display = 'none';
+    btn.textContent = '기사별 현황 ▼';
+  }
+}
+
+// ============================================
+// 기사 추천 (지역 기반)
+// ============================================
+function updateDriverRecommend() {
+  const area = document.getElementById('deliveryRegion')?.value || '';
+  const panel = document.getElementById('driverRecommendArea');
+  if(!area) {
+    if(panel) panel.style.display = 'none';
+    return;
+  }
+  if(panel) panel.style.display = 'block';
+
+  // 정산 데이터에서 해당 지역 배차 실적 집계
+  const driverMap = {};
+  settlementData.forEach(d => {
+    if(!d.area || !d.name) return;
+    if(!d.area.includes(area) && !area.includes(d.area)) return;
+    const key = d.name + '|' + (d.phone || '') + '|' + (d.vehicle || '');
+    if(!driverMap[key]) driverMap[key] = { name: d.name, phone: d.phone || '', vehicle: d.vehicle || '', count: 0, lastDate: '' };
+    driverMap[key].count++;
+    if(d.date && d.date > driverMap[key].lastDate) driverMap[key].lastDate = d.date;
+  });
+
+  const sorted = Object.values(driverMap).sort((a, b) => b.count - a.count).slice(0, 8);
+  const listEl = document.getElementById('driverRecommendList');
+
+  if(sorted.length === 0) {
+    listEl.innerHTML = '<div style="font-size:10px;color:var(--text-light)">"' + area + '" 지역 배차 실적이 없습니다</div>';
+    return;
+  }
+
+  listEl.innerHTML = sorted.map((d, i) => {
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1);
+    return `<div style="display:flex;align-items:center;gap:6px;padding:2px 0;font-size:10px;border-bottom:1px solid #ede9fe;cursor:pointer" onclick="applyRecommendDriver('${d.name.replace(/'/g,"\\'")}','${d.phone.replace(/'/g,"\\'")}','${d.vehicle.replace(/'/g,"\\'")}')">
+      <span style="min-width:18px;text-align:center">${medal}</span>
+      <span style="font-weight:600;min-width:45px">${d.name}</span>
+      <span style="color:var(--text-light);min-width:60px">${d.vehicle || '-'}</span>
+      <span style="color:var(--text-light)">${d.phone || '-'}</span>
+      <span style="color:var(--primary);font-weight:600">${d.count}건</span>
+      <span style="color:var(--text-light);font-size:9px">최근 ${d.lastDate.substring(5) || '-'}</span>
+    </div>`;
+  }).join('');
+}
+
+function applyRecommendDriver(name, phone, vehicle) {
+  // 첫 번째 기사 입력란에 적용
+  const rows = document.querySelectorAll('.driver-row');
+  if(rows.length > 0) {
+    const row = rows[0];
+    const nameInput = row.querySelector('.drv-name');
+    const phoneInput = row.querySelector('.drv-phone');
+    const vehicleInput = row.querySelector('.drv-vehicleNo');
+    if(nameInput && !nameInput.value) nameInput.value = name;
+    if(phoneInput && !phoneInput.value) phoneInput.value = phone;
+    if(vehicleInput && !vehicleInput.value) vehicleInput.value = vehicle;
+    checkDriverAssignBadge();
+    generateSMS();
+  }
+}
+
+function toggleDriverRecommend() {
+  const list = document.getElementById('driverRecommendList');
+  list.style.display = list.style.display === 'none' ? 'block' : 'none';
+}
+
 function initStats() {
   const now = new Date();
   document.getElementById('statsMonth').value = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
