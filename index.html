@@ -1113,7 +1113,11 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
         </div>
         <div style="display:flex;gap:4px;align-items:center">
           <label style="font-size:11px;font-weight:600">지역 검색:</label>
-          <input type="text" id="rateRefSearch" placeholder="지역명 입력..." oninput="renderRateRef()" style="padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px;width:140px">
+          <input type="text" id="rateRefSearch" placeholder="지역명 입력..." oninput="renderRateRef()" style="padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px;width:120px">
+        </div>
+        <div style="display:flex;gap:4px;align-items:center">
+          <label style="font-size:11px;font-weight:600">기사명:</label>
+          <input type="text" id="rateRefDriverSearch" placeholder="기사명 입력..." oninput="renderRateRef()" style="padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px;width:100px">
         </div>
         <div style="display:flex;gap:4px;align-items:center">
           <label style="font-size:11px;font-weight:600">정렬:</label>
@@ -1172,18 +1176,18 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
           <button onclick="document.getElementById('rateRefDetail').style.display='none'" style="margin-left:auto;background:none;border:none;cursor:pointer;font-size:14px">✕</button>
         </div>
         <div class="table-wrap" style="max-height:300px;overflow-y:auto">
-          <table>
+          <table style="table-layout:fixed;width:100%">
             <thead>
               <tr>
-                <th>날짜</th>
-                <th>배차코드</th>
-                <th>배송처</th>
-                <th>기사명</th>
-                <th>차량번호</th>
-                <th>전화번호</th>
-                <th>차량톤수</th>
-                <th style="text-align:right">지불액</th>
-                <th>거래처</th>
+                <th style="width:80px">날짜</th>
+                <th style="width:80px">배차코드</th>
+                <th style="width:180px">배송처</th>
+                <th style="width:55px">기사명</th>
+                <th style="width:85px">차량번호</th>
+                <th style="width:100px">전화번호</th>
+                <th style="width:55px">차량톤수</th>
+                <th style="text-align:right;width:75px">지불액</th>
+                <th style="width:60px">거래처</th>
               </tr>
             </thead>
             <tbody id="rateRefDetailBody"></tbody>
@@ -11529,6 +11533,11 @@ function buildRateRefData() {
     data = data.filter(d => d.client === clientFilter);
   }
 
+  const driverSearch = (document.getElementById('rateRefDriverSearch')?.value || '').trim().toLowerCase();
+  if(driverSearch) {
+    data = data.filter(d => (d.name || '').toLowerCase().includes(driverSearch));
+  }
+
   // 지역별 × 차량톤수별 집계
   const areaMap = {};
   data.forEach(d => {
@@ -11645,9 +11654,9 @@ function showRateRefDetail(area, vehicle) {
       return `<tr>
         <td style="font-size:11px">${d.date || '-'}</td>
         <td style="font-size:11px">${d.dispCode || '-'}</td>
-        <td style="font-size:11px">${d.dest || '-'}</td>
+        <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(d.dest||'').replace(/"/g,'&quot;')}">${d.dest || '-'}</td>
         <td style="font-size:11px">${d.name || '-'}</td>
-        <td style="font-size:11px">${d.vehicle || '-'}</td>
+        <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.vehicle || '-'}</td>
         <td style="font-size:11px">${d.phone || '-'}</td>
         <td style="font-size:11px;text-align:center">${veh || '-'}</td>
         <td style="font-size:11px;text-align:right;font-weight:600;color:var(--accent)">${(d.payment||0).toLocaleString()}</td>
