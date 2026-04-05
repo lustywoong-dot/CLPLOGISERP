@@ -774,7 +774,7 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
           <input type="text" id="clientName" placeholder="거래처명" oninput="generateSMS()">
         </div>
         <div class="form-group">
-          <label>하차지</label>
+          <label>하차지 <button onclick="openNaverRoute()" title="네이버 길찾기 (상차지→하차지)" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;vertical-align:middle">🗺</button></label>
           <input type="text" id="deliveryRegion" list="regionList" placeholder="권역" onchange="calculate();generateSMS();updateDriverRecommend()" oninput="calculate();generateSMS()">
           <datalist id="regionList"></datalist>
         </div>
@@ -12171,6 +12171,21 @@ function toggleTodayDetail() {
     area.style.display = 'none';
     btn.textContent = '기사별 현황 ▼';
   }
+}
+
+// ============================================
+// 네이버 길찾기 (상차지→하차지)
+// ============================================
+function openNaverRoute() {
+  const pickup = document.getElementById('pickupAddr')?.value || '';
+  const region = document.getElementById('deliveryRegion')?.value || '';
+  const detail = document.getElementById('deliveryDetailAddr')?.value || '';
+  const dest = detail ? region + ' ' + detail : region;
+
+  if(!dest.trim()) { alert('하차지를 입력해주세요.'); return; }
+
+  const url = 'https://map.naver.com/p/directions/-/-/-/car?c=15.00,0,0,0,dh&destination=' + encodeURIComponent(dest) + '&origin=' + encodeURIComponent(pickup);
+  window.open(url, '_blank');
 }
 
 // ============================================
