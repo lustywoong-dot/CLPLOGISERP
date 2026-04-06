@@ -1062,9 +1062,7 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
               <th>원청단가</th>
               <th>수작업</th>
               <th>대기료</th>
-              <th>총매출</th>
               <th>기사지급</th>
-              <th>마진</th>
               <th>배차경로</th>
               <th>기사명</th>
               <th>비고</th>
@@ -4709,9 +4707,7 @@ function renderHistory(data) {
       <td class="amount">${r.baseRate?.toLocaleString()}</td>
       <td>${r.manualFee ? r.manualFee.toLocaleString() : '-'}</td>
       <td>${r.waitFee ? r.waitFee.toLocaleString() : '-'}</td>
-      <td class="amount" style="color:var(--accent)">${r.total?.toLocaleString()}</td>
       <td>${r.driverPay ? r.driverPay.toLocaleString() : '-'}</td>
-      <td style="color:${r.margin >= 0 ? 'var(--success)' : 'var(--danger)'};font-weight:700">${r.driverPay ? r.margin?.toLocaleString() : '-'}</td>
       <td style="font-size:11px">${r.dispatchRoute || '-'}</td>
       <td>${r.driverName || '-'}</td>
       <td style="max-width:100px;overflow:hidden;text-overflow:ellipsis" title="${r.memo||''}">${r.memo || '-'}</td>
