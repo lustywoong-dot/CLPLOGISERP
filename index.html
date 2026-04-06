@@ -768,6 +768,13 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
           <label>배차코드 <span style="color:var(--danger);font-weight:700">*필수</span></label>
           <input type="text" id="dispatchCode" placeholder="P01001" style="border-color:var(--accent);font-weight:600" oninput="checkCodeDuplicate();generateSMS();autoDetectCenter()">
           <span id="codeError" style="font-size:11px;color:var(--danger);display:none">⚠ 이미 사용된 코드입니다</span>
+          <div id="hapjimPanel" style="display:none;margin-top:6px;padding:8px;background:#fefce8;border:1px solid #fde047;border-radius:6px">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+              <span style="font-size:11px;font-weight:700;color:#a16207">📦 합짐 모드</span>
+              <span style="font-size:10px;color:#92400e">— 코드별 개별 금액을 입력하세요</span>
+            </div>
+            <div id="hapjimCodeRows"></div>
+          </div>
         </div>
         <div class="form-group">
           <label>거래처명</label>
@@ -2901,7 +2908,7 @@ function renderInlineHistory() {
       <td onclick="event.stopPropagation()"><input type="checkbox" class="inline-check" value="${r.id}" onchange="updateInlineDeleteBtn()"></td>
       <td style="font-size:11px">${filtered.length - i}</td>
       <td style="font-size:11px" title="배차일:${sanitizeDate(r.date||'').substring(5)} / 배송일:${sanitizeDate(r.deliveryDate||r.date||'').substring(5)}">${sanitizeDate(r.deliveryDate || r.date||'').substring(5)}</td>
-      <td style="font-weight:700;font-size:11px;overflow:hidden;text-overflow:ellipsis;${r.code?.startsWith('TEMP_')?'color:#d97706;background:#fef3c7':'color:var(--primary)'}">${r.code?.startsWith('TEMP_') ? '⏳미정' : (r.code || '-')}${isNew ? ' <span style="font-size:9px;background:#2563eb;color:white;padding:1px 4px;border-radius:3px;font-weight:700;vertical-align:middle">NEW</span>' : ''}</td>
+      <td style="font-weight:700;font-size:11px;overflow:hidden;text-overflow:ellipsis;${r.code?.startsWith('TEMP_')?'color:#d97706;background:#fef3c7':'color:var(--primary)'}">${r.code?.startsWith('TEMP_') ? '⏳미정' : (r.code || '-')}${r.hapjimGroup ? ' <span style="font-size:8px;background:#fbbf24;color:#78350f;padding:1px 3px;border-radius:2px;font-weight:700">합짐</span>' : ''}${isNew ? ' <span style="font-size:9px;background:#2563eb;color:white;padding:1px 4px;border-radius:3px;font-weight:700;vertical-align:middle">NEW</span>' : ''}</td>
       <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.clientName||''}">${r.clientName||'-'}</td>
       <td><span style="padding:1px 4px;border-radius:3px;font-size:10px;font-weight:600;${clientStyle}">${client}</span></td>
       <td style="text-align:center">${statusCell}</td>
@@ -4523,14 +4530,43 @@ function calculateMjim() {
 // 배차코드 실시간 중복 체크
 // ============================================
 function checkCodeDuplicate() {
-  const code = document.getElementById('dispatchCode').value.trim();
+  const rawCode = document.getElementById('dispatchCode').value.trim();
   const errEl = document.getElementById('codeError');
   const inputEl = document.getElementById('dispatchCode');
   inputEl.style.background = '';
-  
+
+  // 합짐 모드 감지 (쉼표 포함)
+  if(rawCode.includes(',')) {
+    const codes = rawCode.split(',').map(c => c.trim()).filter(Boolean);
+    const unique = [...new Set(codes)];
+    if(unique.length > 1) {
+      // 개별 코드 중복 체크
+      const dupes = unique.filter(c => dispatchLog.find(r => r.code === c && r.id !== selectedRecordId));
+      if(dupes.length > 0) {
+        errEl.innerHTML = '⚠ 기존 건 존재: ' + dupes.join(', ') + ' (저장 시 해당 건 수정됩니다)';
+        errEl.style.display = 'block';
+        errEl.style.color = '#92400e';
+      } else {
+        errEl.style.display = 'none';
+      }
+      inputEl.style.borderColor = '#d97706';
+      renderHapjimPanel(unique);
+      // 첫 번째 코드 기준으로 차량/센터 감지
+      autoDetectVehicleFromCode(unique[0]);
+      if(unique[0]) loadMemoForCode(unique[0]);
+      return;
+    }
+  }
+
+  // 합짐 패널 숨기기 (단일 코드)
+  document.getElementById('hapjimPanel').style.display = 'none';
+  document.getElementById('hapjimCodeRows').innerHTML = '';
+
+  const code = rawCode.replace(/,/g, '').trim();
+
   // 수정 모드면 현재 레코드는 제외
   const existing = code ? dispatchLog.find(r => r.code === code && r.id !== selectedRecordId) : null;
-  
+
   if(existing) {
     // 기존 건 존재 → 에러 대신 "불러오기" 안내
     errEl.innerHTML = '⚠ 기존 배차 건이 있습니다. <button onclick="loadRecord(' + existing.id + ')" style="background:#3b82f6;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:10px;cursor:pointer;margin-left:4px">📋 불러와서 수정</button> <button onclick="allowNewCode()" style="background:#d97706;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:10px;cursor:pointer;margin-left:2px">➕ 새로 등록</button>';
@@ -4542,12 +4578,48 @@ function checkCodeDuplicate() {
     errEl.style.color = '';
     inputEl.style.borderColor = 'var(--accent)';
   }
-  
+
   // 배차코드에서 차량 톤수 자동 추출
   autoDetectVehicleFromCode(code);
-  
+
   // 배차코드에 연결된 메모 불러오기
   if(code) loadMemoForCode(code);
+}
+
+// 합짐 패널 렌더링
+function renderHapjimPanel(codes) {
+  const panel = document.getElementById('hapjimPanel');
+  const container = document.getElementById('hapjimCodeRows');
+  panel.style.display = 'block';
+
+  // 현재 선택된 region으로 자동 단가 계산
+  const region = typeof getSelectedRegion === 'function' ? getSelectedRegion() : '';
+
+  container.innerHTML = codes.map((code, i) => {
+    const detectedVehicle = getVehicleFromCode(code);
+    const vehicleLabel = detectedVehicle || '(차량 선택 기준)';
+    let autoRate = 0;
+    if(region && detectedVehicle && RATES[region]) {
+      autoRate = RATES[region][detectedVehicle] || 0;
+    } else if(region) {
+      const selVehicle = document.getElementById('vehicleTon').value;
+      if(selVehicle && RATES[region]) autoRate = RATES[region][selVehicle] || 0;
+    }
+    return `<div class="hapjim-code-row" data-code="${code}" style="display:grid;grid-template-columns:110px 100px 110px;gap:6px;align-items:center;margin-bottom:3px">
+      <span style="font-size:12px;font-weight:700;color:#1e40af">${i+1}. ${code}</span>
+      <span style="font-size:10px;color:#6b7280">${vehicleLabel} ${autoRate > 0 ? autoRate.toLocaleString()+'원' : ''}</span>
+      <input type="number" class="hapjim-total" min="0" step="1000" value="${autoRate || ''}" placeholder="총비용" style="font-size:11px;padding:3px 5px;border:1px solid #d1d5db;border-radius:4px">
+    </div>`;
+  }).join('');
+}
+
+// 합짐 패널에서 코드별 금액 읽기
+function getHapjimTotals() {
+  const rows = document.querySelectorAll('.hapjim-code-row');
+  return Array.from(rows).map(row => ({
+    code: row.dataset.code,
+    total: parseInt(row.querySelector('.hapjim-total')?.value) || 0
+  }));
 }
 
 // 중복 코드 강제 새 등록 허용
@@ -4867,6 +4939,8 @@ function resetForm() {
   selectedRecordId = null;
   _allowDuplicateCode = false;
   document.getElementById('inlineEditBar').style.display = 'none';
+  document.getElementById('hapjimPanel').style.display = 'none';
+  document.getElementById('hapjimCodeRows').innerHTML = '';
   
   const today = new Date();
   const todayStr = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
@@ -5130,7 +5204,8 @@ function setDispatchMode(mode) {
 
 function autoDetectCenter() {
   if(dispatchMode !== 'liquor') return;
-  const code = document.getElementById('dispatchCode').value.trim().toUpperCase();
+  const rawCode = document.getElementById('dispatchCode').value.trim().toUpperCase();
+  const code = rawCode.includes(',') ? rawCode.split(',')[0].trim() : rawCode;
   if(code.startsWith('ECLP')) {
     document.getElementById('lqCenter').value = 'yj';
     onCenterChange();
@@ -11273,6 +11348,168 @@ async function saveDispatch() {
   try {
     let code = document.getElementById('dispatchCode').value.trim();
   
+  // ─── 합짐 모드 감지 ───
+  const _hapjimCodes = code.includes(',') ? code.split(',').map(c => c.trim()).filter(Boolean) : null;
+  const _isHapjim = _hapjimCodes && [...new Set(_hapjimCodes)].length > 1;
+
+  if(_isHapjim) {
+    // ═══════════════════════════════════════════
+    // 합짐 모드 저장 (코드별 개별 금액, 기사 공유)
+    // ═══════════════════════════════════════════
+    const hapjimGroup = 'HJ_' + Date.now();
+    const hapjimUnique = [...new Set(_hapjimCodes)];
+    const hapjimTotals = getHapjimTotals();
+
+    const type = document.getElementById('dispatchType').value;
+    const region = getSelectedRegion();
+    const plt = document.getElementById('palletCount').value || '0';
+    const boxes = parseInt(document.getElementById('boxCount').value) || 0;
+    const selVehicle = document.getElementById('vehicleTon').value || '';
+    const memoVal = document.getElementById('memo').value;
+    const hapjimMemo = memoVal ? '[합짐] ' + memoVal : '[합짐]';
+
+    syncDriverHidden();
+    const driverList = getDriverRows().filter(d => d.name || d.vehicleNo || d.pay > 0);
+    if(driverList.length === 0) driverList.push({ route:'', name:'', phone:'', vehicleNo:'', pay:0 });
+
+    const records = [];
+    const baseTs = Date.now();
+
+    hapjimUnique.forEach((hCode, ci) => {
+      // 코드별 차량 감지 + 단가 계산
+      const codeVehicle = getVehicleFromCode(hCode) || selVehicle;
+      let codeBaseRate = 0;
+      if(region && RATES[region]) codeBaseRate = RATES[region][codeVehicle] || 0;
+
+      // 합짐 패널에서 입력한 금액 (없으면 자동단가)
+      const panelEntry = hapjimTotals.find(h => h.code === hCode);
+      const codeTotal = (panelEntry && panelEntry.total > 0) ? panelEntry.total : codeBaseRate;
+
+      driverList.forEach((drv, di) => {
+        const recCode = driverList.length > 1 ? `${hCode}-${di+1}` : hCode;
+
+        // 중복 체크
+        if(dispatchLog.some(r => r.code === recCode)) return;
+
+        const driverPay = (ci === 0) ? (drv.pay || 0) : 0; // 첫 코드에만 지급액
+        const margin = driverPay > 0 ? codeTotal - driverPay : 0;
+
+        records.push({
+          id: baseTs + ci * 100 + di,
+          code: recCode,
+          hapjimGroup: hapjimGroup,
+          clientName: document.getElementById('clientName').value,
+          date: sanitizeDate(document.getElementById('dispatchDate').value),
+          deliveryDate: sanitizeDate(document.getElementById('deliveryDate').value),
+          type: dispatchMode === 'liquor' ? '주류' : type,
+          pickup: document.getElementById('pickupAddr').value,
+          delivery: region,
+          deliveryAddr: document.getElementById('deliveryDetailAddr').value,
+          deliveryContact: document.getElementById('deliveryContact').value,
+          deliveryPhone: document.getElementById('deliveryPhone').value,
+          vehicle: codeVehicle,
+          pallet: plt,
+          boxes: boxes,
+          baseRate: codeBaseRate,
+          manualFee: 0,
+          waitFee: 0,
+          roundFee: 0,
+          total: codeTotal,
+          driverPay: driverPay,
+          margin: margin,
+          dispatchRoute: drv.route,
+          driverName: drv.name,
+          driverPhone: drv.phone,
+          vehicleNo: drv.vehicleNo,
+          arrivalTime: drv.arrivalTime || '',
+          memo: hapjimMemo,
+          stickyMemo: document.getElementById('stickyMemo').value,
+          extraWorkFee: 0,
+          createdBy: getUserName() || '-'
+        });
+      });
+    });
+
+    if(records.length === 0) { showToast('⚠ 저장할 데이터가 없습니다 (중복 코드 확인)'); return; }
+    _lastSaveTime = Date.now();
+
+    // 신규 등록 (합짐은 항상 신규)
+    records.forEach(r => dispatchLog.unshift(r));
+    saveDispatchHistory();
+
+    // NEW 뱃지 등록
+    records.forEach(r => {
+      _newRecordIds.add(r.id);
+      setTimeout(() => { _newRecordIds.delete(r.id); }, _NEW_BADGE_TTL);
+    });
+
+    // 날짜 필터 맞춤
+    const savedDeliveryDate = records[0]?.deliveryDate || records[0]?.date || '';
+    if(savedDeliveryDate) {
+      const fromEl = document.getElementById('ilDateFrom');
+      const toEl   = document.getElementById('ilDateTo');
+      if(fromEl && toEl) {
+        if(!fromEl.value || fromEl.value > savedDeliveryDate) fromEl.value = savedDeliveryDate;
+        if(!toEl.value   || toEl.value   < savedDeliveryDate) toEl.value   = savedDeliveryDate;
+      }
+    }
+
+    renderHistory();
+    renderInlineHistory();
+
+    // 폼 초기화
+    const keepDate      = document.getElementById('dispatchDate').value;
+    const keepDelivDate = document.getElementById('deliveryDate').value;
+    const keepPickup    = document.getElementById('pickupAddr').value;
+    resetForm();
+    document.getElementById('dispatchDate').value = keepDate;
+    document.getElementById('deliveryDate').value = keepDelivDate;
+    document.getElementById('pickupAddr').value   = keepPickup;
+
+    const _panel = document.getElementById('inlineDispatchPanel');
+    if(_panel) _panel.style.display = 'none';
+    const _bar = document.getElementById('inlineEditBar');
+    if(_bar) _bar.style.display = 'none';
+    const _wrap = document.getElementById('inlineTableWrap');
+    if(_wrap) _wrap.style.maxHeight = '400px';
+    ['btnSaveDispatch1','btnSaveDispatch2'].forEach(id => {
+      const b = document.getElementById(id);
+      if(b) { b.disabled = false; b.classList.remove('btn-saving','btn-feedback'); }
+    });
+
+    // 구글 시트 저장
+    if(isConnected()) {
+      try {
+        updateConnStatus('loading', '저장 중...');
+        let allOk = true;
+        for(const rec of records) {
+          try {
+            const sheetResult = await saveToSheet(rec);
+            if(!sheetResult.success) { allOk = false; console.warn('시트 저장 실패:', rec.code, sheetResult.message); }
+          } catch(e) { allOk = false; console.warn('시트 저장 오류:', rec.code, e.message); }
+        }
+        if(allOk) {
+          updateConnStatus('ok');
+          showToast(`✅ 합짐 ${records.length}건 배차 저장 완료! (로컬 + 구글시트)`);
+          _lastSyncHash = '';
+        } else {
+          updateConnStatus('ok');
+          showToast(`✅ 합짐 ${records.length}건 로컬 저장 완료 (시트 동기화는 자동 재시도)`);
+        }
+      } catch(e) {
+        updateConnStatus('ok');
+        showToast(`✅ 합짐 ${records.length}건 로컬 저장 완료`);
+      }
+    } else {
+      showToast(`✅ 합짐 ${records.length}건 배차 저장 완료! (로컬만 - 구글시트 미연결)`);
+    }
+    return; // 합짐 모드 종료 — 아래 기존 로직 실행 안 함
+  }
+
+  // ═══════════════════════════════════════════
+  // 기존 단일 코드 저장 로직 (변경 없음)
+  // ═══════════════════════════════════════════
+
   // 코드 없으면 임시 코드 생성 (나중에 수정 가능)
   if(!code) {
     const today = getTodayStr().replace(/-/g,'');
@@ -11280,10 +11517,10 @@ async function saveDispatch() {
     document.getElementById('dispatchCode').value = code;
     showToast('ℹ 배차코드 미입력 → 임시코드 생성: ' + code + ' (나중에 수정 가능)');
   }
-  
+
   // 수정 모드 판단
   let isUpdate = selectedRecordId && dispatchLog.some(r => r.id === selectedRecordId);
-  
+
   // 신규 등록 시 중복 체크
   if(!isUpdate && !code.startsWith('TEMP_') && !_allowDuplicateCode) {
     const existingRec = dispatchLog.find(r => r.code === code);
@@ -11294,13 +11531,13 @@ async function saveDispatch() {
       showToast('ℹ 기존 배차 [' + code + '] 수정 모드로 전환');
     }
   }
-  
+
   // 강제 새 등록 플래그 초기화
   _allowDuplicateCode = false;
 
   const type = document.getElementById('dispatchType').value;
   let region, vehicle, plt, baseRate, total;
-  
+
   if(type === 'M짐') {
     const mjimIdx = document.getElementById('mjimRegion').value;
     if(mjimIdx === '') { showToast('M짐 권역을 선택해주세요'); return; }
@@ -11317,12 +11554,10 @@ async function saveDispatch() {
       vehicle = recommendVehicle(parseInt(document.getElementById('palletCount').value)||0) || '';
     }
     plt = document.getElementById('palletCount').value || '0';
-    
+
     if(!region) {
-      // 권역 없으면 단가 0으로 저장 (나중에 수정 가능)
       baseRate = 0;
     } else {
-      // 혼적(M짐) 체크 시 M짐 요금 사용
       const isMixed = document.getElementById('mixedCargoCheck')?.checked;
       if(isMixed) {
         const mjIdx = document.getElementById('mixedMjimRegion').value;
@@ -11331,7 +11566,6 @@ async function saveDispatch() {
           baseRate = MJIM_RATES[mjIdx][mjSize] || 0;
         }
       } else {
-        // 모드에 따라 단가표 선택
         let rateData;
         if(dispatchMode === 'liquor') {
           rateData = getLiquorRateTable()[region];
@@ -11342,10 +11576,10 @@ async function saveDispatch() {
       }
     }
   }
-  
+
   const boxes = parseInt(document.getElementById('boxCount').value) || 0;
   const waitH = 0;
-  
+
   let manualFee = 0;
   if(type !== 'M짐' && boxes >= 50) manualFee = (dispatchMode === 'liquor' ? LIQUOR_WORK_FEE[vehicle] : MANUAL_FEE[vehicle]) || 0;
   let waitFee = waitH > 2 ? (waitH - 2) * 10000 : 0;
@@ -11356,23 +11590,23 @@ async function saveDispatch() {
   }
   const extraFee = parseInt(document.getElementById('extraWorkFee').value) || 0;
   total = baseRate + manualFee + waitFee + roundFee + waypointTotal + extraFee;
-  
+
   // 다중 기사 처리
   syncDriverHidden();
   const driverList = getDriverRows().filter(d => d.name || d.vehicleNo || d.pay > 0);
-  
+
   // 기사 정보 없으면 빈 1건으로
   if(driverList.length === 0) driverList.push({ route:'', name:'', phone:'', vehicleNo:'', pay:0 });
-  
+
   const records = [];
   driverList.forEach((drv, di) => {
     const recCode = driverList.length > 1 ? `${code}-${di+1}` : code;
     const driverPay = drv.pay || 0;
     const margin = driverPay > 0 ? total - driverPay : 0;
-    
+
     // 중복 체크 (서브코드 포함)
     if(di > 0 && dispatchLog.some(r => r.code === recCode)) return;
-    
+
     records.push({
       id: Date.now() + di,
       code: recCode,
