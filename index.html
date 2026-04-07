@@ -3505,8 +3505,10 @@ function applyRole(user) {
     tab.style.display = allowedTabs.includes(tabName) ? '' : 'none';
   });
   const roleLabel = ROLE_LABELS[role] || role;
-  document.getElementById('headerUser').textContent = user.name + ' (' + roleLabel + ')';
+  document.getElementById('headerUser').textContent = '👤 ' + user.name + ' (' + roleLabel + ')';
   localStorage.setItem('clp_user_name', user.name);
+  // 다운로드 알림 뱃지 갱신 (관리자만 표시)
+  if(typeof updateDownloadAlertBadge === 'function') updateDownloadAlertBadge();
   const umSection = document.getElementById('userManageSection');
   if(umSection) umSection.style.display = role === 'admin' ? '' : 'none';
   const clearBtn = document.getElementById('btnClearStlData');
