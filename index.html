@@ -418,6 +418,10 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
     grid-template-columns: 1fr !important;
   }
 }
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
 </style>
 </head>
 <body>
@@ -468,7 +472,7 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
 <div class="header">
   <div>
     <h1>🚛 CLP 배차 관리 시스템</h1>
-    <div class="subtitle">부발(Lock&Lock) 출발 기준 | 적용일: 2024-04-26 | <span id="headerUser" style="color:#fbbf24">사용자 미설정</span></div>
+    <div class="subtitle">부발(Lock&Lock) 출발 기준 | 적용일: 2024-04-26 | <span id="headerUser" style="color:#fbbf24">사용자 미설정</span> <span id="dlAlertBadge" onclick="showDownloadLogModal()" style="display:none;cursor:pointer;margin-left:8px;padding:2px 8px;background:#dc2626;color:white;border-radius:10px;font-size:11px;font-weight:700;animation:pulse 1.5s infinite" title="엑셀 다운로드 로그 보기">🚨 다운로드 <span id="dlAlertCount">0</span>건</span></div>
   </div>
   <div class="header-right">
     <span id="connStatus" style="font-size:12px;padding:4px 10px;border-radius:12px;background:rgba(255,255,255,0.15);color:#fca5a5">● 미연결</span>
@@ -3853,9 +3857,11 @@ function deleteSelectedDrivers() {
   showToast(`🗑 ${checked.length}명 삭제 완료`);
 }
 
-function exportDriversExcel() {
+async function exportDriversExcel() {
   const drivers = getRegisteredDrivers();
   if(!drivers.length) { showToast('⚠ 등록된 기사가 없습니다'); return; }
+  const ok = await preDownloadCheck('기사명단', drivers.length);
+  if(!ok) return;
   let csv = '\uFEFF기사명,전화번호,차량번호,구분,담당권역,톤수,월고정비,비고\n';
   drivers.forEach(d => {
     csv += `"${d.name||''}","${d.phone||''}","${d.vehicle||''}","${d.category||''}","${d.region||''}","${d.ton||''}","${d.monthly||0}","${d.note||''}"\n`;
@@ -4269,12 +4275,14 @@ function renderAttendanceMonthly() {
 }
 
 // 엑셀(CSV) 저장
-function exportAttendanceExcel() {
+async function exportAttendanceExcel() {
   const monthEl = document.getElementById('attMonth');
   const month = monthEl ? monthEl.value : '';
   if(!month) { showToast('⚠ 월을 선택해주세요'); return; }
   const data = getAttendanceData();
   if(!data.employees || !data.employees.length) { showToast('⚠ 등록된 직원이 없습니다'); return; }
+  const ok = await preDownloadCheck('출퇴근부 ' + month, data.employees.length);
+  if(!ok) return;
 
   const parts = month.split('-');
   const y = parseInt(parts[0]), m = parseInt(parts[1]);
@@ -4841,9 +4849,13 @@ function renderMjimTable() {
 // ============================================
 // Excel 내보내기
 // ============================================
-function exportExcel() {
+async function exportExcel() {
   if(dispatchLog.length === 0) { showToast('내보낼 데이터가 없습니다'); return; }
-  
+
+  // 다운로드 사전 체크 (비관리자는 사유 입력 필수)
+  const ok = await preDownloadCheck('배차이력', dispatchLog.length);
+  if(!ok) return;
+
   let csv = '\uFEFF'; // BOM for Korean
   csv += 'No,배차코드,배차일,유형,거래처명,상차지,하차지,세부주소,담당자,연락처,차량,파레트,박스,원청단가,수작업비,대기료,총매출,기사지급,마진,배차경로,기사명,차량번호,비고\n';
   
@@ -7780,6 +7792,200 @@ function updateConnStatus(status, text) {
 function updateHeaderUser() {
   const name = getUserName();
   document.getElementById('headerUser').textContent = name ? '👤 ' + name : '사용자 미설정';
+  // 관리자만 다운로드 알림 뱃지 표시
+  updateDownloadAlertBadge();
+}
+
+// ============================================
+// 엑셀 다운로드 로그 시스템
+// ============================================
+
+// 다운로드 로그 기록 (로컬 + 시트)
+async function logExcelDownload(downloadType, count, reason) {
+  const user = getCurrentUser();
+  const userName = getUserName() || (user && user.name) || '미설정';
+  const userId = (user && user.id) || 'unknown';
+  const userRole = (user && user.role) || 'unknown';
+  const now = new Date();
+  const timeStr = now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0') + '-' + String(now.getDate()).padStart(2,'0')
+    + ' ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0') + ':' + String(now.getSeconds()).padStart(2,'0');
+
+  const logEntry = {
+    id: 'DL_' + Date.now() + '_' + Math.floor(Math.random()*1000),
+    time: timeStr,
+    userId: userId,
+    userName: userName,
+    userRole: userRole,
+    type: downloadType,
+    count: count || 0,
+    reason: reason || ''
+  };
+
+  // 1) 로컬 저장
+  try {
+    let logs = [];
+    try { logs = JSON.parse(localStorage.getItem('clp_download_logs') || '[]'); } catch(e) {}
+    logs.unshift(logEntry);
+    if(logs.length > 500) logs = logs.slice(0, 500); // 최대 500건 보관
+    localStorage.setItem('clp_download_logs', JSON.stringify(logs));
+  } catch(e) { console.warn('로그 로컬 저장 실패:', e.message); }
+
+  // 2) 구글시트 저장 (백그라운드, 실패해도 다운로드는 진행)
+  if(isConnected()) {
+    try {
+      const url = getSheetUrl();
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'logDownload', log: logEntry })
+      }).catch(e => console.warn('로그 시트 저장 실패:', e.message));
+    } catch(e) { /* 조용히 실패 */ }
+  }
+
+  // 3) 본인 화면에는 즉시 반영
+  updateDownloadAlertBadge();
+  return logEntry;
+}
+
+// 다운로드 사전 체크 (비관리자는 사유 입력 필수)
+async function preDownloadCheck(downloadType, count) {
+  const user = getCurrentUser();
+  const isAdmin = user && user.role === 'admin';
+
+  let reason = '';
+  if(!isAdmin) {
+    reason = prompt(`📥 ${downloadType} 다운로드 사유를 입력하세요\n(관리자에게 알림이 전송됩니다)`, '');
+    if(reason === null) {
+      showToast('다운로드가 취소되었습니다');
+      return null; // 취소
+    }
+    if(!reason.trim()) {
+      showToast('⚠ 사유를 입력해야 다운로드가 가능합니다');
+      return null;
+    }
+  }
+
+  await logExcelDownload(downloadType, count, reason);
+  return true;
+}
+
+// 관리자 헤더 알림 뱃지 갱신
+function updateDownloadAlertBadge() {
+  const user = getCurrentUser();
+  const badge = document.getElementById('dlAlertBadge');
+  if(!badge) return;
+
+  if(!user || user.role !== 'admin') {
+    badge.style.display = 'none';
+    return;
+  }
+
+  let logs = [];
+  try { logs = JSON.parse(localStorage.getItem('clp_download_logs') || '[]'); } catch(e) {}
+  const lastSeen = parseInt(localStorage.getItem('clp_dl_log_seen') || '0');
+  const unseen = logs.filter(l => {
+    const t = new Date(l.time.replace(' ', 'T')).getTime();
+    return t > lastSeen;
+  }).length;
+
+  if(unseen > 0) {
+    badge.style.display = 'inline-block';
+    document.getElementById('dlAlertCount').textContent = unseen;
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// 다운로드 로그 모달 표시
+function showDownloadLogModal() {
+  let logs = [];
+  try { logs = JSON.parse(localStorage.getItem('clp_download_logs') || '[]'); } catch(e) {}
+
+  // 시트에서 추가 로그 가져오기 (있으면 병합)
+  if(isConnected()) {
+    fetch(getSheetUrl() + '?action=getDownloadLogs').then(r => r.json()).then(data => {
+      if(data && data.success && Array.isArray(data.logs)) {
+        const localIds = new Set(logs.map(l => l.id));
+        const merged = [...logs];
+        data.logs.forEach(l => { if(!localIds.has(l.id)) merged.push(l); });
+        merged.sort((a,b) => (b.time||'').localeCompare(a.time||''));
+        renderDownloadLogModal(merged.slice(0, 200));
+      } else {
+        renderDownloadLogModal(logs.slice(0, 200));
+      }
+    }).catch(() => renderDownloadLogModal(logs.slice(0, 200)));
+  } else {
+    renderDownloadLogModal(logs.slice(0, 200));
+  }
+
+  // 확인 시간 갱신 → 뱃지 리셋
+  localStorage.setItem('clp_dl_log_seen', String(Date.now()));
+  updateDownloadAlertBadge();
+}
+
+function renderDownloadLogModal(logs) {
+  let modal = document.getElementById('dlLogModal');
+  if(!modal) {
+    modal = document.createElement('div');
+    modal.id = 'dlLogModal';
+    modal.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:10000;display:flex;align-items:center;justify-content:center';
+    document.body.appendChild(modal);
+  }
+  modal.innerHTML = `
+    <div style="background:white;border-radius:8px;padding:20px;max-width:900px;width:90%;max-height:80vh;overflow:auto">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <h3 style="margin:0;font-size:16px;color:#dc2626">🚨 엑셀 다운로드 로그 (최근 ${logs.length}건)</h3>
+        <button onclick="document.getElementById('dlLogModal').remove()" style="background:#6b7280;color:white;border:none;padding:6px 12px;border-radius:4px;cursor:pointer">닫기</button>
+      </div>
+      <div style="font-size:11px;color:#6b7280;margin-bottom:8px">로그는 자동으로 로컬+구글시트에 저장됩니다. 확인 후 뱃지는 리셋됩니다.</div>
+      <table style="width:100%;border-collapse:collapse;font-size:11px">
+        <thead style="background:#f3f4f6">
+          <tr>
+            <th style="padding:6px;border:1px solid #e5e7eb;text-align:left">시간</th>
+            <th style="padding:6px;border:1px solid #e5e7eb;text-align:left">사용자</th>
+            <th style="padding:6px;border:1px solid #e5e7eb;text-align:left">권한</th>
+            <th style="padding:6px;border:1px solid #e5e7eb;text-align:left">종류</th>
+            <th style="padding:6px;border:1px solid #e5e7eb;text-align:right">건수</th>
+            <th style="padding:6px;border:1px solid #e5e7eb;text-align:left">사유</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${logs.length === 0 ? '<tr><td colspan="6" style="padding:20px;text-align:center;color:#9ca3af">로그가 없습니다</td></tr>' :
+          logs.map(l => `<tr>
+            <td style="padding:5px;border:1px solid #e5e7eb">${l.time||'-'}</td>
+            <td style="padding:5px;border:1px solid #e5e7eb;font-weight:700">${l.userName||'-'}</td>
+            <td style="padding:5px;border:1px solid #e5e7eb">${l.userRole||'-'}</td>
+            <td style="padding:5px;border:1px solid #e5e7eb;color:#dc2626">${l.type||'-'}</td>
+            <td style="padding:5px;border:1px solid #e5e7eb;text-align:right">${l.count||0}</td>
+            <td style="padding:5px;border:1px solid #e5e7eb;color:#7c3aed">${l.reason||'-'}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// autoSync에서 다운로드 로그 폴링 (관리자만)
+async function pollDownloadLogs() {
+  const user = getCurrentUser();
+  if(!user || user.role !== 'admin') return;
+  if(!isConnected()) return;
+  try {
+    const res = await fetch(getSheetUrl() + '?action=getDownloadLogs');
+    const data = await res.json();
+    if(data && data.success && Array.isArray(data.logs)) {
+      let localLogs = [];
+      try { localLogs = JSON.parse(localStorage.getItem('clp_download_logs') || '[]'); } catch(e) {}
+      const localIds = new Set(localLogs.map(l => l.id));
+      const newOnes = data.logs.filter(l => !localIds.has(l.id));
+      if(newOnes.length > 0) {
+        const merged = [...newOnes, ...localLogs].slice(0, 500);
+        localStorage.setItem('clp_download_logs', JSON.stringify(merged));
+        updateDownloadAlertBadge();
+        showToast(`🚨 새 다운로드 ${newOnes.length}건 감지!`);
+      }
+    }
+  } catch(e) { /* 조용히 실패 */ }
 }
 
 // 설정 저장
@@ -11125,13 +11331,15 @@ function clearSettlementData() {
 }
 
 // 엑셀/CSV 다운로드
-function exportSettlement() {
+async function exportSettlement() {
   const month = document.getElementById('settlementMonth').value;
   const filtered = settlementData.filter(d => d.date && d.date.startsWith(month));
   if(filtered.length === 0) {
     showToast('⚠ 해당 월 데이터가 없습니다');
     return;
   }
+  const ok = await preDownloadCheck('정산 ' + month, filtered.length);
+  if(!ok) return;
   
   if(typeof XLSX !== 'undefined') {
     const wb = XLSX.utils.book_new();
@@ -11336,6 +11544,8 @@ async function autoSync() {
     updateConnStatus('ok');
     const now = new Date();
     document.getElementById('lastSyncTime').textContent = '동기화: ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+    // 관리자 다운로드 로그 폴링
+    pollDownloadLogs();
   } catch(e) { /* 조용히 실패 */ }
 }
 

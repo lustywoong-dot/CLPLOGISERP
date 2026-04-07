@@ -1,0 +1,123 @@
+═══════════════════════════════════════════════════════════
+📥 다운로드 로그 기능 — Apps Script 추가 코드
+═══════════════════════════════════════════════════════════
+
+[적용 방법]
+
+1. 구글시트 열기
+2. 메뉴: 확장 프로그램 → Apps Script
+3. 새 창이 열리면, 기존 코드는 그대로 두고 아래 코드를 맨 아래에 추가
+4. 기존 doGet / doPost 함수에 분기 2줄만 추가 (아래 안내)
+5. 저장 (Ctrl+S)
+6. 배포 → 배포 관리 → 편집(연필 아이콘) → 새 버전 → 배포
+
+═══════════════════════════════════════════════════════════
+📌 1단계: 기존 doPost 함수에 1줄 추가
+═══════════════════════════════════════════════════════════
+
+doPost 함수 안에서 action 분기 부분을 찾아 아래 라인을 추가:
+
+  if (action === 'logDownload') return logDownload_(data.log);
+
+(예시: 기존에 'save', 'delete', 'saveSettlement' 등이 있을 텐데 그 옆에 추가)
+
+═══════════════════════════════════════════════════════════
+📌 2단계: 기존 doGet 함수에 1줄 추가
+═══════════════════════════════════════════════════════════
+
+doGet 함수 안에서 action 분기 부분을 찾아 아래 라인을 추가:
+
+  if (action === 'getDownloadLogs') return getDownloadLogs_();
+
+═══════════════════════════════════════════════════════════
+📌 3단계: 아래 두 함수를 코드 맨 아래에 추가
+═══════════════════════════════════════════════════════════
+
+function logDownload_(log) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('download_logs');
+    if (!sheet) {
+      sheet = ss.insertSheet('download_logs');
+      sheet.appendRow(['ID', '시간', '사용자ID', '사용자이름', '권한', '종류', '건수', '사유']);
+      sheet.getRange(1, 1, 1, 8).setFontWeight('bold').setBackground('#fee2e2');
+    }
+    sheet.appendRow([
+      log.id || '',
+      log.time || '',
+      log.userId || '',
+      log.userName || '',
+      log.userRole || '',
+      log.type || '',
+      log.count || 0,
+      log.reason || ''
+    ]);
+    return ContentService.createTextOutput(
+      JSON.stringify({ success: true })
+    ).setMimeType(ContentService.MimeType.JSON);
+  } catch (e) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ success: false, message: e.message })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function getDownloadLogs_() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('download_logs');
+    if (!sheet) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ success: true, logs: [] })
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ success: true, logs: [] })
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+    // 최근 200건만 (역순)
+    var startRow = Math.max(2, lastRow - 199);
+    var numRows = lastRow - startRow + 1;
+    var values = sheet.getRange(startRow, 1, numRows, 8).getValues();
+    var logs = values.map(function(row) {
+      return {
+        id: row[0],
+        time: row[1],
+        userId: row[2],
+        userName: row[3],
+        userRole: row[4],
+        type: row[5],
+        count: row[6],
+        reason: row[7]
+      };
+    }).reverse(); // 최신순
+    return ContentService.createTextOutput(
+      JSON.stringify({ success: true, logs: logs })
+    ).setMimeType(ContentService.MimeType.JSON);
+  } catch (e) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ success: false, message: e.message })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+═══════════════════════════════════════════════════════════
+✅ 적용 후 확인 방법
+═══════════════════════════════════════════════════════════
+
+1. ERP 시스템에서 admin이 아닌 계정(예: dispatch)으로 로그인
+2. 배차 이력 탭 → "📥 Excel" 버튼 클릭
+3. 사유 입력창이 뜸 → 사유 입력 후 다운로드
+4. 관리자(admin) 계정으로 로그인
+5. 헤더에 빨간 "🚨 다운로드 N건" 뱃지가 보임
+6. 클릭 → 모달에서 누가 무엇을 다운로드했는지 확인 가능
+
+═══════════════════════════════════════════════════════════
+⚠️ Apps Script 미적용 시
+═══════════════════════════════════════════════════════════
+
+Apps Script를 수정하지 않아도 ERP 시스템은 정상 작동합니다.
+다만 로그가 구글시트에 기록되지 않고 로컬에만 저장되므로,
+관리자가 다른 PC에서 로그를 볼 수 없습니다.
