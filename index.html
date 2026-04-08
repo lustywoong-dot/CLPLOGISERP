@@ -3420,7 +3420,7 @@ async function doLogin() {
   if(loginUrlEl) {
     const loginUrl = loginUrlEl.value.trim();
     if(loginUrl && loginUrl.startsWith('https://')) {
-      localStorage.setItem('clp_sheet_url', loginUrl);
+      setSheetUrl(loginUrl);
     }
   }
   
@@ -7776,8 +7776,44 @@ function saveSettlementBackup(records) {
 }
 `;
 
+// ─────────────────────────────────────────────
+// localStorage URL 난독화 (XOR + Base64)
+// 평문 URL이 F12에 그대로 노출되는 것을 방지
+// ─────────────────────────────────────────────
+const _URL_KEY = 'clp_x9k2mP_logis_2024';
+function _xorCipher(text, key) {
+  let out = '';
+  for(let i=0; i<text.length; i++) {
+    out += String.fromCharCode(text.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+  }
+  return out;
+}
+function _encryptUrl(url) {
+  if(!url) return '';
+  try { return 'enc:' + btoa(unescape(encodeURIComponent(_xorCipher(url, _URL_KEY)))); }
+  catch(e) { return url; }
+}
+function _decryptUrl(stored) {
+  if(!stored) return '';
+  if(!stored.startsWith('enc:')) return stored; // 평문(구버전) 호환
+  try {
+    return _xorCipher(decodeURIComponent(escape(atob(stored.substring(4)))), _URL_KEY);
+  } catch(e) { return ''; }
+}
+
 function getSheetUrl() {
-  return localStorage.getItem('clp_sheet_url') || '';
+  const raw = localStorage.getItem('clp_sheet_url') || '';
+  // 평문(구버전) 자동 마이그레이션 → 다음 setItem 때 암호화 저장
+  if(raw && !raw.startsWith('enc:')) {
+    try { localStorage.setItem('clp_sheet_url', _encryptUrl(raw)); } catch(e) {}
+    return raw;
+  }
+  return _decryptUrl(raw);
+}
+
+function setSheetUrl(url) {
+  if(!url) { localStorage.removeItem('clp_sheet_url'); return; }
+  localStorage.setItem('clp_sheet_url', _encryptUrl(url));
 }
 
 function getUserName() {
@@ -8022,7 +8058,7 @@ function saveSettings() {
   }
   
   localStorage.setItem('clp_user_name', name);
-  localStorage.setItem('clp_sheet_url', url);
+  setSheetUrl(url);
   updateHeaderUser();
   showToast('✅ 설정 저장 완료! 연결 테스트를 해주세요');
   
