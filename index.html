@@ -3355,9 +3355,9 @@ async function loadDispatchHistory() {
 const ROLE_LABELS = { admin: '관리자', dispatcher: '배차 담당', settlement: '정산 담당', viewer: '조회' };
 const ROLE_TABS = {
   admin: ['dispatch','history','rate','rateRef','drivers','settlement','stats','attendance','settings'],
-  dispatcher: ['dispatch','history','rate','rateRef','drivers','settings'],
-  settlement: ['settlement','settings'],
-  viewer: ['history','rate','rateRef','stats','settings']
+  dispatcher: ['dispatch','history','rate','rateRef','drivers'],
+  settlement: ['settlement'],
+  viewer: ['history','rate','rateRef','stats']
 };
 
 // 기본 계정 (구글시트 미연결 시 사용)
@@ -3656,6 +3656,14 @@ function init() {
 // 탭 전환
 // ============================================
 function switchTab(name) {
+  // 권한 체크: 허용되지 않은 탭 접근 차단 (URL 직접 입력 등 우회 방지)
+  const _user = getCurrentUser();
+  const _role = (_user && _user.role) || 'viewer';
+  const _allowed = (typeof ROLE_TABS !== 'undefined' && ROLE_TABS[_role]) || [];
+  if(_allowed.length > 0 && !_allowed.includes(name)) {
+    showToast('⚠ 접근 권한이 없습니다');
+    return;
+  }
   document.querySelectorAll('.tab').forEach(t => {
     t.classList.toggle('active', t.dataset.tab === name);
   });
