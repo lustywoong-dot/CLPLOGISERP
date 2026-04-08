@@ -1,7 +1,7 @@
 {
   "_comment": "이 파일은 ERP가 시작할 때 자동으로 읽어 Apps Script URL을 가져옵니다. URL을 변경하려면 sheetUrl 값만 새 URL로 교체 후 GitHub에 push하세요. 모든 직원 PC가 자동으로 새 URL로 갱신됩니다.",
   "_format": "URL은 반드시 https://script.google.com/macros/s/.../exec 형식이어야 합니다. 다른 형식이면 자동 거부됩니다.",
-  "sheetUrl": "PLACEHOLDER_REPLACE_WITH_REAL_URL",
-  "version": 1,
-  "updatedAt": "2026-04-08"
+  "sheetUrl": "https://script.google.com/macros/s/AKfycbzyvCTz3vqTCTYWwKktoZht_4PwyzDkiozszBtgfdoVuMrmHNPdkDNLwq_WKyzCDAc8cQ/exec",
+  "version": 2,
+  "updatedAt": "2026-04-09"
 }
