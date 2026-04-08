@@ -7816,6 +7816,42 @@ function setSheetUrl(url) {
   localStorage.setItem('clp_sheet_url', _encryptUrl(url));
 }
 
+// ─────────────────────────────────────────────
+// 원격 설정 자동 로드 — GitHub Pages config.json
+// 관리자가 URL 재발급 시 모든 PC에 자동 전파
+// ─────────────────────────────────────────────
+async function fetchRemoteConfig() {
+  try {
+    // GitHub Pages 절대 URL (캐시 회피용 timestamp)
+    const configUrl = 'https://lustywoong-dot.github.io/CLPLOGISERP/config.json?t=' + Date.now();
+    const res = await fetch(configUrl, { cache: 'no-store' });
+    if(!res || !res.ok) return; // 404 등 → 조용히 무시 (config.json 없을 때 정상)
+    const text = await res.text();
+    let config;
+    try { config = JSON.parse(text); } catch(pe) { return; }
+    if(!config || typeof config !== 'object') return;
+    const remoteUrl = config.sheetUrl;
+    // 검증: Apps Script URL 형식인지 (엄격)
+    if(!remoteUrl || typeof remoteUrl !== 'string') return;
+    if(!remoteUrl.startsWith('https://script.google.com/macros/s/')) return;
+    if(!remoteUrl.endsWith('/exec')) return;
+    // 현재 URL과 동일하면 아무것도 안함
+    const currentUrl = getSheetUrl();
+    if(currentUrl === remoteUrl) return;
+    // 다르면 조용히 갱신
+    setSheetUrl(remoteUrl);
+    console.log('[원격설정] Apps Script URL 자동 갱신됨');
+    if(typeof showToast === 'function') showToast('🔄 시스템 설정이 자동 업데이트되었습니다');
+    // 설정 탭 입력 칸도 갱신 (admin인 경우)
+    const inp = document.getElementById('settingSheetUrl');
+    if(inp) inp.value = remoteUrl;
+    // 다음 동기화에서 자동으로 새 URL 사용 (즉시 강제 안 함, 안전)
+  } catch(e) {
+    console.warn('[원격설정] 로드 실패 (정상 작동에 영향 없음):', e.message);
+    // 어떤 에러가 발생해도 ERP는 계속 정상 작동
+  }
+}
+
 function getUserName() {
   return localStorage.getItem('clp_user_name') || '';
 }
@@ -11480,7 +11516,11 @@ async function exportSettlement() {
 function initApp() {
   // 정산 기사 목록 초기화
   updateDriverFilter();
-  
+
+  // 원격 설정 자동 로드 (fire-and-forget, 실패해도 ERP 정상 작동)
+  // 관리자가 GitHub config.json에 새 URL을 올리면 자동 적용됨
+  try { fetchRemoteConfig(); } catch(e) { /* 안전 폴백 */ }
+
   // 설정 불러오기
   document.getElementById('settingUserName').value = getUserName();
   document.getElementById('settingSheetUrl').value = getSheetUrl();
