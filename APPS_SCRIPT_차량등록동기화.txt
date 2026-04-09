@@ -1,0 +1,159 @@
+═══════════════════════════════════════════════════════════
+🚗 차량등록 데이터 구글시트 동기화 — Apps Script 추가 코드
+═══════════════════════════════════════════════════════════
+
+[적용 이유]
+2026-04-09 차량등록 데이터 손실 사고 발생.
+앞으로 데이터를 구글시트에도 자동 백업하여 손실 방지.
+
+[적용 후 효과]
+- 차량등록 데이터가 자동으로 구글시트 'drivers' 탭에 백업
+- 한 PC에서 등록 → 모든 PC에서 자동 공유
+- 데이터 사라져도 시트에서 즉시 복원
+- 새 PC에서도 차량 등록 탭 열면 자동으로 데이터 가져옴
+
+═══════════════════════════════════════════════════════════
+📌 적용 방법
+═══════════════════════════════════════════════════════════
+
+1. 구글시트 열기
+2. 메뉴: 확장 프로그램 → Apps Script
+3. Apps Script 편집기 창에서 기존 코드 그대로 두기
+4. 아래 단계대로 코드 추가
+5. 저장 (Ctrl+S)
+6. 우측 상단 [배포] → [배포 관리] → 활성 배포 클릭 → 편집(연필) → "새 버전" → 배포
+
+═══════════════════════════════════════════════════════════
+📌 1단계: 기존 doPost 함수에 1줄 추가
+═══════════════════════════════════════════════════════════
+
+기존 doPost 함수 안에서 action 분기 부분을 찾고, 아래 라인을 추가:
+
+  if (action === 'saveDrivers') return saveDrivers_(data.drivers);
+
+(예시 위치 - 다른 action들 옆에 추가)
+
+═══════════════════════════════════════════════════════════
+📌 2단계: 기존 doGet 함수에 1줄 추가
+═══════════════════════════════════════════════════════════
+
+기존 doGet 함수 안에서 action 분기 부분을 찾고, 아래 라인을 추가:
+
+  if (action === 'getDrivers') return getDrivers_();
+
+═══════════════════════════════════════════════════════════
+📌 3단계: 아래 두 함수를 코드 맨 아래에 추가
+═══════════════════════════════════════════════════════════
+
+function saveDrivers_(drivers) {
+  try {
+    if (!Array.isArray(drivers)) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ success: false, message: 'drivers는 배열이어야 함' })
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('drivers');
+    if (!sheet) {
+      sheet = ss.insertSheet('drivers');
+    }
+    // 헤더 + 데이터 한 번에 덮어쓰기 (전체 동기화)
+    sheet.clear();
+    sheet.appendRow(['ID','기사명','전화번호','차량번호','구분','담당권역','톤수','월고정비','비고','수정시간']);
+    sheet.getRange(1, 1, 1, 10).setFontWeight('bold').setBackground('#dbeafe');
+    if (drivers.length > 0) {
+      var rows = drivers.map(function(d) {
+        return [
+          d.id || '',
+          d.name || '',
+          d.phone || '',
+          d.vehicle || '',
+          d.category || '',
+          d.region || '',
+          d.ton || '',
+          d.monthly || 0,
+          d.note || '',
+          d.updatedAt || ''
+        ];
+      });
+      sheet.getRange(2, 1, rows.length, 10).setValues(rows);
+    }
+    return ContentService.createTextOutput(
+      JSON.stringify({ success: true, count: drivers.length })
+    ).setMimeType(ContentService.MimeType.JSON);
+  } catch (e) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ success: false, message: e.message })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+function getDrivers_() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('drivers');
+    if (!sheet) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ success: true, drivers: [] })
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      return ContentService.createTextOutput(
+        JSON.stringify({ success: true, drivers: [] })
+      ).setMimeType(ContentService.MimeType.JSON);
+    }
+    var values = sheet.getRange(2, 1, lastRow - 1, 10).getValues();
+    var drivers = values.map(function(row) {
+      return {
+        id: row[0],
+        name: row[1],
+        phone: row[2],
+        vehicle: row[3],
+        category: row[4],
+        region: row[5],
+        ton: row[6],
+        monthly: row[7],
+        note: row[8],
+        updatedAt: row[9]
+      };
+    }).filter(function(d) { return d.name; }); // 이름 없는 빈 행 제외
+    return ContentService.createTextOutput(
+      JSON.stringify({ success: true, drivers: drivers })
+    ).setMimeType(ContentService.MimeType.JSON);
+  } catch (e) {
+    return ContentService.createTextOutput(
+      JSON.stringify({ success: false, message: e.message })
+    ).setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+═══════════════════════════════════════════════════════════
+✅ 적용 후 확인 방법
+═══════════════════════════════════════════════════════════
+
+1. 위 코드 적용 후 [배포 관리] → 활성 배포 → 편집 → "새 버전" → 배포
+2. ERP 페이지 새로고침 (Ctrl+F5)
+3. 차량 등록 탭 클릭
+4. 기사 1명 추가 → 저장
+5. 구글시트 열기 → 하단 탭 목록에 'drivers' 탭이 생겼는지 확인
+6. 'drivers' 탭 클릭 → 방금 입력한 기사 데이터가 1행 보이면 성공!
+
+═══════════════════════════════════════════════════════════
+⚠️ 주의사항
+═══════════════════════════════════════════════════════════
+
+1. 'drivers' 시트는 자동으로 생성되므로 직접 만들 필요 없음
+2. 시트 내용은 ERP가 통째로 덮어쓰므로 시트에서 직접 편집하지 말 것
+   (시트에서 직접 편집해도 다음 ERP 저장 시 덮어써짐)
+3. 기존 데이터에 영향 없음 (신규 시트만 추가)
+
+═══════════════════════════════════════════════════════════
+🛡 적용 안 해도 ERP는 정상 작동
+═══════════════════════════════════════════════════════════
+
+이 코드를 적용하지 않아도 ERP는 정상 작동합니다.
+다만 차량등록 데이터가 시트에 백업되지 않으므로,
+다시 데이터 손실 시 복구할 수 없습니다.
+
+가능한 빨리 적용하시는 것을 권장합니다.
