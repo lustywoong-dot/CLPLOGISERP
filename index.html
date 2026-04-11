@@ -769,7 +769,7 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
       </div>
       <div class="form-grid" style="grid-template-columns:130px 1fr 80px 1fr">
         <div class="form-group">
-          <label>배차코드 <span style="color:var(--danger);font-weight:700">*필수</span><span id="lqCodeHint" style="display:none;font-size:10px;color:#7c3aed;font-weight:700;margin-left:6px;padding:1px 6px;background:#f5f3ff;border:1px solid #c4b5fd;border-radius:10px">💡 ACLP→덕평 | ECLP→여주</span></label>
+          <label>배차코드 <span style="color:var(--danger);font-weight:700">*필수</span></label>
           <input type="text" id="dispatchCode" placeholder="P01001" style="border-color:var(--accent);font-weight:600" oninput="checkCodeDuplicate();generateSMS();autoDetectCenter()">
           <span id="codeError" style="font-size:11px;color:var(--danger);display:none">⚠ 이미 사용된 코드입니다</span>
           <div id="hapjimPanel" style="display:none;margin-top:6px;padding:8px;background:#fefce8;border:1px solid #fde047;border-radius:6px">
@@ -5296,9 +5296,8 @@ function setDispatchMode(mode) {
   document.getElementById('lqWaypointSection').style.display = mode === 'liquor' ? '' : 'none';
   document.getElementById('lqWeightGroup').style.display = mode === 'liquor' ? '' : 'none';
   document.getElementById('row3Grid').style.gridTemplateColumns = mode === 'liquor' ? 'repeat(5,1fr)' : 'repeat(4,1fr)';
-  // 배차코드 힌트/플레이스홀더 (주류 모드에서만 안내 표시)
-  document.getElementById('lqCodeHint').style.display = mode === 'liquor' ? '' : 'none';
-  document.getElementById('dispatchCode').placeholder = mode === 'liquor' ? 'ACLP00001(덕평) / ECLP00001(여주)' : 'P01001';
+  // 배차코드 플레이스홀더 업데이트 (주류: 센터별 / 락앤락: 기본)
+  updateDispatchCodePlaceholder();
   // 상차지 연동
   if(mode === 'liquor') {
     onCenterChange();
@@ -5331,11 +5330,25 @@ function onCenterChange() {
   if(centerPickup[center]) {
     document.getElementById('pickupAddr').value = centerPickup[center];
   }
+  // 센터별 배차코드 플레이스홀더 갱신
+  updateDispatchCodePlaceholder();
   // 핵심 변경 → 수동 편집 모드 해제 후 재생성
   forceRegenerateSMS();
   // 단가 재계산 (1착 + 경유지)
   calculate();
   recalcAllStops();
+}
+
+// 배차코드 입력칸 플레이스홀더 갱신 (모드/센터별)
+function updateDispatchCodePlaceholder() {
+  const input = document.getElementById('dispatchCode');
+  if(!input) return;
+  if(dispatchMode === 'liquor') {
+    const center = document.getElementById('lqCenter').value;
+    input.placeholder = center === 'yj' ? 'ECLP00001' : 'ACLP00001';
+  } else {
+    input.placeholder = 'P01001';
+  }
 }
 
 function addLiquorStop() {
@@ -7307,7 +7320,7 @@ function generateSMS() {
     sms = `[배송 안내]
 ■ 배송일: ${dateStr}${hasStops ? '' : '\n■ 거래처: ' + (clientName || '-')}
 1. 상차지: ${pickup || '-'}
-2. 배차코드: ${cleanCode || '-'}
+2. 키오스크코드: ${cleanCode || '-'}
 3. 수량/중량: ${qtyInfo}
 ${kioskMsg[center] || ''}
 
