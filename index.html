@@ -749,8 +749,8 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
             <div class="card" style="margin-bottom:0">
               <div id="dispatchFormBody">
       <div style="display:flex;gap:4px;margin-bottom:10px;background:#f1f5f9;border-radius:6px;padding:2px;width:fit-content">
-        <button class="btn btn-sm" id="modeLocknlock" onclick="setDispatchMode('locknlock')" style="padding:5px 14px;font-size:12px;background:var(--primary);color:white;border-radius:4px;font-weight:700">🔒 락앤락</button>
-        <button class="btn btn-sm" id="modeLiquor" onclick="setDispatchMode('liquor')" style="padding:5px 14px;font-size:12px;background:transparent;color:var(--text);border:none;border-radius:4px;font-weight:700">🍷 주류</button>
+        <button class="btn btn-sm" id="modeLocknlock" onclick="setDispatchMode('locknlock')" title="단축키: F3" style="padding:5px 14px;font-size:12px;background:var(--primary);color:white;border-radius:4px;font-weight:700">🔒 락앤락 <span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:800;margin-left:3px">F3</span></button>
+        <button class="btn btn-sm" id="modeLiquor" onclick="setDispatchMode('liquor')" title="단축키: F4" style="padding:5px 14px;font-size:12px;background:transparent;color:var(--text);border:none;border-radius:4px;font-weight:700">🍷 주류 <span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:800;margin-left:3px">F4</span></button>
       </div>
 
       <!-- 주류모드: 센터 선택 -->
@@ -5207,10 +5207,10 @@ function showToast(msg, duration) {
 }
 
 // ============================================
-// 배차 등록 단축키 (F2 = 신규배차, F9 = 배차저장)
+// 배차 등록 단축키 (F2=신규배차, F3=락앤락, F4=주류, F9=배차저장)
 // ============================================
 document.addEventListener('keydown', function(e) {
-  if(e.key !== 'F2' && e.key !== 'F9') return;
+  if(!['F2','F3','F4','F9'].includes(e.key)) return;
   // 배차 등록 탭이 활성화된 상태에서만 작동
   const dispatchPanel = document.getElementById('panel-dispatch');
   if(!dispatchPanel || !dispatchPanel.classList.contains('active')) return;
@@ -5223,6 +5223,22 @@ document.addEventListener('keydown', function(e) {
     if(typeof openNewDispatch === 'function') {
       openNewDispatch();
       showToast('⌨ F2 → 신규 배차 폼 열림');
+    }
+  } else if(e.key === 'F3') {
+    e.preventDefault();
+    if(typeof setDispatchMode === 'function') {
+      if(dispatchMode !== 'locknlock') {
+        setDispatchMode('locknlock');
+        showToast('⌨ F3 → 🔒 락앤락 모드');
+      }
+    }
+  } else if(e.key === 'F4') {
+    e.preventDefault();
+    if(typeof setDispatchMode === 'function') {
+      if(dispatchMode !== 'liquor') {
+        setDispatchMode('liquor');
+        showToast('⌨ F4 → 🍷 주류 모드');
+      }
     }
   } else if(e.key === 'F9') {
     e.preventDefault();
