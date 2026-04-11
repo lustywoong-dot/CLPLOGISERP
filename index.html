@@ -3020,8 +3020,10 @@ function loadRecord(id) {
     }
   }
   renderInlineHistory(); // 선택 상태 갱신
-  generateSMS();
-  // 저장된 SMS가 있으면 불러오기
+  // ★ 다른 배차건 클릭 시 이전 수동편집 SMS가 남는 버그 방지
+  //    → smsManualMode 강제 해제 후 현재 레코드 기준으로 SMS 재생성
+  forceRegenerateSMS();
+  // 저장된 SMS가 있으면 불러오기 (있을 때만 수동 모드로 재진입)
   loadSavedSMS(r.code);
   // 해당 배차의 메모 불러오기 (레코드에 저장된 메모 우선)
   if(r.stickyMemo) {
@@ -7318,6 +7320,19 @@ function onSMSManualEdit() {
 }
 
 function unlockSMS() {
+  // 자동 생성으로 되돌리면 localStorage에 저장된 수동 SMS도 함께 삭제
+  // (다른 배차건의 내용이 잘못 섞여서 저장된 경우 정리용)
+  const code = document.getElementById('dispatchCode').value.trim();
+  if(code) {
+    try {
+      const savedSMS = JSON.parse(localStorage.getItem('clp_saved_sms') || '{}');
+      if(savedSMS[code]) {
+        delete savedSMS[code];
+        localStorage.setItem('clp_saved_sms', JSON.stringify(savedSMS));
+        showToast('🗑 저장된 수동 문자 삭제 → 자동 생성으로 복원');
+      }
+    } catch(e) { /* ignore */ }
+  }
   smsManualMode = false;
   document.getElementById('smsAutoLabel').style.display = '';
   document.getElementById('smsManualLabel').style.display = 'none';
