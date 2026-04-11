@@ -607,7 +607,7 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
             <button class="btn btn-sm il-sort-btn" data-sort="code" onclick="setInlineSortMode('code')" style="padding:2px 7px;font-size:9px;background:transparent;color:var(--text);border:none;border-radius:2px;cursor:pointer" title="배차코드순(차량크기순)">🔢 코드</button>
           </div>
           <button class="btn btn-sm btn-danger" id="inlineDeleteBtn" onclick="deleteSelectedInline()" style="display:none">🗑 선택 삭제</button>
-          <button class="btn btn-sm" id="btnNewDispatch" onclick="openNewDispatch()" style="background:#e07b39;color:white;border:none;padding:3px 10px;font-size:10px;border-radius:3px;cursor:pointer">+ 신규 배차</button>
+          <button class="btn btn-sm" id="btnNewDispatch" onclick="openNewDispatch()" title="단축키: F2" style="background:#e07b39;color:white;border:none;padding:3px 10px;font-size:10px;border-radius:3px;cursor:pointer">+ 신규 배차 <span style="background:rgba(255,255,255,0.25);padding:1px 4px;border-radius:3px;font-size:9px;font-weight:700;margin-left:2px">F2</span></button>
         </div>
       </div>
       <!-- 대기건 요약 바 -->
@@ -695,7 +695,7 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
           <span id="inlineDispatchModeLabel" style="font-size:11px;font-weight:500;color:#92400e">✏️ 편집 중:</span>
           <span id="inlineDispatchCodeLabel" style="font-size:12px;font-weight:600;color:var(--primary)"></span>
           <div style="margin-left:auto;display:flex;gap:4px">
-            <button id="btnSaveDispatch1" onclick="btnFeedback(this,'💾 저장 중...','✅ 저장완료','#059669',200);saveDispatch()" style="padding:3px 10px;font-size:11px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer">💾 저장 후 닫기</button>
+            <button id="btnSaveDispatch1" onclick="btnFeedback(this,'💾 저장 중...','✅ 저장완료','#059669',200);saveDispatch()" title="단축키: F9" style="padding:3px 10px;font-size:11px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer">💾 저장 후 닫기 <span style="background:rgba(255,255,255,0.25);padding:1px 4px;border-radius:3px;font-size:9px;font-weight:700;margin-left:2px">F9</span></button>
             <button onclick="closeInlineDispatch()" style="padding:3px 10px;font-size:11px;background:white;border:0.5px solid #fcd34d;border-radius:4px;cursor:pointer;color:#92400e">✕ 닫기</button>
           </div>
         </div>
@@ -1005,7 +1005,7 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
 
       <div class="btn-group">
         <button class="btn btn-primary" onclick="calculate()">🔍 단가 조회</button>
-        <button id="btnSaveDispatch2" class="btn btn-secondary" onclick="btnFeedback(this,'💾 저장 중...','✅ 저장완료','#059669',200);saveDispatch()">💾 배차 저장</button>
+        <button id="btnSaveDispatch2" class="btn btn-secondary" onclick="btnFeedback(this,'💾 저장 중...','✅ 저장완료','#059669',200);saveDispatch()" title="단축키: F9">💾 배차 저장 <span style="background:rgba(255,255,255,0.3);padding:1px 5px;border-radius:3px;font-size:10px;font-weight:700;margin-left:3px">F9</span></button>
         <button class="btn btn-outline" onclick="resetForm()">🔄 초기화</button>
       </div>
               </div>
@@ -5205,6 +5205,35 @@ function showToast(msg, duration) {
   t.classList.add('show');
   setTimeout(() => t.classList.remove('show'), duration || 2500);
 }
+
+// ============================================
+// 배차 등록 단축키 (F2 = 신규배차, F9 = 배차저장)
+// ============================================
+document.addEventListener('keydown', function(e) {
+  if(e.key !== 'F2' && e.key !== 'F9') return;
+  // 배차 등록 탭이 활성화된 상태에서만 작동
+  const dispatchPanel = document.getElementById('panel-dispatch');
+  if(!dispatchPanel || !dispatchPanel.classList.contains('active')) return;
+  // 로그인 전 차단
+  const loginOv = document.getElementById('loginOverlay');
+  if(loginOv && loginOv.style.display !== 'none') return;
+
+  if(e.key === 'F2') {
+    e.preventDefault();
+    if(typeof openNewDispatch === 'function') {
+      openNewDispatch();
+      showToast('⌨ F2 → 신규 배차 폼 열림');
+    }
+  } else if(e.key === 'F9') {
+    e.preventDefault();
+    if(typeof saveDispatch === 'function') {
+      const btn = document.getElementById('btnSaveDispatch2') || document.getElementById('btnSaveDispatch1');
+      if(btn && typeof btnFeedback === 'function') btnFeedback(btn, '💾 저장 중...', '✅ 저장완료', '#059669', 200);
+      saveDispatch();
+      showToast('⌨ F9 → 배차 저장');
+    }
+  }
+});
 
 // ============================================
 // 배차 모드 전환 (락앤락 / 주류)
