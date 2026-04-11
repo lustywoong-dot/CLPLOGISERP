@@ -12042,6 +12042,29 @@ async function saveDispatch(closeAfter) {
   // 기존 단일 코드 저장 로직 (변경 없음)
   // ═══════════════════════════════════════════
 
+  // ─── 완전 빈 폼 차단: 실수로 F9/저장 눌렀을 때 쓰레기 데이터 방지 ───
+  // 수정 모드가 아닐 때만 검증 (기존 건 수정 시엔 필드를 일부만 채운 상태도 허용)
+  if(!selectedRecordId || !dispatchLog.some(r => r.id === selectedRecordId)) {
+    const _v = id => (document.getElementById(id)?.value || '').trim();
+    const _hasClient = _v('clientName');
+    const _hasRegion = _v('deliveryRegion');
+    const _hasAddr = _v('deliveryDetailAddr');
+    const _hasContact = _v('deliveryContact');
+    const _hasMemo = _v('memo');
+    const _hasSticky = _v('stickyMemo');
+    const _hasPlt = _v('palletCount') && _v('palletCount') !== '0';
+    const _hasDriver = (typeof getDriverRows === 'function') &&
+      getDriverRows().some(d => d.name || d.vehicleNo || d.phone || d.pay > 0);
+
+    if(!code && !_hasClient && !_hasRegion && !_hasAddr && !_hasContact
+       && !_hasMemo && !_hasSticky && !_hasPlt && !_hasDriver) {
+      showToast('⚠ 저장할 내용이 없습니다 — 배차코드/거래처/하차지/기사 중 최소 하나는 입력해주세요');
+      const codeInput = document.getElementById('dispatchCode');
+      if(codeInput) codeInput.focus();
+      return;
+    }
+  }
+
   // 코드 없으면 임시 코드 생성 (나중에 수정 가능)
   if(!code) {
     const today = getTodayStr().replace(/-/g,'');
