@@ -372,6 +372,9 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
 .toast.toast-error { background: #dc2626; }
 .toast.toast-info  { background: #2563eb; }
 
+/* 역할 기반 민감 정보 숨김 (총비용 등) — admin/settlement만 표시 */
+body.hide-cost-col .col-sensitive { display: none !important; }
+
 /* 버튼 클릭 피드백 */
 @keyframes btnFlash {
   0%   { filter: brightness(1); }
@@ -670,7 +673,7 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
               <th style="width:35px">차량</th>
               <th style="width:26px">PLT</th>
               <th style="width:26px">CT</th>
-              <th style="width:58px">총비용</th>
+              <th class="col-sensitive" style="width:58px">총비용</th>
               <th style="width:58px">기사지급</th>
               <th style="width:45px">배차경로</th>
               <th style="width:45px">담당자</th>
@@ -2919,7 +2922,7 @@ function renderInlineHistory() {
       <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis">${r.vehicle||'-'}</td>
       <td style="font-size:11px">${(r.pallet && parseInt(r.pallet) <= 99) ? r.pallet : '-'}</td>
       <td style="font-size:11px">${(r.boxes && parseInt(r.boxes) > 0 && parseInt(r.boxes) <= 9999) ? r.boxes : '-'}</td>
-      <td style="font-size:11px;text-align:right;color:var(--accent);font-weight:700">${(r.total && parseInt(r.total) >= 1000) ? parseInt(r.total).toLocaleString() : (r.baseRate && parseInt(r.baseRate) >= 1000 ? parseInt(r.baseRate).toLocaleString() : '-')}</td>
+      <td class="col-sensitive" style="font-size:11px;text-align:right;color:var(--accent);font-weight:700">${(r.total && parseInt(r.total) >= 1000) ? parseInt(r.total).toLocaleString() : (r.baseRate && parseInt(r.baseRate) >= 1000 ? parseInt(r.baseRate).toLocaleString() : '-')}</td>
       <td style="font-size:11px;text-align:right">${r.driverPay ? r.driverPay.toLocaleString() : '-'}</td>
       <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis">${r.dispatchRoute||'-'}</td>
       <td style="font-size:11px">${r.deliveryContact || '-'}</td>
@@ -3532,6 +3535,12 @@ function applyRole(user) {
   const roleLabel = ROLE_LABELS[role] || role;
   document.getElementById('headerUser').textContent = '👤 ' + user.name + ' (' + roleLabel + ')';
   localStorage.setItem('clp_user_name', user.name);
+  // 민감 컬럼(총비용 등) 표시 제어 — admin/settlement만 표시, 그 외 숨김
+  if(role === 'admin' || role === 'settlement') {
+    document.body.classList.remove('hide-cost-col');
+  } else {
+    document.body.classList.add('hide-cost-col');
+  }
   // 다운로드 알림 뱃지 갱신 (관리자만 표시)
   if(typeof updateDownloadAlertBadge === 'function') updateDownloadAlertBadge();
   const umSection = document.getElementById('userManageSection');
