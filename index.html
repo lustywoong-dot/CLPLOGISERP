@@ -770,8 +770,9 @@ tbody tr:nth-child(even):hover { background: var(--row-hover); }
       <div class="form-grid" style="grid-template-columns:130px 1fr 80px 1fr">
         <div class="form-group">
           <label>배차코드 <span style="color:var(--danger);font-weight:700">*필수</span></label>
-          <input type="text" id="dispatchCode" placeholder="P01001" style="border-color:var(--accent);font-weight:600" oninput="checkCodeDuplicate();generateSMS();autoDetectCenter()">
+          <input type="text" id="dispatchCode" placeholder="P01001" style="border-color:var(--accent);font-weight:600" oninput="checkCodeDuplicate();generateSMS();autoDetectCenter();validateLiquorCodeCenter()">
           <span id="codeError" style="font-size:11px;color:var(--danger);display:none">⚠ 이미 사용된 코드입니다</span>
+          <span id="codeCenterError" style="font-size:11px;color:#dc2626;display:none;font-weight:700;margin-top:2px"></span>
           <div id="hapjimPanel" style="display:none;margin-top:6px;padding:8px;background:#fefce8;border:1px solid #fde047;border-radius:6px">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
               <span style="font-size:11px;font-weight:700;color:#a16207">📦 합짐 모드</span>
@@ -5343,6 +5344,8 @@ function setDispatchMode(mode) {
   document.getElementById('row3Grid').style.gridTemplateColumns = mode === 'liquor' ? 'repeat(5,1fr)' : 'repeat(4,1fr)';
   // 배차코드 플레이스홀더 업데이트 (주류: 센터별 / 락앤락: 기본)
   updateDispatchCodePlaceholder();
+  // 센터-코드 검증 상태 갱신 (락앤락 전환 시 에러 지우기)
+  validateLiquorCodeCenter();
   // 상차지 연동
   if(mode === 'liquor') {
     onCenterChange();
@@ -5377,6 +5380,8 @@ function onCenterChange() {
   }
   // 센터별 배차코드 플레이스홀더 갱신
   updateDispatchCodePlaceholder();
+  // 센터-코드 일치 검증
+  validateLiquorCodeCenter();
   // 핵심 변경 → 수동 편집 모드 해제 후 재생성
   forceRegenerateSMS();
   // 단가 재계산 (1착 + 경유지)
@@ -5394,6 +5399,51 @@ function updateDispatchCodePlaceholder() {
   } else {
     input.placeholder = 'P01001';
   }
+}
+
+// 주류 모드: 배차코드 prefix와 상차센터 일치 검증
+// showAlert=true면 저장 차단용(경고창까지 띄움), false면 인라인 표시만
+function validateLiquorCodeCenter(showAlert) {
+  const errEl = document.getElementById('codeCenterError');
+  const codeInput = document.getElementById('dispatchCode');
+  const clearError = () => {
+    if(errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+    if(codeInput) codeInput.style.borderColor = 'var(--accent)';
+  };
+
+  if(dispatchMode !== 'liquor') { clearError(); return true; }
+  const rawCode = (codeInput ? codeInput.value : '').trim().toUpperCase();
+  if(!rawCode) { clearError(); return true; }
+
+  // 합짐 모드 대응: 첫 코드만 검증
+  const firstCode = rawCode.includes(',') ? rawCode.split(',')[0].trim() : rawCode;
+  const center = document.getElementById('lqCenter').value;
+
+  // ECLP → 여주 (yj), ACLP → 덕평 (dp1/dp2)
+  let mismatch = false;
+  let msg = '';
+  if(firstCode.startsWith('ECLP') && center !== 'yj') {
+    mismatch = true;
+    msg = '⚠ ECLP 코드는 여주센터에서만 사용 가능합니다!';
+  } else if(firstCode.startsWith('ACLP') && center !== 'dp1' && center !== 'dp2') {
+    mismatch = true;
+    msg = '⚠ ACLP 코드는 덕평센터에서만 사용 가능합니다!';
+  }
+
+  if(mismatch) {
+    if(errEl) {
+      errEl.textContent = msg + ' (상차지 주소 오류 방지)';
+      errEl.style.display = 'block';
+    }
+    if(codeInput) codeInput.style.borderColor = '#dc2626';
+    if(showAlert) {
+      alert(msg + '\n\n상차센터 또는 배차코드를 확인해 주세요.\n기사에게 잘못된 상차지가 전송되는 것을 방지합니다.');
+      if(codeInput) codeInput.focus();
+    }
+    return false;
+  }
+  clearError();
+  return true;
 }
 
 function addLiquorStop() {
@@ -7378,9 +7428,10 @@ ${kioskMsg[center] || ''}`;
         if(s.addr) sms += `\n  주소: ${s.addr}`;
       });
     } else {
-      // 단일 목적지: [1착] 레이블 없이 바로 표시
-      sms += `\n\n${clientName||'-'} (${region||'-'})`;
+      // 단일 목적지: '하차지:' 라벨 포함
+      sms += `\n\n하차지: ${clientName||'-'} (${region||'-'})`;
       if(detailAddr) sms += `\n  주소: ${detailAddr}`;
+      if(contactInfo && contactInfo !== '-') sms += `\n  담당자: ${contactInfo}`;
     }
 
     sms += `\n
@@ -7455,6 +7506,7 @@ function copySMSImage() {
     else if(line.startsWith('※')) { color = '#6b7280'; }
     else if(line.startsWith('→')) { color = '#7c3aed'; }
     else if(line.match(/^\[\d착\]/)) { bold = true; color = '#7c3aed'; }
+    else if(line.startsWith('하차지:')) { bold = true; color = '#7c3aed'; }
     else if(line.match(/^\d\./)) { color = '#1f2937'; }
     
     // 자동 줄바꿈
@@ -11802,6 +11854,12 @@ async function autoSync() {
 // saveDispatch 정의 (구글 시트 저장 포함)
 async function saveDispatch() {
   try {
+    // ─── 주류 모드: 배차코드 ↔ 상차센터 일치 검증 ───
+    if(dispatchMode === 'liquor') {
+      if(!validateLiquorCodeCenter(true)) {
+        return; // 불일치 시 저장 차단
+      }
+    }
     let code = document.getElementById('dispatchCode').value.trim();
   
   // ─── 합짐 모드 감지 ───
