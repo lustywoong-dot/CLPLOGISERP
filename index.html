@@ -4808,7 +4808,7 @@ function renderHistory(data) {
     return `<tr>
       <td>${list.length - i}</td>
       <td style="font-weight:700;color:var(--primary)">${r.code || '-'}</td>
-      <td>${r.date}</td>
+      <td>${sanitizeDate(r.date) || '-'}</td>
       <td><span class="badge ${typeBadge}">${r.type}</span></td>
       <td style="font-size:11px">${r.pickup}</td>
       <td>${r.delivery}</td>
@@ -4966,7 +4966,7 @@ async function exportExcel() {
   csv += 'No,배차코드,배차일,유형,거래처명,상차지,하차지,세부주소,담당자,연락처,차량,파레트,박스,원청단가,수작업비,대기료,총매출,기사지급,마진,배차경로,기사명,차량번호,비고\n';
   
   dispatchLog.forEach((r,i) => {
-    csv += `${dispatchLog.length-i},"${r.code||''}",${r.date},${r.type},"${r.clientName||''}","${r.pickup}",${r.delivery},"${r.deliveryAddr||''}","${r.deliveryContact||''}","${r.deliveryPhone||''}",${r.vehicle},${r.pallet},${r.boxes},${r.baseRate},${r.manualFee||0},${r.waitFee||0},${r.total},${r.driverPay||0},${r.margin||0},"${r.dispatchRoute||''}","${r.driverName||''}","${r.vehicleNo||''}","${r.memo||''}"\n`;
+    csv += `${dispatchLog.length-i},"${r.code||''}",${sanitizeDate(r.date)},${r.type},"${r.clientName||''}","${r.pickup}",${r.delivery},"${r.deliveryAddr||''}","${r.deliveryContact||''}","${r.deliveryPhone||''}",${r.vehicle},${r.pallet},${r.boxes},${r.baseRate},${r.manualFee||0},${r.waitFee||0},${r.total},${r.driverPay||0},${r.margin||0},"${r.dispatchRoute||''}","${r.driverName||''}","${r.vehicleNo||''}","${r.memo||''}"\n`;
   });
   
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
