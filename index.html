@@ -7351,17 +7351,20 @@ function generateSMS() {
 1. 상차지: ${pickup || '-'}
 2. 키오스크코드: ${cleanCode || '-'}
 3. 수량/중량: ${qtyInfo}
-${kioskMsg[center] || ''}
+${kioskMsg[center] || ''}`;
 
-[1착] ${clientName||'-'} (${region||'-'})
-  주소: ${detailAddr || '-'}`;
-
-    // 경유지
     if(hasStops) {
+      // 다착(2착 이상): [1착]/[2착]... 레이블 표시
+      sms += `\n\n[1착] ${clientName||'-'} (${region||'-'})`;
+      if(detailAddr) sms += `\n  주소: ${detailAddr}`;
       liquorStops.forEach((s, i) => {
         sms += `\n\n[${i+2}착] ${s.dest||'-'} (${s.area||'-'})`;
         if(s.addr) sms += `\n  주소: ${s.addr}`;
       });
+    } else {
+      // 단일 목적지: [1착] 레이블 없이 바로 표시
+      sms += `\n\n${clientName||'-'} (${region||'-'})`;
+      if(detailAddr) sms += `\n  주소: ${detailAddr}`;
     }
 
     sms += `\n
