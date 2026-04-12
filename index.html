@@ -3088,8 +3088,6 @@ function showInlineEditInfo(r) {
     // 테이블 높이 축소 (약 7행 = 220px) → 폼이 화면 안에 보임
     const wrap = document.getElementById('inlineTableWrap');
     if(wrap) wrap.style.maxHeight = '300px';
-    // 패널 위치로 부드럽게 스크롤
-    setTimeout(() => panel.scrollIntoView({behavior:'smooth', block:'nearest'}), 100);
   }
   // 기존 편집바도 유지 (내부 표시용)
   const bar = document.getElementById('inlineEditBar');
