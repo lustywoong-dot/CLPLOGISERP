@@ -1431,6 +1431,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <div style="display:flex;gap:6px;align-items:center">
           <input type="month" id="statsMonth" style="padding:4px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
           <button class="btn btn-sm btn-secondary" onclick="loadStats()" style="padding:4px 10px;font-size:11px">조회</button>
+          <button class="btn btn-sm" onclick="generateBriefing()" style="padding:4px 10px;font-size:11px;background:#7c3aed;color:white;border:none;border-radius:4px">📋 브리핑 자료</button>
         </div>
         <div id="statsDataInfo" style="margin-left:auto;font-size:11px;color:var(--text-light)"></div>
       </div>
@@ -14326,6 +14327,239 @@ function applyRecommendDriver(name, phone, vehicle) {
 function toggleDriverRecommend() {
   const list = document.getElementById('driverRecommendList');
   list.style.display = list.style.display === 'none' ? 'block' : 'none';
+}
+
+// ─── 브리핑 자료 생성 (인쇄용 새 창) ───
+function generateBriefing() {
+  const monthInput = document.getElementById('statsMonth').value;
+  if(!monthInput) { showToast('⚠ 먼저 월을 선택하고 조회하세요'); return; }
+
+  const allData = getStatsData();
+  let filtered = allData.filter(d => (d.date || '').startsWith(monthInput));
+  const clientFilter = statsClientMode !== 'all' ? statsClientMode : null;
+  if(clientFilter) filtered = filtered.filter(d => getDispatchClient(d.code) === clientFilter);
+
+  // 기본 집계
+  const totalCount = filtered.length;
+  let totalPlt = 0, totalBoxes = 0, totalRevenue = 0, totalCost = 0, totalMargin = 0;
+  filtered.forEach(d => {
+    totalPlt += parseInt(d.pallet) || 0;
+    totalBoxes += parseInt(d.boxes) || 0;
+    totalRevenue += parseInt(d.total) || 0;
+    totalCost += parseInt(d.driverPay) || 0;
+    totalMargin += parseInt(d.margin) || 0;
+  });
+  const marginRate = totalRevenue > 0 ? (totalMargin / totalRevenue * 100).toFixed(1) : '0.0';
+  const perRevenue = totalCount > 0 ? Math.round(totalRevenue / totalCount) : 0;
+  const perMargin = totalCount > 0 ? Math.round(totalMargin / totalCount) : 0;
+
+  // 전월 비교
+  const [y, m] = monthInput.split('-').map(Number);
+  const prevMonth = m === 1 ? (y-1)+'-12' : y+'-'+String(m-1).padStart(2,'0');
+  let prevFiltered = allData.filter(d => (d.date || '').startsWith(prevMonth));
+  if(clientFilter) prevFiltered = prevFiltered.filter(d => getDispatchClient(d.code) === clientFilter);
+  const prevCount = prevFiltered.length;
+  const prevRevenue = prevFiltered.reduce((s,d) => s + (parseInt(d.total) || 0), 0);
+  const prevMargin = prevFiltered.reduce((s,d) => s + (parseInt(d.margin) || 0), 0);
+  const fmtDelta = (cur, prev) => {
+    if(!prev) return '-';
+    const pct = ((cur - prev) / Math.abs(prev) * 100).toFixed(1);
+    return (pct >= 0 ? '+' : '') + pct + '%';
+  };
+
+  // 거래처별
+  const clients = {};
+  filtered.forEach(d => {
+    const c = getDispatchClient(d.code) || '기타';
+    if(!clients[c]) clients[c] = { count:0, revenue:0, margin:0 };
+    clients[c].count++; clients[c].revenue += parseInt(d.total) || 0; clients[c].margin += parseInt(d.margin) || 0;
+  });
+  const clientRows = Object.entries(clients).sort((a,b) => b[1].revenue - a[1].revenue);
+
+  // 기사별
+  const drivers = {};
+  filtered.forEach(d => {
+    const n = (d.driverName || '').trim();
+    if(!n) return;
+    if(!drivers[n]) drivers[n] = { count:0, revenue:0, margin:0, topRegion:{} };
+    drivers[n].count++; drivers[n].revenue += parseInt(d.total) || 0; drivers[n].margin += parseInt(d.margin) || 0;
+    const r = d.delivery || ''; if(r) drivers[n].topRegion[r] = (drivers[n].topRegion[r]||0) + 1;
+  });
+  const driverRows = Object.entries(drivers).sort((a,b) => b[1].count - a[1].count);
+
+  // 배차유형별
+  const types = {};
+  filtered.forEach(d => { const t = d.type || '미분류'; types[t] = (types[t]||0) + 1; });
+  const typeRows = Object.entries(types).sort((a,b) => b[1] - a[1]);
+
+  // 요일별
+  const days = ['일','월','화','수','목','금','토'];
+  const dayCounts = [0,0,0,0,0,0,0];
+  filtered.forEach(d => {
+    const dt = new Date(sanitizeDate(d.date) + 'T00:00:00');
+    if(!isNaN(dt)) dayCounts[dt.getDay()]++;
+  });
+  const busiestDay = days[dayCounts.indexOf(Math.max(...dayCounts))];
+
+  // 목표
+  const goalRevenue = (parseInt(document.getElementById('statsGoalRevenue').value) || 0) * 10000;
+  const goalCount = parseInt(document.getElementById('statsGoalCount').value) || 0;
+
+  // 다음 달 계산
+  const nextMonth = m === 12 ? (y+1)+'-01' : y+'-'+String(m+1).padStart(2,'0');
+  const nextMonthLabel = m === 12 ? (y+1) + '년 1월' : y + '년 ' + (m+1) + '월';
+
+  const [py, pm] = monthInput.split('-').map(Number);
+  const curMonthLabel = py + '년 ' + pm + '월';
+
+  // HTML 생성
+  const fmtWon = v => {
+    if(Math.abs(v) >= 100000000) return (v/100000000).toFixed(1) + '억원';
+    if(Math.abs(v) >= 10000) return Math.round(v/10000).toLocaleString() + '만원';
+    return v.toLocaleString() + '원';
+  };
+
+  let html = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>월간 브리핑 - ${curMonthLabel}</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family:'Noto Sans KR','Malgun Gothic',sans-serif; color:#1f2937; padding:30px 40px; max-width:900px; margin:0 auto; font-size:13px; line-height:1.6; }
+  h1 { font-size:22px; color:#1e3a5f; border-bottom:3px solid #1e3a5f; padding-bottom:8px; margin-bottom:4px; }
+  h2 { font-size:15px; color:#1e3a5f; margin:20px 0 8px; padding:4px 10px; background:#f0f4ff; border-left:4px solid #2563eb; border-radius:0 4px 4px 0; }
+  .subtitle { font-size:11px; color:#6b7280; margin-bottom:20px; }
+  .kpi-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:12px 0; }
+  .kpi { text-align:center; padding:12px; border:1px solid #e5e7eb; border-radius:8px; }
+  .kpi-label { font-size:10px; color:#6b7280; }
+  .kpi-value { font-size:20px; font-weight:800; margin:4px 0; }
+  .kpi-sub { font-size:10px; color:#6b7280; }
+  .delta-up { color:#059669; } .delta-down { color:#dc2626; }
+  table { width:100%; border-collapse:collapse; margin:8px 0; font-size:12px; }
+  th { background:#f8fafc; font-weight:700; padding:6px 8px; border:1px solid #e5e7eb; text-align:center; font-size:11px; }
+  td { padding:5px 8px; border:1px solid #e5e7eb; }
+  .text-right { text-align:right; }
+  .text-center { text-align:center; }
+  .highlight { background:#fef3c7; font-weight:700; }
+  .section-note { font-size:11px; color:#6b7280; margin:4px 0 12px; font-style:italic; }
+  .goal-box { padding:14px; border:2px solid #7c3aed; border-radius:8px; margin:10px 0; background:#faf5ff; }
+  .goal-title { font-size:13px; font-weight:800; color:#7c3aed; margin-bottom:8px; }
+  .memo-box { padding:14px; border:2px dashed #d1d5db; border-radius:8px; margin:10px 0; min-height:80px; }
+  .memo-title { font-size:11px; font-weight:700; color:#6b7280; margin-bottom:6px; }
+  .footer { margin-top:24px; padding-top:10px; border-top:1px solid #e5e7eb; font-size:10px; color:#9ca3af; text-align:center; }
+  @media print {
+    body { padding:15px 20px; }
+    .no-print { display:none !important; }
+  }
+</style></head><body>
+
+<div class="no-print" style="margin-bottom:16px;display:flex;gap:8px">
+  <button onclick="window.print()" style="padding:8px 20px;background:#2563eb;color:white;border:none;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer">🖨 인쇄 / PDF 저장</button>
+  <button onclick="window.close()" style="padding:8px 20px;background:#6b7280;color:white;border:none;border-radius:6px;font-size:13px;cursor:pointer">닫기</button>
+</div>
+
+<h1>📊 (주)씨엘피 — ${curMonthLabel} 월간 브리핑</h1>
+<div class="subtitle">생성일: ${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}${clientFilter ? ' | 거래처: ' + clientFilter : ' | 전체 거래처'} | 데이터: ${totalCount}건</div>
+
+<h2>📈 핵심 경영 지표</h2>
+<div class="kpi-grid">
+  <div class="kpi">
+    <div class="kpi-label">총 배차건수</div>
+    <div class="kpi-value" style="color:#2563eb">${totalCount.toLocaleString()}건</div>
+    <div class="kpi-sub">PLT ${totalPlt.toLocaleString()} · BOX ${totalBoxes.toLocaleString()}</div>
+    <div class="kpi-sub ${fmtDelta(totalCount,prevCount).startsWith('+')?'delta-up':'delta-down'}">전월 대비 ${fmtDelta(totalCount,prevCount)}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">총 매출</div>
+    <div class="kpi-value" style="color:#ea580c">${fmtWon(totalRevenue)}</div>
+    <div class="kpi-sub ${fmtDelta(totalRevenue,prevRevenue).startsWith('+')?'delta-up':'delta-down'}">전월 대비 ${fmtDelta(totalRevenue,prevRevenue)}</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-label">총 마진 (마진율)</div>
+    <div class="kpi-value" style="color:#059669">${fmtWon(totalMargin)}</div>
+    <div class="kpi-sub">마진율 ${marginRate}% · 건당 ${fmtWon(perMargin)}</div>
+    <div class="kpi-sub ${fmtDelta(totalMargin,prevMargin).startsWith('+')?'delta-up':'delta-down'}">전월 대비 ${fmtDelta(totalMargin,prevMargin)}</div>
+  </div>
+</div>
+
+<h2>🏢 거래처별 실적</h2>
+<table>
+  <thead><tr><th>거래처</th><th>건수</th><th>매출</th><th>마진</th><th>마진율</th></tr></thead>
+  <tbody>${clientRows.map(([name,d]) =>
+    `<tr><td style="font-weight:700">${name}</td><td class="text-center">${d.count}건</td><td class="text-right">${fmtWon(d.revenue)}</td><td class="text-right">${fmtWon(d.margin)}</td><td class="text-center">${d.revenue>0?(d.margin/d.revenue*100).toFixed(1):'0.0'}%</td></tr>`
+  ).join('')}
+  <tr class="highlight"><td>합계</td><td class="text-center">${totalCount}건</td><td class="text-right">${fmtWon(totalRevenue)}</td><td class="text-right">${fmtWon(totalMargin)}</td><td class="text-center">${marginRate}%</td></tr>
+  </tbody>
+</table>
+
+<h2>🚛 기사별 실적 (건수순)</h2>
+<table>
+  <thead><tr><th>순위</th><th>기사명</th><th>건수</th><th>매출</th><th>건당 마진</th><th>주요 지역</th></tr></thead>
+  <tbody>${driverRows.slice(0,10).map(([name,d],i) => {
+    const top = Object.entries(d.topRegion).sort((a,b)=>b[1]-a[1])[0]?.[0] || '-';
+    return `<tr><td class="text-center" style="font-weight:700">${i+1}</td><td style="font-weight:600">${name}</td><td class="text-center">${d.count}건</td><td class="text-right">${fmtWon(d.revenue)}</td><td class="text-right">${d.count>0?fmtWon(Math.round(d.margin/d.count)):'-'}</td><td class="text-center">${top}</td></tr>`;
+  }).join('')}
+  </tbody>
+</table>
+${driverRows.length > 10 ? `<div class="section-note">외 ${driverRows.length-10}명 생략</div>` : ''}
+
+<h2>📋 배차유형 · 요일 패턴</h2>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+  <div>
+    <table>
+      <thead><tr><th>배차유형</th><th>건수</th><th>비율</th></tr></thead>
+      <tbody>${typeRows.map(([type,cnt]) =>
+        `<tr><td style="font-weight:600">${type}</td><td class="text-center">${cnt}건</td><td class="text-center">${(cnt/totalCount*100).toFixed(1)}%</td></tr>`
+      ).join('')}</tbody>
+    </table>
+  </div>
+  <div>
+    <table>
+      <thead><tr><th>요일</th>${days.map(d=>'<th>'+d+'</th>').join('')}</tr></thead>
+      <tbody><tr><td style="font-weight:600">건수</td>${dayCounts.map(c=>'<td class="text-center">'+c+'</td>').join('')}</tr></tbody>
+    </table>
+    <div class="section-note">가장 바쁜 요일: ${busiestDay}요일</div>
+  </div>
+</div>
+
+<h2>🎯 ${nextMonthLabel} 목표</h2>
+<div class="goal-box">
+  <div class="goal-title">다음 달 목표 설정</div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+    <div>
+      <div style="font-size:11px;color:#6b7280">매출 목표</div>
+      <div style="font-size:18px;font-weight:800;color:#7c3aed">${goalRevenue > 0 ? fmtWon(goalRevenue) : '_______________'}</div>
+    </div>
+    <div>
+      <div style="font-size:11px;color:#6b7280">건수 목표</div>
+      <div style="font-size:18px;font-weight:800;color:#7c3aed">${goalCount > 0 ? goalCount + '건' : '_______________'}</div>
+    </div>
+  </div>
+  <div style="margin-top:10px;font-size:11px;color:#6b7280">
+    ${goalRevenue > 0 ? '일평균 필요 매출: ' + fmtWon(Math.ceil(goalRevenue / 22)) + ' (영업일 22일 기준)' : ''}
+    ${goalCount > 0 ? ' | 일평균 필요 건수: ' + Math.ceil(goalCount / 22) + '건' : ''}
+  </div>
+</div>
+
+<h2>📝 전달 사항 / 메모</h2>
+<div class="memo-box">
+  <div class="memo-title">브리핑 시 전달할 내용을 인쇄 후 수기로 작성하세요</div>
+  <div style="border-bottom:1px dashed #d1d5db;margin:16px 0"></div>
+  <div style="border-bottom:1px dashed #d1d5db;margin:16px 0"></div>
+  <div style="border-bottom:1px dashed #d1d5db;margin:16px 0"></div>
+</div>
+
+<div class="footer">
+  (주)씨엘피 배차 관리 시스템 · CLP ERP · ${curMonthLabel} 월간 브리핑 · 관리자 전용 자료
+</div>
+
+</body></html>`;
+
+  const win = window.open('', '_blank', 'width=900,height=700');
+  if(win) {
+    win.document.write(html);
+    win.document.close();
+  } else {
+    showToast('⚠ 팝업이 차단되었습니다. 팝업 허용 후 다시 시도하세요');
+  }
 }
 
 function initStats() {
