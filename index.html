@@ -2995,6 +2995,9 @@ function loadRecord(id) {
     document.getElementById('vehicleTon').value = r.vehicle || '';
   }
 
+  // 주류 중량(톤) 복원
+  document.getElementById('lqWeight').value = r.lqWeight || '';
+
   // 혼적(M짐) 정보 복원 — 수정 모드에서 단가 손상 방지
   const _mixedCheck = document.getElementById('mixedCargoCheck');
   if(_mixedCheck) {
@@ -11975,6 +11978,7 @@ async function saveDispatch(closeAfter) {
           memo: hapjimMemo,
           stickyMemo: document.getElementById('stickyMemo').value,
           extraWorkFee: 0,
+          lqWeight: dispatchMode === 'liquor' ? (document.getElementById('lqWeight').value || '') : '',
           // 합짐은 혼적 옵션 사용 안 함 (코드별 금액 직접 입력)
           isMixed: false,
           mixedMjimIdx: '',
@@ -12216,6 +12220,7 @@ async function saveDispatch(closeAfter) {
       memo: document.getElementById('memo').value,
       stickyMemo: document.getElementById('stickyMemo').value,
       extraWorkFee: extraFee,
+      lqWeight: dispatchMode === 'liquor' ? (document.getElementById('lqWeight').value || '') : '',
       liquorStops: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(liquorStops)) : undefined,
       // 혼적(M짐) 정보 저장 — 수정 모드에서 단가 손상 방지
       isMixed: !!document.getElementById('mixedCargoCheck')?.checked,
