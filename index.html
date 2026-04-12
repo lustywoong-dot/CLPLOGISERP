@@ -1429,25 +1429,66 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       </div>
     </div>
 
-    <!-- 요약 카드 4개 -->
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:10px">
-      <div class="card" style="padding:12px;text-align:center">
-        <div style="font-size:11px;color:var(--text-light)">총 배차건수</div>
-        <div id="statsTotalCount" style="font-size:22px;font-weight:800;color:var(--primary);margin-top:4px">0</div>
-        <div id="statsTotalPlt" style="font-size:11px;color:var(--text-light);margin-top:2px">PLT: 0</div>
+    <!-- 핵심 지표 카드 6개 -->
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px">
+      <!-- 배차건수 -->
+      <div class="card" style="padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:11px;color:var(--text-light);font-weight:600">📦 총 배차건수</div>
+          <div id="statsCountDelta" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px"></div>
+        </div>
+        <div id="statsTotalCount" style="font-size:26px;font-weight:800;color:var(--primary);margin-top:6px">0</div>
+        <div style="display:flex;gap:12px;margin-top:4px">
+          <span id="statsTotalPlt" style="font-size:11px;color:var(--text-light)">PLT: 0</span>
+          <span id="statsTotalBoxes" style="font-size:11px;color:var(--text-light)">BOX: 0</span>
+        </div>
+        <div id="statsCountPrev" style="font-size:10px;color:var(--text-light);margin-top:4px"></div>
       </div>
-      <div class="card" style="padding:12px;text-align:center">
-        <div style="font-size:11px;color:var(--text-light)">총 매출</div>
-        <div id="statsTotalRevenue" style="font-size:22px;font-weight:800;color:var(--accent);margin-top:4px">0</div>
+      <!-- 매출 -->
+      <div class="card" style="padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:11px;color:var(--text-light);font-weight:600">💰 총 매출</div>
+          <div id="statsRevenueDelta" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px"></div>
+        </div>
+        <div id="statsTotalRevenue" style="font-size:26px;font-weight:800;color:var(--accent);margin-top:6px">0</div>
+        <div id="statsRevenuePrev" style="font-size:10px;color:var(--text-light);margin-top:4px"></div>
       </div>
-      <div class="card" style="padding:12px;text-align:center">
-        <div style="font-size:11px;color:var(--text-light)">총 매입</div>
-        <div id="statsTotalCost" style="font-size:22px;font-weight:800;color:#6b7280;margin-top:4px">0</div>
+      <!-- 매입 -->
+      <div class="card" style="padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:11px;color:var(--text-light);font-weight:600">🚛 총 매입 (기사지급)</div>
+          <div id="statsCostDelta" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px"></div>
+        </div>
+        <div id="statsTotalCost" style="font-size:26px;font-weight:800;color:#6b7280;margin-top:6px">0</div>
+        <div id="statsCostPrev" style="font-size:10px;color:var(--text-light);margin-top:4px"></div>
       </div>
-      <div class="card" style="padding:12px;text-align:center">
-        <div style="font-size:11px;color:var(--text-light)">총 마진</div>
-        <div id="statsTotalMargin" style="font-size:22px;font-weight:800;color:var(--success);margin-top:4px">0</div>
-        <div id="statsMarginRate" style="font-size:11px;color:var(--success);margin-top:2px"></div>
+      <!-- 마진 -->
+      <div class="card" style="padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:11px;color:var(--text-light);font-weight:600">📈 총 마진</div>
+          <div id="statsMarginDelta" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px"></div>
+        </div>
+        <div id="statsTotalMargin" style="font-size:26px;font-weight:800;color:var(--success);margin-top:6px">0</div>
+        <div id="statsMarginRate" style="font-size:12px;color:var(--success);font-weight:700;margin-top:4px"></div>
+        <div id="statsMarginPrev" style="font-size:10px;color:var(--text-light);margin-top:2px"></div>
+      </div>
+      <!-- 건당 매출 -->
+      <div class="card" style="padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:11px;color:var(--text-light);font-weight:600">🎯 건당 매출</div>
+          <div id="statsPerRevDelta" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px"></div>
+        </div>
+        <div id="statsPerRevenue" style="font-size:26px;font-weight:800;color:#7c3aed;margin-top:6px">0</div>
+        <div id="statsPerRevPrev" style="font-size:10px;color:var(--text-light);margin-top:4px"></div>
+      </div>
+      <!-- 건당 마진 -->
+      <div class="card" style="padding:14px 16px">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div style="font-size:11px;color:var(--text-light);font-weight:600">💎 건당 마진</div>
+          <div id="statsPerMarDelta" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px"></div>
+        </div>
+        <div id="statsPerMargin" style="font-size:26px;font-weight:800;color:#0891b2;margin-top:6px">0</div>
+        <div id="statsPerMarPrev" style="font-size:10px;color:var(--text-light);margin-top:4px"></div>
       </div>
     </div>
 
@@ -12852,20 +12893,80 @@ function loadStats() {
   
   // 요약 계산
   let totalCount = filtered.length;
-  let totalPlt = 0, totalRevenue = 0, totalCost = 0, totalMargin = 0;
+  let totalPlt = 0, totalBoxes = 0, totalRevenue = 0, totalCost = 0, totalMargin = 0;
   filtered.forEach(d => {
     totalPlt += parseInt(d.pallet) || 0;
+    totalBoxes += parseInt(d.boxes) || 0;
     totalRevenue += parseInt(d.total) || 0;
     totalCost += parseInt(d.driverPay) || 0;
     totalMargin += parseInt(d.margin) || 0;
   });
-  
+  const perRevenue = totalCount > 0 ? Math.round(totalRevenue / totalCount) : 0;
+  const perMargin = totalCount > 0 ? Math.round(totalMargin / totalCount) : 0;
+
+  // ─── 전월 비교 데이터 계산 ───
+  let prevData = { count:0, revenue:0, cost:0, margin:0 };
+  if(monthInput) {
+    const [y, m] = monthInput.split('-').map(Number);
+    const prevMonth = m === 1 ? (y-1)+'-12' : y+'-'+String(m-1).padStart(2,'0');
+    let prevFiltered = allData.filter(d => (d.date || '').startsWith(prevMonth));
+    if(statsClientMode !== 'all') {
+      prevFiltered = prevFiltered.filter(d => getDispatchClient(d.code) === statsClientMode);
+    }
+    prevFiltered.forEach(d => {
+      prevData.count++;
+      prevData.revenue += parseInt(d.total) || 0;
+      prevData.cost += parseInt(d.driverPay) || 0;
+      prevData.margin += parseInt(d.margin) || 0;
+    });
+  }
+  const prevPerRev = prevData.count > 0 ? Math.round(prevData.revenue / prevData.count) : 0;
+  const prevPerMar = prevData.count > 0 ? Math.round(prevData.margin / prevData.count) : 0;
+
+  // 금액 포맷 헬퍼 (만원 단위)
+  const fmtMan = v => {
+    if(Math.abs(v) >= 100000000) return (v/100000000).toFixed(1) + '억';
+    if(Math.abs(v) >= 10000) return Math.round(v/10000).toLocaleString() + '만원';
+    return v.toLocaleString() + '원';
+  };
+
+  // 전월 대비 증감 뱃지 표시 헬퍼
+  const showDelta = (elId, prevElId, current, prev, unit) => {
+    const deltaEl = document.getElementById(elId);
+    const prevEl = document.getElementById(prevElId);
+    if(!prev || !monthInput) {
+      deltaEl.textContent = ''; deltaEl.style.background = '';
+      if(prevEl) prevEl.textContent = '';
+      return;
+    }
+    const diff = current - prev;
+    const pct = prev !== 0 ? (diff / Math.abs(prev) * 100) : 0;
+    const isUp = diff > 0;
+    const sign = isUp ? '+' : '';
+    deltaEl.textContent = sign + pct.toFixed(1) + '%';
+    deltaEl.style.background = isUp ? '#dcfce7' : (diff < 0 ? '#fef2f2' : '#f3f4f6');
+    deltaEl.style.color = isUp ? '#166534' : (diff < 0 ? '#991b1b' : '#6b7280');
+    if(prevEl) prevEl.textContent = '전월: ' + (unit === 'count' ? prev.toLocaleString() + '건' : fmtMan(prev));
+  };
+
+  // 카드 값 업데이트
   document.getElementById('statsTotalCount').textContent = totalCount.toLocaleString() + '건';
   document.getElementById('statsTotalPlt').textContent = 'PLT: ' + totalPlt.toLocaleString();
-  document.getElementById('statsTotalRevenue').textContent = totalRevenue.toLocaleString() + '원';
-  document.getElementById('statsTotalCost').textContent = totalCost.toLocaleString() + '원';
-  document.getElementById('statsTotalMargin').textContent = totalMargin.toLocaleString() + '원';
+  document.getElementById('statsTotalBoxes').textContent = 'BOX: ' + totalBoxes.toLocaleString();
+  document.getElementById('statsTotalRevenue').textContent = fmtMan(totalRevenue);
+  document.getElementById('statsTotalCost').textContent = fmtMan(totalCost);
+  document.getElementById('statsTotalMargin').textContent = fmtMan(totalMargin);
   document.getElementById('statsMarginRate').textContent = totalRevenue > 0 ? '마진율 ' + (totalMargin/totalRevenue*100).toFixed(1) + '%' : '';
+  document.getElementById('statsPerRevenue').textContent = fmtMan(perRevenue);
+  document.getElementById('statsPerMargin').textContent = fmtMan(perMargin);
+
+  // 전월 대비 증감 표시
+  showDelta('statsCountDelta', 'statsCountPrev', totalCount, prevData.count, 'count');
+  showDelta('statsRevenueDelta', 'statsRevenuePrev', totalRevenue, prevData.revenue, 'won');
+  showDelta('statsCostDelta', 'statsCostPrev', totalCost, prevData.cost, 'won');
+  showDelta('statsMarginDelta', 'statsMarginPrev', totalMargin, prevData.margin, 'won');
+  showDelta('statsPerRevDelta', 'statsPerRevPrev', perRevenue, prevPerRev, 'won');
+  showDelta('statsPerMarDelta', 'statsPerMarPrev', perMargin, prevPerMar, 'won');
   
   // 기간별 그룹핑
   const grouped = groupByPeriod(filtered);
