@@ -1659,6 +1659,59 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       </div>
     </div>
 
+    <!-- 경영 의사결정 지원 -->
+    <div class="stats-section-label">경영 의사결정 지원</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <!-- 손익분기점 시뮬레이터 -->
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#dc2626">
+        <div class="stats-chart-title">📐 손익분기점 시뮬레이터</div>
+        <div style="display:flex;gap:6px;align-items:end;margin-bottom:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:120px">
+            <label style="font-size:10px;color:var(--text-light);display:block">사무실/임대 (만원)</label>
+            <input type="number" id="statsBepRent" min="0" step="10" placeholder="0" style="width:100%;padding:4px 6px;font-size:12px;border:1px solid var(--border);border-radius:4px" onchange="saveStatsBep();renderBEP()">
+          </div>
+          <div style="flex:1;min-width:120px">
+            <label style="font-size:10px;color:var(--text-light);display:block">인건비 (만원)</label>
+            <input type="number" id="statsBepLabor" min="0" step="10" placeholder="0" style="width:100%;padding:4px 6px;font-size:12px;border:1px solid var(--border);border-radius:4px" onchange="saveStatsBep();renderBEP()">
+          </div>
+          <div style="flex:1;min-width:120px">
+            <label style="font-size:10px;color:var(--text-light);display:block">기타 고정비 (만원)</label>
+            <input type="number" id="statsBepEtc" min="0" step="10" placeholder="0" style="width:100%;padding:4px 6px;font-size:12px;border:1px solid var(--border);border-radius:4px" onchange="saveStatsBep();renderBEP()">
+          </div>
+        </div>
+        <div id="statsBepResult" style="padding:8px"></div>
+      </div>
+      <!-- 월별 목표 대비 실적 -->
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#7c3aed">
+        <div class="stats-chart-title">🎯 월별 목표 대비 실적</div>
+        <div style="display:flex;gap:8px;align-items:end;margin-bottom:12px">
+          <div style="flex:1">
+            <label style="font-size:10px;color:var(--text-light);display:block">이번 달 매출 목표 (만원)</label>
+            <input type="number" id="statsGoalRevenue" min="0" step="100" placeholder="5000" style="width:100%;padding:4px 6px;font-size:12px;border:1px solid var(--border);border-radius:4px" onchange="saveStatsGoal();renderGoalGauge()">
+          </div>
+          <div style="flex:1">
+            <label style="font-size:10px;color:var(--text-light);display:block">건수 목표</label>
+            <input type="number" id="statsGoalCount" min="0" step="10" placeholder="150" style="width:100%;padding:4px 6px;font-size:12px;border:1px solid var(--border);border-radius:4px" onchange="saveStatsGoal();renderGoalGauge()">
+          </div>
+        </div>
+        <div id="statsGoalResult" style="padding:8px"></div>
+      </div>
+    </div>
+
+    <!-- 리스크 + 거래처 분석 -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+      <!-- 기사 의존도 -->
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#ea580c">
+        <div class="stats-chart-title">👷 기사 매출 의존도</div>
+        <div id="statsDriverConc" style="padding:8px"></div>
+      </div>
+      <!-- 신규 vs 재방문 -->
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#0891b2">
+        <div class="stats-chart-title">🆕 신규 vs 재방문 배송처</div>
+        <div id="statsNewRepeat" style="padding:8px"></div>
+      </div>
+    </div>
+
     <!-- 상세 테이블 -->
     <div class="stats-section-label">상세 데이터</div>
     <div class="card stats-chart-card" style="padding:16px;border-top-color:#6b7280">
@@ -13116,6 +13169,10 @@ function loadStats() {
   renderDriverMarginChart(filtered);
   renderDayOfWeekChart(filtered);
   renderVehicleTonChart(filtered);
+  renderBEP();
+  renderGoalGauge();
+  renderDriverConcentration(filtered);
+  renderNewRepeat(filtered);
   renderStatsDetail(grouped);
 }
 
@@ -13792,6 +13849,294 @@ function renderVehicleTonChart(data) {
   });
 }
 
+// ─── 손익분기점/목표 설정 localStorage 저장/불러오기 ───
+function saveStatsBep() {
+  const data = {
+    rent: document.getElementById('statsBepRent').value || '',
+    labor: document.getElementById('statsBepLabor').value || '',
+    etc: document.getElementById('statsBepEtc').value || ''
+  };
+  localStorage.setItem('clp_stats_bep', JSON.stringify(data));
+}
+function loadStatsBep() {
+  try {
+    const data = JSON.parse(localStorage.getItem('clp_stats_bep') || '{}');
+    if(data.rent) document.getElementById('statsBepRent').value = data.rent;
+    if(data.labor) document.getElementById('statsBepLabor').value = data.labor;
+    if(data.etc) document.getElementById('statsBepEtc').value = data.etc;
+  } catch(e) {}
+}
+function saveStatsGoal() {
+  const data = {
+    revenue: document.getElementById('statsGoalRevenue').value || '',
+    count: document.getElementById('statsGoalCount').value || ''
+  };
+  localStorage.setItem('clp_stats_goal', JSON.stringify(data));
+}
+function loadStatsGoal() {
+  try {
+    const data = JSON.parse(localStorage.getItem('clp_stats_goal') || '{}');
+    if(data.revenue) document.getElementById('statsGoalRevenue').value = data.revenue;
+    if(data.count) document.getElementById('statsGoalCount').value = data.count;
+  } catch(e) {}
+}
+
+// ─── 손익분기점 시뮬레이터 ───
+function renderBEP() {
+  const container = document.getElementById('statsBepResult');
+  if(!container) return;
+
+  const rent = (parseInt(document.getElementById('statsBepRent').value) || 0) * 10000;
+  const labor = (parseInt(document.getElementById('statsBepLabor').value) || 0) * 10000;
+  const etc = (parseInt(document.getElementById('statsBepEtc').value) || 0) * 10000;
+  const fixedCost = rent + labor + etc;
+
+  // 현재 월 데이터에서 건당 마진 계산
+  const monthInput = document.getElementById('statsMonth').value;
+  let monthData = getStatsData();
+  if(monthInput) monthData = monthData.filter(d => (d.date || '').startsWith(monthInput));
+  if(statsClientMode !== 'all') monthData = monthData.filter(d => getDispatchClient(d.code) === statsClientMode);
+
+  const totalMargin = monthData.reduce((s,d) => s + (parseInt(d.margin) || 0), 0);
+  const perMargin = monthData.length > 0 ? Math.round(totalMargin / monthData.length) : 0;
+
+  if(fixedCost === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-light);font-size:11px;padding:16px">위에 월 고정비를 입력하면<br>손익분기점을 자동 계산합니다</div>';
+    return;
+  }
+
+  const bepCount = perMargin > 0 ? Math.ceil(fixedCost / perMargin) : 0;
+  const bepRevenue = perMargin > 0 ? Math.ceil(fixedCost / (totalMargin / (monthData.reduce((s,d) => s + (parseInt(d.total) || 0), 0) || 1))) : 0;
+  const currentCount = monthData.length;
+  const achieveRate = bepCount > 0 ? Math.round(currentCount / bepCount * 100) : 0;
+  const surplus = currentCount - bepCount;
+  const isSafe = surplus >= 0;
+
+  let html = `
+    <div style="text-align:center;margin-bottom:10px">
+      <div style="font-size:10px;color:var(--text-light)">월 고정비</div>
+      <div style="font-size:20px;font-weight:800;color:#dc2626">${(fixedCost/10000).toLocaleString()}만원</div>
+      <div style="font-size:10px;color:var(--text-light);margin-top:2px">사무실 ${(rent/10000).toLocaleString()} + 인건비 ${(labor/10000).toLocaleString()} + 기타 ${(etc/10000).toLocaleString()}</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+      <div style="text-align:center;padding:8px;background:#fef2f2;border-radius:6px">
+        <div style="font-size:10px;color:#991b1b">손익분기 최소 건수</div>
+        <div style="font-size:18px;font-weight:800;color:#dc2626">${bepCount > 0 ? bepCount + '건' : '-'}</div>
+        <div style="font-size:10px;color:var(--text-light)">건당 마진 ${perMargin.toLocaleString()}원 기준</div>
+      </div>
+      <div style="text-align:center;padding:8px;background:${isSafe ? '#ecfdf5' : '#fef3c7'};border-radius:6px">
+        <div style="font-size:10px;color:${isSafe ? '#166534' : '#92400e'}">현재 달성</div>
+        <div style="font-size:18px;font-weight:800;color:${isSafe ? '#059669' : '#d97706'}">${currentCount}건 (${achieveRate}%)</div>
+        <div style="font-size:10px;color:${isSafe ? '#166534' : '#92400e'}">${isSafe ? '✅ 손익분기 초과 +' + surplus + '건' : '⚠ ' + Math.abs(surplus) + '건 더 필요'}</div>
+      </div>
+    </div>`;
+
+  // 프로그레스 바
+  const pct = Math.min(achieveRate, 150);
+  html += `<div style="background:#f1f5f9;border-radius:6px;height:20px;overflow:hidden;position:relative">
+    <div style="height:100%;width:${Math.min(pct, 100)}%;background:${isSafe ? '#059669' : pct >= 80 ? '#ca8a04' : '#dc2626'};border-radius:6px;transition:width 0.5s"></div>
+    <div style="position:absolute;left:${Math.min(100/pct*100, 100)}%;top:0;height:100%;width:2px;background:#dc2626" title="손익분기점"></div>
+    <span style="position:absolute;right:6px;top:2px;font-size:10px;font-weight:700;color:${pct>=60?'white':'#374151'}">${achieveRate}%</span>
+  </div>`;
+
+  container.innerHTML = html;
+}
+
+// ─── 월별 목표 대비 실적 게이지 ───
+function renderGoalGauge() {
+  const container = document.getElementById('statsGoalResult');
+  if(!container) return;
+
+  const goalRevenue = (parseInt(document.getElementById('statsGoalRevenue').value) || 0) * 10000;
+  const goalCount = parseInt(document.getElementById('statsGoalCount').value) || 0;
+
+  const monthInput = document.getElementById('statsMonth').value;
+  let monthData = getStatsData();
+  if(monthInput) monthData = monthData.filter(d => (d.date || '').startsWith(monthInput));
+  if(statsClientMode !== 'all') monthData = monthData.filter(d => getDispatchClient(d.code) === statsClientMode);
+
+  const currentRevenue = monthData.reduce((s,d) => s + (parseInt(d.total) || 0), 0);
+  const currentCount = monthData.length;
+
+  if(goalRevenue === 0 && goalCount === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-light);font-size:11px;padding:16px">위에 월 목표를 입력하면<br>실적 달성률을 표시합니다</div>';
+    return;
+  }
+
+  // 남은 일수 계산
+  const now = new Date();
+  const lastDay = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const remainDays = Math.max(lastDay - now.getDate(), 0);
+
+  const makeGauge = (label, current, goal, unit) => {
+    if(!goal) return '';
+    const pct = Math.round(current / goal * 100);
+    const isOk = pct >= 100;
+    const remain = goal - current;
+    const dailyNeeded = remainDays > 0 ? Math.ceil(Math.max(remain, 0) / remainDays) : 0;
+    const color = pct >= 100 ? '#059669' : pct >= 70 ? '#ca8a04' : '#dc2626';
+    const curStr = unit === 'won' ? (current/10000).toLocaleString() + '만원' : current.toLocaleString() + '건';
+    const goalStr = unit === 'won' ? (goal/10000).toLocaleString() + '만원' : goal.toLocaleString() + '건';
+    const dailyStr = unit === 'won' ? (dailyNeeded/10000).toLocaleString() + '만원' : dailyNeeded.toLocaleString() + '건';
+
+    return `<div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:end;margin-bottom:4px">
+        <span style="font-size:11px;font-weight:700">${label}</span>
+        <span style="font-size:18px;font-weight:800;color:${color}">${pct}%</span>
+      </div>
+      <div style="background:#f1f5f9;border-radius:8px;height:24px;overflow:hidden;position:relative">
+        <div style="height:100%;width:${Math.min(pct,100)}%;background:${color};border-radius:8px;transition:width 0.5s"></div>
+        <span style="position:absolute;left:8px;top:4px;font-size:10px;font-weight:600;color:${pct>=40?'white':'#374151'}">${curStr} / ${goalStr}</span>
+      </div>
+      <div style="font-size:10px;color:var(--text-light);margin-top:3px;text-align:right">
+        ${isOk ? '✅ 목표 달성!' : '남은 ' + remainDays + '일간 일평균 ' + dailyStr + ' 필요'}
+      </div>
+    </div>`;
+  };
+
+  container.innerHTML = makeGauge('매출 목표', currentRevenue, goalRevenue, 'won')
+    + makeGauge('건수 목표', currentCount, goalCount, 'count');
+}
+
+// ─── 기사 매출 의존도 ───
+function renderDriverConcentration(data) {
+  const container = document.getElementById('statsDriverConc');
+  if(!container) return;
+
+  const drivers = {};
+  let totalRevenue = 0;
+  data.forEach(d => {
+    const name = (d.driverName || '').trim();
+    if(!name) return;
+    const rev = parseInt(d.total) || 0;
+    drivers[name] = (drivers[name] || 0) + rev;
+    totalRevenue += rev;
+  });
+
+  if(totalRevenue === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">데이터 없음</div>';
+    return;
+  }
+
+  const sorted = Object.entries(drivers).sort((a,b) => b[1] - a[1]);
+
+  // 상위 기사 집중도 경고
+  let hhi = 0;
+  sorted.forEach(([,rev]) => { const s = rev/totalRevenue*100; hhi += s*s; });
+  const hhiLevel = hhi >= 2500 ? { text:'고의존', color:'#dc2626', desc:'특정 기사 이탈 시 사업 타격 큼' }
+    : hhi >= 1500 ? { text:'중의존', color:'#ca8a04', desc:'기사 다각화 검토 필요' }
+    : { text:'분산', color:'#059669', desc:'기사 구성이 안정적입니다' };
+
+  let html = `<div style="text-align:center;margin-bottom:10px">
+    <div style="font-size:11px;color:var(--text-light)">기사 의존도 지수</div>
+    <div style="font-size:24px;font-weight:800;color:${hhiLevel.color}">${Math.round(hhi).toLocaleString()}</div>
+    <div style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;color:white;background:${hhiLevel.color}">${hhiLevel.text}</div>
+    <div style="font-size:10px;color:var(--text-light);margin-top:3px">${hhiLevel.desc}</div>
+  </div>`;
+
+  // 상위 5명 바
+  sorted.slice(0, 5).forEach(([name, rev]) => {
+    const pct = (rev / totalRevenue * 100).toFixed(1);
+    const barColor = parseFloat(pct) >= 40 ? '#dc2626' : parseFloat(pct) >= 25 ? '#ca8a04' : '#059669';
+    html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+      <span style="font-size:11px;font-weight:600;width:50px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
+      <div style="flex:1;height:16px;background:#f1f5f9;border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${barColor};border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:4px">
+          ${parseFloat(pct) >= 12 ? `<span style="font-size:9px;color:white;font-weight:700">${pct}%</span>` : ''}
+        </div>
+      </div>
+      ${parseFloat(pct) < 12 ? `<span style="font-size:9px;color:var(--text-light)">${pct}%</span>` : ''}
+    </div>`;
+  });
+
+  if(sorted.length > 5) {
+    const othersRev = sorted.slice(5).reduce((s,[,v])=>s+v,0);
+    const othersPct = (othersRev/totalRevenue*100).toFixed(1);
+    html += `<div style="font-size:10px;color:var(--text-light);text-align:right;margin-top:4px">외 ${sorted.length-5}명: ${othersPct}%</div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+// ─── 신규 vs 재방문 배송처 ───
+function renderNewRepeat(data) {
+  const container = document.getElementById('statsNewRepeat');
+  if(!container) return;
+
+  const monthInput = document.getElementById('statsMonth').value;
+  if(!monthInput) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-light);font-size:11px;padding:20px">월을 선택하면 해당 월의<br>신규/재방문 배송처를 분석합니다</div>';
+    return;
+  }
+
+  // 이전 전체 데이터에서 배송처 수집 (선택 월 이전)
+  const allData = getStatsData();
+  const prevDestinations = new Set();
+  const curDestinations = {};
+
+  allData.forEach(d => {
+    const dest = (d.delivery || '').trim();
+    if(!dest) return;
+    const date = (d.date || '');
+    if(date < monthInput) {
+      prevDestinations.add(dest);
+    } else if(date.startsWith(monthInput)) {
+      if(!curDestinations[dest]) curDestinations[dest] = { count: 0, revenue: 0 };
+      curDestinations[dest].count++;
+      curDestinations[dest].revenue += parseInt(d.total) || 0;
+    }
+  });
+
+  const newDests = [];
+  const repeatDests = [];
+  Object.entries(curDestinations).forEach(([dest, info]) => {
+    if(prevDestinations.has(dest)) repeatDests.push({ dest, ...info });
+    else newDests.push({ dest, ...info });
+  });
+
+  const totalDests = newDests.length + repeatDests.length;
+  const newPct = totalDests > 0 ? (newDests.length / totalDests * 100).toFixed(1) : '0.0';
+  const repeatPct = totalDests > 0 ? (repeatDests.length / totalDests * 100).toFixed(1) : '0.0';
+  const newRevenue = newDests.reduce((s,d) => s + d.revenue, 0);
+  const repeatRevenue = repeatDests.reduce((s,d) => s + d.revenue, 0);
+
+  let html = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+    <div style="text-align:center;padding:10px;background:#ecfeff;border-radius:8px;border:1px solid #a5f3fc">
+      <div style="font-size:10px;color:#0e7490">🆕 신규 배송처</div>
+      <div style="font-size:22px;font-weight:800;color:#0891b2">${newDests.length}곳</div>
+      <div style="font-size:10px;color:#0e7490">${newPct}% · ${(newRevenue/10000).toLocaleString()}만원</div>
+    </div>
+    <div style="text-align:center;padding:10px;background:#f0fdf4;border-radius:8px;border:1px solid #bbf7d0">
+      <div style="font-size:10px;color:#166534">🔄 재방문 배송처</div>
+      <div style="font-size:22px;font-weight:800;color:#059669">${repeatDests.length}곳</div>
+      <div style="font-size:10px;color:#166534">${repeatPct}% · ${(repeatRevenue/10000).toLocaleString()}만원</div>
+    </div>
+  </div>`;
+
+  // 비율 바
+  html += `<div style="height:20px;border-radius:6px;overflow:hidden;display:flex;margin-bottom:8px">
+    <div style="width:${newPct}%;background:#0891b2;display:flex;align-items:center;justify-content:center">
+      ${parseFloat(newPct) >= 15 ? `<span style="font-size:9px;color:white;font-weight:700">신규 ${newPct}%</span>` : ''}
+    </div>
+    <div style="width:${repeatPct}%;background:#059669;display:flex;align-items:center;justify-content:center">
+      ${parseFloat(repeatPct) >= 15 ? `<span style="font-size:9px;color:white;font-weight:700">재방문 ${repeatPct}%</span>` : ''}
+    </div>
+  </div>`;
+
+  // 신규 배송처 목록 (최대 5곳)
+  if(newDests.length > 0) {
+    html += `<div style="font-size:10px;font-weight:700;color:#0891b2;margin-bottom:4px">신규 배송처 TOP ${Math.min(newDests.length, 5)}</div>`;
+    newDests.sort((a,b) => b.revenue - a.revenue).slice(0, 5).forEach(d => {
+      html += `<div style="font-size:10px;color:var(--text);padding:2px 0;display:flex;justify-content:space-between">
+        <span>📍 ${d.dest} (${d.count}건)</span>
+        <span style="color:var(--accent);font-weight:600">${(d.revenue/10000).toLocaleString()}만</span>
+      </div>`;
+    });
+  }
+
+  container.innerHTML = html;
+}
+
 function renderStatsDetail(grouped) {
   const body = document.getElementById('statsDetailBody');
   if(grouped.length === 0) {
@@ -13986,6 +14331,8 @@ function toggleDriverRecommend() {
 function initStats() {
   const now = new Date();
   document.getElementById('statsMonth').value = now.getFullYear()+'-'+String(now.getMonth()+1).padStart(2,'0');
+  loadStatsBep();
+  loadStatsGoal();
   loadStats();
 }
 
