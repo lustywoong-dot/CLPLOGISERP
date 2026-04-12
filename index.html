@@ -388,6 +388,19 @@ body.hide-cost-col .col-sensitive { display: none !important; }
 }
 .btn-saving { animation: btnSaving 0.7s ease infinite; }
 
+/* 통계 대시보드 스타일 */
+.stats-kpi { border-left: 4px solid transparent; transition: transform 0.15s, box-shadow 0.15s; }
+.stats-kpi:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+.stats-kpi-count { border-left-color: #2563eb; background: linear-gradient(135deg, #eff6ff 0%, #fff 60%); }
+.stats-kpi-revenue { border-left-color: #ea580c; background: linear-gradient(135deg, #fff7ed 0%, #fff 60%); }
+.stats-kpi-cost { border-left-color: #6b7280; background: linear-gradient(135deg, #f9fafb 0%, #fff 60%); }
+.stats-kpi-margin { border-left-color: #059669; background: linear-gradient(135deg, #ecfdf5 0%, #fff 60%); }
+.stats-kpi-perrev { border-left-color: #7c3aed; background: linear-gradient(135deg, #f5f3ff 0%, #fff 60%); }
+.stats-kpi-permar { border-left-color: #0891b2; background: linear-gradient(135deg, #ecfeff 0%, #fff 60%); }
+.stats-chart-card { border-top: 3px solid var(--primary); }
+.stats-chart-title { font-weight: 700; font-size: 13px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; gap: 6px; }
+.stats-section-label { font-size: 10px; font-weight: 600; color: var(--text-light); text-transform: uppercase; letter-spacing: 1px; margin: 16px 0 6px 2px; }
+
 /* Checkbox style */
 .checkbox-group {
   display: flex;
@@ -1406,9 +1419,10 @@ body.hide-cost-col .col-sensitive { display: none !important; }
   <!-- ============================================ -->
   <div id="panel-stats" class="panel">
     <!-- 기간 선택 바 -->
-    <div class="card" style="padding:12px 16px">
+    <div class="card" style="padding:14px 18px;border-bottom:3px solid var(--primary)">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-        <div style="font-weight:700;font-size:14px;color:var(--primary)">📈 배차 통계</div>
+        <div style="font-weight:800;font-size:16px;color:var(--primary)">📈 배차 통계 대시보드</div>
+        <span style="font-size:10px;color:var(--text-light);background:#f1f5f9;padding:2px 8px;border-radius:10px">관리자 전용</span>
         <div style="display:flex;gap:4px;background:#f1f5f9;border-radius:6px;padding:2px">
           <button class="btn btn-sm" id="statsBtnDaily" onclick="setStatsPeriod('daily')" style="padding:4px 12px;font-size:11px;background:var(--primary);color:white;border-radius:4px">일별</button>
           <button class="btn btn-sm btn-outline" id="statsBtnMonthly" onclick="setStatsPeriod('monthly')" style="padding:4px 12px;font-size:11px;border:none;border-radius:4px">월별</button>
@@ -1430,9 +1444,10 @@ body.hide-cost-col .col-sensitive { display: none !important; }
     </div>
 
     <!-- 핵심 지표 카드 6개 -->
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px">
+    <div class="stats-section-label">핵심 경영 지표</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
       <!-- 배차건수 -->
-      <div class="card" style="padding:14px 16px">
+      <div class="card stats-kpi stats-kpi-count" style="padding:14px 16px">
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div style="font-size:11px;color:var(--text-light);font-weight:600">📦 총 배차건수</div>
           <div id="statsCountDelta" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px"></div>
@@ -1445,7 +1460,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <div id="statsCountPrev" style="font-size:10px;color:var(--text-light);margin-top:4px"></div>
       </div>
       <!-- 매출 -->
-      <div class="card" style="padding:14px 16px">
+      <div class="card stats-kpi stats-kpi-revenue" style="padding:14px 16px">
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div style="font-size:11px;color:var(--text-light);font-weight:600">💰 총 매출</div>
           <div id="statsRevenueDelta" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px"></div>
@@ -1454,7 +1469,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <div id="statsRevenuePrev" style="font-size:10px;color:var(--text-light);margin-top:4px"></div>
       </div>
       <!-- 매입 -->
-      <div class="card" style="padding:14px 16px">
+      <div class="card stats-kpi stats-kpi-cost" style="padding:14px 16px">
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div style="font-size:11px;color:var(--text-light);font-weight:600">🚛 총 매입 (기사지급)</div>
           <div id="statsCostDelta" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px"></div>
@@ -1463,7 +1478,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <div id="statsCostPrev" style="font-size:10px;color:var(--text-light);margin-top:4px"></div>
       </div>
       <!-- 마진 -->
-      <div class="card" style="padding:14px 16px">
+      <div class="card stats-kpi stats-kpi-margin" style="padding:14px 16px">
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div style="font-size:11px;color:var(--text-light);font-weight:600">📈 총 마진</div>
           <div id="statsMarginDelta" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px"></div>
@@ -1473,7 +1488,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <div id="statsMarginPrev" style="font-size:10px;color:var(--text-light);margin-top:2px"></div>
       </div>
       <!-- 건당 매출 -->
-      <div class="card" style="padding:14px 16px">
+      <div class="card stats-kpi stats-kpi-perrev" style="padding:14px 16px">
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div style="font-size:11px;color:var(--text-light);font-weight:600">🎯 건당 매출</div>
           <div id="statsPerRevDelta" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px"></div>
@@ -1482,7 +1497,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <div id="statsPerRevPrev" style="font-size:10px;color:var(--text-light);margin-top:4px"></div>
       </div>
       <!-- 건당 마진 -->
-      <div class="card" style="padding:14px 16px">
+      <div class="card stats-kpi stats-kpi-permar" style="padding:14px 16px">
         <div style="display:flex;align-items:center;justify-content:space-between">
           <div style="font-size:11px;color:var(--text-light);font-weight:600">💎 건당 마진</div>
           <div id="statsPerMarDelta" style="font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px"></div>
@@ -1493,37 +1508,40 @@ body.hide-cost-col .col-sensitive { display: none !important; }
     </div>
 
     <!-- 차트 영역: 매출/매입/마진 바차트 + 물동량 라인 -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
-      <div class="card" style="padding:14px">
-        <div style="font-weight:700;font-size:12px;margin-bottom:10px">💰 매출 / 매입 / 마진 추이</div>
+    <div class="stats-section-label">추이 분석</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#ea580c">
+        <div class="stats-chart-title">💰 매출 / 매입 / 마진 추이</div>
         <div style="position:relative;height:280px"><canvas id="chartRevenue"></canvas></div>
       </div>
-      <div class="card" style="padding:14px">
-        <div style="font-weight:700;font-size:12px;margin-bottom:10px">📦 물동량 추이 (건수 / PLT)</div>
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#2563eb">
+        <div class="stats-chart-title">📦 물동량 추이 (건수 / PLT)</div>
         <div style="position:relative;height:280px"><canvas id="chartVolume"></canvas></div>
       </div>
     </div>
 
     <!-- 차트 영역: 거래처별 매출 비교 + 배차유형별 비중 -->
-    <div style="display:grid;grid-template-columns:3fr 2fr;gap:10px;margin-top:10px">
-      <div class="card" style="padding:14px">
-        <div style="font-weight:700;font-size:12px;margin-bottom:10px">🏢 거래처별 매출 비교</div>
+    <div class="stats-section-label">거래처 / 유형 분석</div>
+    <div style="display:grid;grid-template-columns:3fr 2fr;gap:10px">
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#7c3aed">
+        <div class="stats-chart-title">🏢 거래처별 매출 비교</div>
         <div style="position:relative;height:280px"><canvas id="chartClientRevenue"></canvas></div>
       </div>
-      <div class="card" style="padding:14px">
-        <div style="font-weight:700;font-size:12px;margin-bottom:10px">📋 배차유형별 비중</div>
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#be185d">
+        <div class="stats-chart-title">📋 배차유형별 비중</div>
         <div style="position:relative;height:280px"><canvas id="chartDispatchType"></canvas></div>
       </div>
     </div>
 
     <!-- 차트 영역: 권역별 파이 + 기사별 순위 -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
-      <div class="card" style="padding:14px">
-        <div style="font-weight:700;font-size:12px;margin-bottom:10px">🗺 권역별 배차 비중</div>
+    <div class="stats-section-label">지역 / 기사 분석</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#059669">
+        <div class="stats-chart-title">🗺 권역별 배차 비중</div>
         <div style="position:relative;height:300px"><canvas id="chartRegion"></canvas></div>
       </div>
-      <div class="card" style="padding:14px">
-        <div style="font-weight:700;font-size:12px;margin-bottom:10px">🏆 기사별 실적 순위</div>
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#ca8a04">
+        <div class="stats-chart-title">🏆 기사별 실적 순위</div>
         <div class="table-wrap" style="max-height:300px;overflow-y:auto">
           <table>
             <thead>
@@ -1543,9 +1561,10 @@ body.hide-cost-col .col-sensitive { display: none !important; }
     </div>
 
     <!-- 상세 테이블 -->
-    <div class="card" style="margin-top:10px;padding:14px">
+    <div class="stats-section-label">상세 데이터</div>
+    <div class="card stats-chart-card" style="padding:16px;border-top-color:#6b7280">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-        <div style="font-weight:700;font-size:12px">📋 기간별 상세 내역</div>
+        <div class="stats-chart-title" style="margin-bottom:0;border-bottom:none;flex:1">📋 기간별 상세 내역</div>
         <button class="btn btn-sm btn-outline" onclick="exportStatsExcel()" style="margin-left:auto;padding:3px 8px;font-size:11px">📥 Excel 다운로드</button>
       </div>
       <div class="table-wrap" style="max-height:350px;overflow-y:auto">
