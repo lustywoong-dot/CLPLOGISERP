@@ -1618,6 +1618,47 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       </div>
     </div>
 
+    <!-- 기사 심층 분석 -->
+    <div class="stats-section-label">기사 심층 분석</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#059669">
+        <div class="stats-chart-title">🚛 기사별 효율성 분석</div>
+        <div class="table-wrap" style="max-height:320px;overflow-y:auto">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:30px">순위</th>
+                <th>기사명</th>
+                <th style="text-align:center">건수</th>
+                <th style="text-align:right">건당 매출</th>
+                <th style="text-align:right">건당 마진</th>
+                <th style="text-align:center">마진율</th>
+                <th style="text-align:center">주요 지역</th>
+              </tr>
+            </thead>
+            <tbody id="statsDriverEffBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#2563eb">
+        <div class="stats-chart-title">📊 기사 건당 마진 분포</div>
+        <div style="position:relative;height:320px"><canvas id="chartDriverMargin"></canvas></div>
+      </div>
+    </div>
+
+    <!-- 운영 분석 -->
+    <div class="stats-section-label">운영 패턴 분석</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#7c3aed">
+        <div class="stats-chart-title">📅 요일별 배차 패턴</div>
+        <div style="position:relative;height:280px"><canvas id="chartDayOfWeek"></canvas></div>
+      </div>
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#ea580c">
+        <div class="stats-chart-title">🚚 차량 톤수별 배차 비중</div>
+        <div style="position:relative;height:280px"><canvas id="chartVehicleTon"></canvas></div>
+      </div>
+    </div>
+
     <!-- 상세 테이블 -->
     <div class="stats-section-label">상세 데이터</div>
     <div class="card stats-chart-card" style="padding:16px;border-top-color:#6b7280">
@@ -13071,6 +13112,10 @@ function loadStats() {
   renderRegionProfitability(filtered);
   renderGrowthRateChart(allData);
   renderConcentration(filtered);
+  renderDriverEfficiency(filtered);
+  renderDriverMarginChart(filtered);
+  renderDayOfWeekChart(filtered);
+  renderVehicleTonChart(filtered);
   renderStatsDetail(grouped);
 }
 
@@ -13557,6 +13602,194 @@ function renderConcentration(data) {
   }
 
   container.innerHTML = html;
+}
+
+// ─── 기사별 효율성 분석 테이블 ───
+function renderDriverEfficiency(data) {
+  const drivers = {};
+  data.forEach(d => {
+    const name = (d.driverName || '').trim();
+    if(!name) return;
+    if(!drivers[name]) drivers[name] = { count:0, revenue:0, cost:0, margin:0, regions:{} };
+    drivers[name].count++;
+    drivers[name].revenue += parseInt(d.total) || 0;
+    drivers[name].cost += parseInt(d.driverPay) || 0;
+    drivers[name].margin += parseInt(d.margin) || 0;
+    const region = d.delivery || '';
+    if(region) drivers[name].regions[region] = (drivers[name].regions[region] || 0) + 1;
+  });
+
+  // 건당 마진 내림차순 (2건 이상만)
+  const sorted = Object.entries(drivers)
+    .filter(([,d]) => d.count >= 2)
+    .map(([name, d]) => ({
+      name, ...d,
+      perRev: Math.round(d.revenue / d.count),
+      perMar: Math.round(d.margin / d.count),
+      rate: d.revenue > 0 ? (d.margin / d.revenue * 100) : 0,
+      topRegion: Object.entries(d.regions).sort((a,b) => b[1]-a[1])[0]?.[0] || '-'
+    }))
+    .sort((a,b) => b.perMar - a.perMar);
+
+  const body = document.getElementById('statsDriverEffBody');
+  if(!body) return;
+
+  body.innerHTML = sorted.length === 0
+    ? '<tr><td colspan="7" style="text-align:center;color:var(--text-light);padding:20px">데이터 없음</td></tr>'
+    : sorted.map((d, i) => {
+    const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : (i+1);
+    const rateColor = d.rate >= 30 ? '#059669' : d.rate >= 20 ? '#ca8a04' : '#dc2626';
+    return `<tr>
+      <td style="text-align:center;font-weight:700">${medal}</td>
+      <td style="font-weight:600">${d.name}</td>
+      <td style="text-align:center">${d.count}건</td>
+      <td style="text-align:right">${d.perRev.toLocaleString()}원</td>
+      <td style="text-align:right;color:var(--success);font-weight:700">${d.perMar.toLocaleString()}원</td>
+      <td style="text-align:center;font-weight:700;color:${rateColor}">${d.rate.toFixed(1)}%</td>
+      <td style="text-align:center;font-size:10px;color:var(--text-light)">${d.topRegion}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── 기사 건당 마진 분포 차트 ───
+function renderDriverMarginChart(data) {
+  const ctx = document.getElementById('chartDriverMargin');
+  if(statsCharts.driverMargin) statsCharts.driverMargin.destroy();
+
+  const drivers = {};
+  data.forEach(d => {
+    const name = (d.driverName || '').trim();
+    if(!name) return;
+    if(!drivers[name]) drivers[name] = { count:0, margin:0 };
+    drivers[name].count++;
+    drivers[name].margin += parseInt(d.margin) || 0;
+  });
+
+  const sorted = Object.entries(drivers)
+    .filter(([,d]) => d.count >= 2)
+    .map(([name, d]) => ({ name, perMar: Math.round(d.margin / d.count), count: d.count }))
+    .sort((a,b) => b.perMar - a.perMar)
+    .slice(0, 15);
+
+  statsCharts.driverMargin = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(d => d.name),
+      datasets: [{
+        label: '건당 마진',
+        data: sorted.map(d => d.perMar),
+        backgroundColor: sorted.map(d => d.perMar >= 100000 ? 'rgba(5,150,105,0.7)' : d.perMar >= 50000 ? 'rgba(202,138,4,0.7)' : 'rgba(220,38,38,0.7)'),
+        borderRadius: 4
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: ctx => '건당 마진: ' + (ctx.raw||0).toLocaleString() + '원 (' + sorted[ctx.dataIndex].count + '건)' } }
+      },
+      scales: {
+        x: { ticks: { font: { size: 10 }, callback: v => (v/10000) + '만' } },
+        y: { ticks: { font: { size: 11 } } }
+      }
+    }
+  });
+}
+
+// ─── 요일별 배차 패턴 차트 ───
+function renderDayOfWeekChart(data) {
+  const ctx = document.getElementById('chartDayOfWeek');
+  if(statsCharts.dayOfWeek) statsCharts.dayOfWeek.destroy();
+
+  const days = ['일', '월', '화', '수', '목', '금', '토'];
+  const dayCounts = [0,0,0,0,0,0,0];
+  const dayRevenue = [0,0,0,0,0,0,0];
+
+  data.forEach(d => {
+    const date = sanitizeDate(d.date);
+    if(!date) return;
+    const dt = new Date(date + 'T00:00:00');
+    if(isNaN(dt)) return;
+    const dow = dt.getDay();
+    dayCounts[dow]++;
+    dayRevenue[dow] += parseInt(d.total) || 0;
+  });
+
+  statsCharts.dayOfWeek = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: days,
+      datasets: [
+        { label: '건수', data: dayCounts, backgroundColor: dayCounts.map((v,i) => i===0||i===6 ? 'rgba(220,38,38,0.6)' : 'rgba(37,99,235,0.7)'), borderRadius: 4, yAxisID: 'y' },
+        { label: '매출', data: dayRevenue, type: 'line', borderColor: '#ea580c', backgroundColor: 'transparent', tension: 0.3, pointRadius: 4, pointBackgroundColor: '#ea580c', yAxisID: 'y1' }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 11 }, usePointStyle: true, padding: 12 } },
+        tooltip: { callbacks: { label: ctx => ctx.datasetIndex === 0 ? ctx.raw + '건' : (ctx.raw/10000).toLocaleString() + '만원' } }
+      },
+      scales: {
+        y: { position: 'left', title: { display: true, text: '건수', font: { size: 10 } }, ticks: { font: { size: 10 } } },
+        y1: { position: 'right', title: { display: true, text: '매출', font: { size: 10 } }, ticks: { font: { size: 10 }, callback: v => (v/10000) + '만' }, grid: { drawOnChartArea: false } },
+        x: { ticks: { font: { size: 12, weight: 'bold' } } }
+      }
+    }
+  });
+}
+
+// ─── 차량 톤수별 배차 비중 차트 ───
+function renderVehicleTonChart(data) {
+  const ctx = document.getElementById('chartVehicleTon');
+  if(statsCharts.vehicleTon) statsCharts.vehicleTon.destroy();
+
+  const tonMap = {};
+  data.forEach(d => {
+    const vehicle = d.vehicle || '미지정';
+    if(!tonMap[vehicle]) tonMap[vehicle] = { count: 0, revenue: 0 };
+    tonMap[vehicle].count++;
+    tonMap[vehicle].revenue += parseInt(d.total) || 0;
+  });
+
+  const tonOrder = ['다마스','라보','1톤','2.5톤','3.5톤','5톤','5톤축','11톤','18톤'];
+  const sorted = Object.entries(tonMap).sort((a,b) => {
+    const ia = tonOrder.indexOf(a[0]), ib = tonOrder.indexOf(b[0]);
+    return (ia===-1?99:ia) - (ib===-1?99:ib);
+  });
+
+  const tonColors = {
+    '다마스':'#94a3b8','라보':'#64748b','1톤':'#2563eb','2.5톤':'#3b82f6',
+    '3.5톤':'#7c3aed','5톤':'#059669','5톤축':'#0d9488','11톤':'#ea580c','18톤':'#dc2626'
+  };
+
+  statsCharts.vehicleTon = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: sorted.map(([k]) => k),
+      datasets: [{
+        data: sorted.map(([,v]) => v.count),
+        backgroundColor: sorted.map(([k]) => tonColors[k] || '#9ca3af'),
+        borderWidth: 2, borderColor: '#fff'
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 11 }, padding: 8, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const total = ctx.dataset.data.reduce((s,v)=>s+v,0);
+              const td = sorted[ctx.dataIndex][1];
+              return ctx.label + ': ' + ctx.raw + '건 (' + (ctx.raw/total*100).toFixed(1) + '%) / ' + (td.revenue/10000).toLocaleString() + '만원';
+            }
+          }
+        }
+      }
+    }
+  });
 }
 
 function renderStatsDetail(grouped) {
