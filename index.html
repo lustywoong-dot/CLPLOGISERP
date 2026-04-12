@@ -7372,14 +7372,57 @@ function unlockSMS() {
   generateSMS();
 }
 
-// 핵심 필드(거래처/하차지/중량/파레트 등) 변경 시 수동 편집 SMS 자동 재생성
+// 핵심 필드 변경 시: 수동 편집 중이면 해당 줄만 교체, 아니면 전체 재생성
 function onCoreFieldChange() {
   if(smsManualMode) {
-    forceRegenerateSMS();
-    showToast('🔄 핵심 정보 변경 → 기사 전송 문자 자동 재생성');
+    updateSMSFieldInPlace();
   } else {
     generateSMS();
   }
+}
+
+// 수동 편집된 SMS에서 핵심 정보 줄만 교체 (나머지 수작업 문구 보존)
+function updateSMSFieldInPlace() {
+  let sms = document.getElementById('smsContent').value;
+  if(!sms) return;
+
+  const isLiquor = dispatchMode === 'liquor';
+  const plt = document.getElementById('palletCount').value || '0';
+  const lqWt = document.getElementById('lqWeight').value || '';
+  const weight = document.getElementById('cargoWeight').value || '';
+  const activeWeight = isLiquor ? lqWt : weight;
+
+  let qtyInfo = '';
+  if(plt && plt !== '0') qtyInfo += plt + 'PLT';
+  if(activeWeight) qtyInfo += (qtyInfo ? ' / ' : '') + activeWeight + '톤';
+  if(!qtyInfo) qtyInfo = '-';
+
+  const clientName = document.getElementById('clientName').value || '-';
+  const code = document.getElementById('dispatchCode').value.trim().replace(/[_\-]/g, '') || '-';
+  const region = document.getElementById('deliveryRegion').value || '-';
+  const detailAddr = document.getElementById('deliveryDetailAddr').value || '';
+  const contact = document.getElementById('deliveryContact').value || '';
+  const phone = document.getElementById('deliveryPhone').value || '';
+  let contactInfo = [contact, phone].filter(Boolean).join(' ') || '-';
+
+  // 줄 단위 교체 (패턴 매칭되는 줄만, 없으면 건너뜀)
+  sms = sms.replace(/^(3\. 수량\/중량:).*$/m, '$1 ' + qtyInfo);
+  sms = sms.replace(/^(■ 거래처:).*$/m, '$1 ' + clientName);
+  sms = sms.replace(/^(2\. 키오스크코드:).*$/m, '$1 ' + code);
+
+  // 하차지/1착 줄 교체 (단일 배송 or 다착)
+  if(sms.match(/^하차지: /m)) {
+    sms = sms.replace(/^(하차지:) .+$/m, '$1 ' + clientName + ' (' + region + ')');
+  }
+  if(sms.match(/^\[1착\] /m)) {
+    sms = sms.replace(/^(\[1착\]) .+$/m, '$1 ' + clientName + ' (' + region + ')');
+  }
+
+  // 주소/담당자 줄 교체 (첫 번째 매칭만)
+  if(detailAddr) sms = sms.replace(/^(  주소:) .+$/m, '$1 ' + detailAddr);
+  if(contact || phone) sms = sms.replace(/^(  담당자:) .+$/m, '$1 ' + contactInfo);
+
+  document.getElementById('smsContent').value = sms;
 }
 
 function saveSMSContent() {
