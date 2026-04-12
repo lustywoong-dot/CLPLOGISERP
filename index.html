@@ -4490,12 +4490,12 @@ function renderAttendanceTable() {
       <div style="width:60px;font-weight:700;font-size:13px;color:#1f2937">${emp.name}</div>
       <!-- 출근 -->
       <div style="display:flex;align-items:center;gap:4px">
-        <input type="time" value="${rec.in||''}" class="att-in" onchange="autoSaveAtt(this)" style="width:80px;padding:4px 6px;font-size:12px;border:1px solid ${hasIn?'#86efac':'#e5e7eb'};border-radius:4px;background:${hasIn?'#f0fdf4':'white'}">
-        <button onclick="stampAttTime(this,'in')" title="현재 시각 출근 기록" style="padding:3px 8px;font-size:10px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;white-space:nowrap">출근</button>
+        <input type="time" value="${rec.in||''}" class="att-in" onchange="autoSaveAtt(this)" oninput="autoSaveAtt(this)" style="width:100px;padding:5px 8px;font-size:13px;font-weight:600;border:1px solid ${hasIn?'#86efac':'#e5e7eb'};border-radius:4px;background:${hasIn?'#f0fdf4':'white'};color:${hasIn?'#166534':'#374151'}">
+        <button onclick="stampAttTime(this,'in')" title="현재 시각 출근 기록" style="padding:4px 10px;font-size:10px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;white-space:nowrap">출근</button>
       </div>
       <!-- 퇴근 -->
       <div style="display:flex;align-items:center;gap:4px">
-        <input type="time" value="${rec.out||''}" class="att-out" onchange="autoSaveAtt(this)" style="width:80px;padding:4px 6px;font-size:12px;border:1px solid ${hasOut?'#93c5fd':'#e5e7eb'};border-radius:4px;background:${hasOut?'#eff6ff':'white'}">
+        <input type="time" value="${rec.out||''}" class="att-out" onchange="autoSaveAtt(this)" oninput="autoSaveAtt(this)" style="width:100px;padding:5px 8px;font-size:13px;font-weight:600;border:1px solid ${hasOut?'#93c5fd':'#e5e7eb'};border-radius:4px;background:${hasOut?'#eff6ff':'white'};color:${hasOut?'#1e40af':'#374151'}">
         <button onclick="stampAttTime(this,'out')" title="현재 시각 퇴근 기록" style="padding:3px 8px;font-size:10px;background:#2563eb;color:white;border:none;border-radius:4px;cursor:pointer;white-space:nowrap">퇴근</button>
       </div>
       <!-- 상태 뱃지 -->
