@@ -862,6 +862,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
               <option value="반품">반품</option>
               <option value="직송">직송</option>
               <option value="M짐">M짐</option>
+              <option value="주류" id="optDispatchLiquor" style="display:none">주류</option>
             </select>
             <label style="display:flex;align-items:center;gap:2px;font-size:9px;white-space:nowrap;cursor:pointer;color:#7c3aed" title="혼적(M짐) 요금 적용">
               <input type="checkbox" id="mixedCargoCheck" onchange="toggleMixedCargo()" style="width:14px;height:14px">혼적
@@ -3180,9 +3181,13 @@ function loadRecord(id) {
   }
   
   selectedRecordId = id;
-  
-  // 배차 유형 설정
-  document.getElementById('dispatchType').value = r.type;
+
+  // 배차 유형 설정 (주류 타입은 드롭다운에 옵션 표시 필요)
+  if(r.type === '주류') {
+    const lqOpt = document.getElementById('optDispatchLiquor');
+    if(lqOpt) lqOpt.style.display = '';
+  }
+  document.getElementById('dispatchType').value = r.type || '편도';
   onTypeChange();
   
   // 기본 필드
@@ -5649,6 +5654,16 @@ function setDispatchMode(mode) {
   updateDispatchCodePlaceholder();
   // 센터-코드 검증 상태 갱신 (락앤락 전환 시 에러 지우기)
   validateLiquorCodeCenter();
+  // 배차유형 연동 (주류↔일반)
+  const typeSelect = document.getElementById('dispatchType');
+  const lqOpt = document.getElementById('optDispatchLiquor');
+  if(mode === 'liquor') {
+    if(lqOpt) lqOpt.style.display = '';
+    typeSelect.value = '주류';
+  } else {
+    if(typeSelect.value === '주류') typeSelect.value = '편도';
+    if(lqOpt) lqOpt.style.display = 'none';
+  }
   // 상차지 연동
   if(mode === 'liquor') {
     onCenterChange();
