@@ -12350,7 +12350,14 @@ async function saveDispatch(closeAfter) {
         document.getElementById('pickupAddr').value = keepPickup;
       } else {
         // F9: 폼 데이터 유지 + 편집 모드 유지 (바로 확인/추가 수정 가능)
+        // 저장 과정에서 값이 유실될 수 있는 필드를 방어적으로 복원
+        const _kLqW = existing.lqWeight || '';
+        const _kCgW = existing.cargoWeight || '';
+        const _kLqC = existing.lqCenter || '';
         showInlineEditInfo(existing);
+        if(_kLqW) document.getElementById('lqWeight').value = _kLqW;
+        if(_kCgW) document.getElementById('cargoWeight').value = _kCgW;
+        if(_kLqC && dispatchMode === 'liquor') document.getElementById('lqCenter').value = _kLqC;
       }
       return;
     }
@@ -12396,9 +12403,17 @@ async function saveDispatch(closeAfter) {
     selectedRecordId = null;
   } else {
     // F9: 폼 데이터 유지 + 저장한 건의 편집 모드로 전환 (바로 확인/수정 가능)
+    // 저장 과정에서 값이 유실될 수 있는 필드를 방어적으로 복원
+    const _keepLqWeight = records[0].lqWeight || '';
+    const _keepCargoWeight = records[0].cargoWeight || '';
+    const _keepLqCenter = records[0].lqCenter || '';
     selectedRecordId = records[0].id;
     document.getElementById('dispatchCode').style.background = '#fef3c7';
     showInlineEditInfo(records[0]);
+    // 방어적 복원 (렌더링 과정에서 유실 방지)
+    if(_keepLqWeight) document.getElementById('lqWeight').value = _keepLqWeight;
+    if(_keepCargoWeight) document.getElementById('cargoWeight').value = _keepCargoWeight;
+    if(_keepLqCenter && dispatchMode === 'liquor') document.getElementById('lqCenter').value = _keepLqCenter;
     showToast('✅ 저장 완료 — 폼에서 바로 확인/수정 가능 (새 배차는 F2)');
   }
 
