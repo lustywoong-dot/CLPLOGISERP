@@ -12288,22 +12288,27 @@ async function saveDispatch(closeAfter) {
       autoExpandDateRange(existing.deliveryDate || existing.date || '');
 
       
-      selectedRecordId = null;
       renderHistory();
       renderInlineHistory();
-      
+
       if(isConnected()) {
         try { await saveToSheet(existing); } catch(e) {}
       }
       showToast('✅ 배차 수정 완료!');
-      
-      const keepDate = document.getElementById('dispatchDate').value;
-      const keepDelivDate = document.getElementById('deliveryDate').value;
-      const keepPickup = document.getElementById('pickupAddr').value;
-      resetForm();
-      document.getElementById('dispatchDate').value = keepDate;
-      document.getElementById('deliveryDate').value = keepDelivDate;
-      document.getElementById('pickupAddr').value = keepPickup;
+
+      if(closeAfter) {
+        selectedRecordId = null;
+        const keepDate = document.getElementById('dispatchDate').value;
+        const keepDelivDate = document.getElementById('deliveryDate').value;
+        const keepPickup = document.getElementById('pickupAddr').value;
+        resetForm();
+        document.getElementById('dispatchDate').value = keepDate;
+        document.getElementById('deliveryDate').value = keepDelivDate;
+        document.getElementById('pickupAddr').value = keepPickup;
+      } else {
+        // F9: 폼 데이터 유지 + 편집 모드 유지 (바로 확인/추가 수정 가능)
+        showInlineEditInfo(existing);
+      }
       return;
     }
   }
@@ -12336,16 +12341,23 @@ async function saveDispatch(closeAfter) {
   renderHistory();
   renderInlineHistory();
 
-  // ★ 폼 초기화 + 패널 닫기를 await 전에 실행
-  // → await 대기 중 사용자가 다음 배차 입력해도 충돌 없음
-  const keepDate      = document.getElementById('dispatchDate').value;
-  const keepDelivDate = document.getElementById('deliveryDate').value;
-  const keepPickup    = document.getElementById('pickupAddr').value;
-
-  resetForm();
-  document.getElementById('dispatchDate').value = keepDate;
-  document.getElementById('deliveryDate').value = keepDelivDate;
-  document.getElementById('pickupAddr').value   = keepPickup;
+  if(closeAfter) {
+    // F8: 폼 초기화 + 패널 닫기
+    const keepDate      = document.getElementById('dispatchDate').value;
+    const keepDelivDate = document.getElementById('deliveryDate').value;
+    const keepPickup    = document.getElementById('pickupAddr').value;
+    resetForm();
+    document.getElementById('dispatchDate').value = keepDate;
+    document.getElementById('deliveryDate').value = keepDelivDate;
+    document.getElementById('pickupAddr').value   = keepPickup;
+    selectedRecordId = null;
+  } else {
+    // F9: 폼 데이터 유지 + 저장한 건의 편집 모드로 전환 (바로 확인/수정 가능)
+    selectedRecordId = records[0].id;
+    document.getElementById('dispatchCode').style.background = '#fef3c7';
+    showInlineEditInfo(records[0]);
+    showToast('✅ 저장 완료 — 폼에서 바로 확인/수정 가능 (새 배차는 F2)');
+  }
 
   if(closeAfter) {
     const _panel = document.getElementById('inlineDispatchPanel');
