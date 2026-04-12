@@ -2230,56 +2230,62 @@ body.hide-cost-col .col-sensitive { display: none !important; }
   <!-- 출퇴근부 패널 -->
   <div id="panel-attendance" class="panel">
 
-    <!-- 상단: 직원 관리 + 날짜/월 선택 -->
-    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-
-      <!-- 직원 관리 카드 -->
-      <div class="card" style="min-width:220px;flex:0 0 220px">
-        <div class="card-title"><span class="icon">👥</span> 직원 관리</div>
-        <div style="display:flex;gap:4px;margin-bottom:8px">
-          <input type="text" id="attEmpName" placeholder="이름" style="flex:1;padding:4px 6px;font-size:12px;border:1px solid var(--border);border-radius:4px">
-          <button onclick="addAttendanceEmployee()" style="padding:4px 10px;font-size:11px;background:var(--primary);color:white;border:none;border-radius:4px;cursor:pointer;white-space:nowrap">+ 추가</button>
-        </div>
-        <div id="attEmpList" style="max-height:280px;overflow-y:auto"></div>
-      </div>
-
-      <!-- 출퇴근 입력 카드 -->
-      <div class="card" style="flex:1;min-width:300px">
-        <div class="card-title">
-          <span class="icon">⏰</span> 출퇴근 기록
-          <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
-            <input type="date" id="attDate" style="padding:3px 6px;font-size:12px;border:1px solid var(--border);border-radius:4px" onchange="renderAttendanceTable()">
-            <button onclick="setAttToday()" style="padding:3px 8px;font-size:11px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:3px;cursor:pointer">오늘</button>
-          </div>
-        </div>
-
-        <!-- 일별 입력 테이블 -->
-        <div class="table-wrap" style="max-height:320px;overflow-y:auto">
-          <table style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead>
-              <tr style="background:var(--primary);color:white;text-align:center">
-                <th style="padding:6px 8px">이름</th>
-                <th style="padding:6px 8px;width:80px">출근</th>
-                <th style="padding:6px 8px;width:80px">퇴근</th>
-                <th style="padding:6px 8px;width:70px">상태</th>
-                <th style="padding:6px 8px">비고</th>
-                <th style="padding:6px 8px;width:50px">저장</th>
-              </tr>
-            </thead>
-            <tbody id="attDailyBody"></tbody>
-          </table>
+    <!-- 헤더 + 날짜 선택 -->
+    <div class="card" style="padding:14px 18px;border-bottom:3px solid #7c3aed">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="font-weight:800;font-size:16px;color:#7c3aed">⏰ 출퇴근 관리</div>
+        <span style="font-size:10px;color:var(--text-light);background:#f5f3ff;padding:2px 8px;border-radius:10px">관리자 전용</span>
+        <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
+          <input type="date" id="attDate" style="padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;font-weight:600" onchange="renderAttendanceTable()">
+          <button onclick="setAttToday()" style="padding:4px 10px;font-size:11px;background:#7c3aed;color:white;border:none;border-radius:4px;cursor:pointer;font-weight:600">오늘</button>
+          <button onclick="toggleAttEmpPanel()" style="padding:4px 10px;font-size:11px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:4px;cursor:pointer">👥 직원관리</button>
         </div>
       </div>
     </div>
 
-    <!-- 월별 조회 카드 -->
-    <div class="card">
-      <div class="card-title">
-        <span class="icon">📅</span> 월별 출퇴근 현황
-        <div style="margin-left:auto;display:flex;gap:6px;align-items:center">
-          <input type="month" id="attMonth" style="padding:3px 6px;font-size:12px;border:1px solid var(--border);border-radius:4px" onchange="renderAttendanceMonthly()">
-          <button onclick="exportAttendanceExcel()" style="padding:3px 10px;font-size:11px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer">📥 엑셀 저장</button>
+    <!-- 직원 관리 패널 (기본 숨김) -->
+    <div id="attEmpPanel" style="display:none;margin-top:8px">
+      <div class="card" style="padding:12px 16px;border-left:4px solid #7c3aed">
+        <div style="display:flex;gap:4px;margin-bottom:8px;align-items:center">
+          <span style="font-size:12px;font-weight:700;color:#7c3aed">👥 직원 등록</span>
+          <input type="text" id="attEmpName" placeholder="이름 입력" style="flex:1;max-width:150px;padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;margin-left:8px">
+          <button onclick="addAttendanceEmployee()" style="padding:4px 12px;font-size:11px;background:#7c3aed;color:white;border:none;border-radius:4px;cursor:pointer">+ 추가</button>
         </div>
+        <div id="attEmpList" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+    </div>
+
+    <!-- 오늘 요약 카드 -->
+    <div id="attSummaryCards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:10px">
+      <div class="card" style="padding:10px;text-align:center;border-left:4px solid #059669">
+        <div style="font-size:10px;color:var(--text-light)">출근</div>
+        <div id="attSumIn" style="font-size:20px;font-weight:800;color:#059669">0</div>
+      </div>
+      <div class="card" style="padding:10px;text-align:center;border-left:4px solid #dc2626">
+        <div style="font-size:10px;color:var(--text-light)">미출근/결근</div>
+        <div id="attSumAbsent" style="font-size:20px;font-weight:800;color:#dc2626">0</div>
+      </div>
+      <div class="card" style="padding:10px;text-align:center;border-left:4px solid #ca8a04">
+        <div style="font-size:10px;color:var(--text-light)">지각/조퇴</div>
+        <div id="attSumLate" style="font-size:20px;font-weight:800;color:#ca8a04">0</div>
+      </div>
+      <div class="card" style="padding:10px;text-align:center;border-left:4px solid #2563eb">
+        <div style="font-size:10px;color:var(--text-light)">휴가/반차</div>
+        <div id="attSumLeave" style="font-size:20px;font-weight:800;color:#2563eb">0</div>
+      </div>
+    </div>
+
+    <!-- 일별 출퇴근 입력 -->
+    <div class="card" style="margin-top:10px;padding:0;overflow:hidden">
+      <div id="attDailyBody" style="padding:0"></div>
+    </div>
+
+    <!-- 월별 조회 카드 -->
+    <div class="card" style="margin-top:12px">
+      <div style="display:flex;align-items:center;gap:8px;padding:12px 16px;border-bottom:1px solid var(--border)">
+        <span style="font-weight:700;font-size:13px;color:var(--primary)">📅 월별 출퇴근 현황</span>
+        <input type="month" id="attMonth" style="margin-left:auto;padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px" onchange="renderAttendanceMonthly()">
+        <button onclick="exportAttendanceExcel()" style="padding:4px 10px;font-size:11px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer">📥 엑셀</button>
       </div>
       <div class="table-wrap" style="max-height:400px;overflow-y:auto">
         <table style="width:100%;border-collapse:collapse;font-size:11px">
@@ -4354,13 +4360,14 @@ function clearDrvHistorySearch() {
 // ============================================
 // 출퇴근부 (admin 전용)
 // ============================================
-const ATT_STATUS = ['정상','지각','조퇴','결근','휴가','출장'];
+const ATT_STATUS = ['정상','지각','조퇴','결근','휴가','반차','출장'];
 const ATT_STATUS_COLOR = {
   '정상':'background:#dcfce7;color:#166534',
   '지각':'background:#fef3c7;color:#92400e',
   '조퇴':'background:#fef3c7;color:#92400e',
   '결근':'background:#fee2e2;color:#dc2626',
   '휴가':'background:#e0e7ff;color:#3730a3',
+  '반차':'background:#dbeafe;color:#1e40af',
   '출장':'background:#f3e8ff;color:#6b21a8',
 };
 
@@ -4371,6 +4378,11 @@ function getAttendanceData() {
 }
 function saveAttendanceData(data) {
   localStorage.setItem('clp_attendance', JSON.stringify(data));
+}
+
+function toggleAttEmpPanel() {
+  const p = document.getElementById('attEmpPanel');
+  if(p) p.style.display = p.style.display === 'none' ? '' : 'none';
 }
 
 function initAttendance() {
@@ -4388,22 +4400,21 @@ function setAttToday() {
   if(el) { el.value = getTodayStr(); renderAttendanceTable(); }
 }
 
-// 직원 목록 렌더링
+// 직원 목록 (태그형 칩)
 function renderAttendanceEmployees() {
   const data = getAttendanceData();
   const el = document.getElementById('attEmpList');
   if(!el) return;
   if(!data.employees || !data.employees.length) {
-    el.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-light);font-size:12px">직원을 추가해주세요</div>';
+    el.innerHTML = '<span style="font-size:11px;color:var(--text-light)">등록된 직원이 없습니다</span>';
     return;
   }
   el.innerHTML = data.employees.map((emp, i) =>
-    `<div style="display:flex;align-items:center;gap:6px;padding:5px 6px;border-bottom:1px solid var(--border);font-size:12px" data-idx="${i}">
-      <span style="flex:1;font-weight:500">${emp.name}</span>
-      <button class="att-del-btn" data-idx="${i}" style="padding:1px 6px;font-size:10px;background:#fee2e2;color:#dc2626;border:none;border-radius:3px;cursor:pointer">삭제</button>
-    </div>`
+    `<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;background:#f5f3ff;border:1px solid #c4b5fd;border-radius:16px;font-size:11px;font-weight:600;color:#5b21b6">
+      ${emp.name}
+      <span class="att-del-btn" data-idx="${i}" style="cursor:pointer;color:#a78bfa;font-size:13px;line-height:1" title="삭제">&times;</span>
+    </span>`
   ).join('');
-  // 삭제 버튼 이벤트 위임
   el.querySelectorAll('.att-del-btn').forEach(btn => {
     btn.onclick = function() { removeAttendanceEmployee(parseInt(this.dataset.idx)); };
   });
@@ -4446,112 +4457,101 @@ function removeAttendanceEmployee(idx) {
   showToast('🗑 ' + empName + ' 삭제 완료');
 }
 
-// 일별 출퇴근 테이블 렌더링 (data-* 속성으로 안전하게)
+// 일별 출퇴근 카드형 렌더링 (원클릭 + 자동저장)
 function renderAttendanceTable() {
   const dateEl = document.getElementById('attDate');
   const date = dateEl ? dateEl.value : '';
-  const tbody = document.getElementById('attDailyBody');
-  if(!tbody) return;
+  const container = document.getElementById('attDailyBody');
+  if(!container) return;
   const data = getAttendanceData();
+
   if(!data.employees || !data.employees.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-light)">직원을 먼저 추가해주세요</td></tr>';
+    container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-light)">👥 직원관리 버튼을 눌러 직원을 먼저 추가하세요</div>';
+    updateAttSummary(data, date);
     return;
   }
-  if(!date) { tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-light)">날짜를 선택해주세요</td></tr>'; return; }
+  if(!date) {
+    container.innerHTML = '<div style="text-align:center;padding:24px;color:var(--text-light)">날짜를 선택해주세요</div>';
+    return;
+  }
 
   const dayRec = (data.records && data.records[date]) ? data.records[date] : {};
+  const nowTime = String(new Date().getHours()).padStart(2,'0') + ':' + String(new Date().getMinutes()).padStart(2,'0');
 
-  // 테이블 행 생성
-  tbody.innerHTML = '';
-  data.employees.forEach(function(emp, idx) {
+  container.innerHTML = data.employees.map((emp, idx) => {
     const rec = dayRec[emp.name] || {};
-    const tr = document.createElement('tr');
-    tr.style.borderBottom = '1px solid var(--border)';
-    tr.dataset.empName = emp.name;
-    tr.dataset.date = date;
+    const status = rec.status || '정상';
+    const hasIn = !!rec.in;
+    const hasOut = !!rec.out;
+    const statusStyle = ATT_STATUS_COLOR[status] || 'background:#f3f4f6;color:#374151';
 
-    // 이름 셀
-    const tdName = document.createElement('td');
-    tdName.style.cssText = 'padding:5px 8px;font-weight:600;font-size:12px';
-    tdName.textContent = emp.name;
-    tr.appendChild(tdName);
+    return `<div data-emp="${emp.name}" data-date="${date}" style="display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid #f1f5f9;${idx%2===0?'background:#fafbfc':''}">
+      <!-- 이름 -->
+      <div style="width:60px;font-weight:700;font-size:13px;color:#1f2937">${emp.name}</div>
+      <!-- 출근 -->
+      <div style="display:flex;align-items:center;gap:4px">
+        <input type="time" value="${rec.in||''}" class="att-in" onchange="autoSaveAtt(this)" style="width:80px;padding:4px 6px;font-size:12px;border:1px solid ${hasIn?'#86efac':'#e5e7eb'};border-radius:4px;background:${hasIn?'#f0fdf4':'white'}">
+        <button onclick="stampAttTime(this,'in')" title="현재 시각 출근 기록" style="padding:3px 8px;font-size:10px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer;white-space:nowrap">출근</button>
+      </div>
+      <!-- 퇴근 -->
+      <div style="display:flex;align-items:center;gap:4px">
+        <input type="time" value="${rec.out||''}" class="att-out" onchange="autoSaveAtt(this)" style="width:80px;padding:4px 6px;font-size:12px;border:1px solid ${hasOut?'#93c5fd':'#e5e7eb'};border-radius:4px;background:${hasOut?'#eff6ff':'white'}">
+        <button onclick="stampAttTime(this,'out')" title="현재 시각 퇴근 기록" style="padding:3px 8px;font-size:10px;background:#2563eb;color:white;border:none;border-radius:4px;cursor:pointer;white-space:nowrap">퇴근</button>
+      </div>
+      <!-- 상태 뱃지 -->
+      <div style="display:flex;gap:3px;flex-wrap:wrap">
+        ${ATT_STATUS.map(s => `<span class="att-status-btn" data-status="${s}" onclick="setAttStatus(this)" style="padding:2px 8px;font-size:10px;font-weight:${status===s?'700':'500'};border-radius:10px;cursor:pointer;${status===s ? statusStyle : 'background:#f3f4f6;color:#9ca3af'};border:1px solid ${status===s?'rgba(0,0,0,0.1)':'transparent'}">${s}</span>`).join('')}
+      </div>
+      <!-- 비고 -->
+      <input type="text" value="${rec.note||''}" placeholder="비고" class="att-note" onchange="autoSaveAtt(this)" style="flex:1;min-width:80px;padding:4px 6px;font-size:11px;border:1px solid #e5e7eb;border-radius:4px">
+    </div>`;
+  }).join('');
 
-    // 출근 셀
-    const tdIn = document.createElement('td');
-    tdIn.style.padding = '4px';
-    const inInput = document.createElement('input');
-    inInput.type = 'time';
-    inInput.value = rec.in || '';
-    inInput.className = 'att-in';
-    inInput.style.cssText = 'width:76px;padding:2px 4px;font-size:11px;border:1px solid var(--border);border-radius:3px';
-    tdIn.appendChild(inInput);
-    tr.appendChild(tdIn);
-
-    // 퇴근 셀
-    const tdOut = document.createElement('td');
-    tdOut.style.padding = '4px';
-    const outInput = document.createElement('input');
-    outInput.type = 'time';
-    outInput.value = rec.out || '';
-    outInput.className = 'att-out';
-    outInput.style.cssText = 'width:76px;padding:2px 4px;font-size:11px;border:1px solid var(--border);border-radius:3px';
-    tdOut.appendChild(outInput);
-    tr.appendChild(tdOut);
-
-    // 상태 셀
-    const tdSt = document.createElement('td');
-    tdSt.style.padding = '4px';
-    const sel = document.createElement('select');
-    sel.className = 'att-status';
-    sel.style.cssText = 'width:60px;padding:2px;font-size:10px;border:1px solid var(--border);border-radius:3px';
-    ATT_STATUS.forEach(function(s) {
-      const opt = document.createElement('option');
-      opt.value = s; opt.textContent = s;
-      if((rec.status || '정상') === s) opt.selected = true;
-      sel.appendChild(opt);
-    });
-    tdSt.appendChild(sel);
-    tr.appendChild(tdSt);
-
-    // 비고 셀
-    const tdNote = document.createElement('td');
-    tdNote.style.padding = '4px';
-    const noteInput = document.createElement('input');
-    noteInput.type = 'text';
-    noteInput.value = rec.note || '';
-    noteInput.placeholder = '비고';
-    noteInput.className = 'att-note';
-    noteInput.style.cssText = 'width:100%;padding:2px 4px;font-size:11px;border:1px solid var(--border);border-radius:3px';
-    tdNote.appendChild(noteInput);
-    tr.appendChild(tdNote);
-
-    // 저장 버튼 셀
-    const tdBtn = document.createElement('td');
-    tdBtn.style.cssText = 'padding:4px;text-align:center';
-    const btn = document.createElement('button');
-    btn.textContent = '저장';
-    btn.style.cssText = 'padding:2px 8px;font-size:10px;background:#059669;color:white;border:none;border-radius:3px;cursor:pointer';
-    btn.onclick = function() {
-      const row = this.closest('tr');
-      saveAttendanceRecord(
-        row.dataset.date,
-        row.dataset.empName,
-        row.querySelector('.att-in').value,
-        row.querySelector('.att-out').value,
-        row.querySelector('.att-status').value,
-        row.querySelector('.att-note').value,
-        row
-      );
-    };
-    tdBtn.appendChild(btn);
-    tr.appendChild(tdBtn);
-
-    tbody.appendChild(tr);
-  });
+  updateAttSummary(data, date);
 }
 
-// 기록 저장 (data-* 방식으로 안전하게)
-function saveAttendanceRecord(date, empName, inVal, outVal, status, note, rowEl) {
+// 현재 시각 찍기 (출근/퇴근 원클릭)
+function stampAttTime(btn, type) {
+  const now = new Date();
+  const timeStr = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
+  const row = btn.closest('[data-emp]');
+  const input = row.querySelector(type === 'in' ? '.att-in' : '.att-out');
+  if(input) {
+    input.value = timeStr;
+    autoSaveAtt(input);
+    showToast((type === 'in' ? '🟢 출근' : '🔵 퇴근') + ' ' + row.dataset.emp + ' ' + timeStr);
+  }
+}
+
+// 상태 뱃지 클릭
+function setAttStatus(el) {
+  const row = el.closest('[data-emp]');
+  row.querySelectorAll('.att-status-btn').forEach(btn => {
+    const s = btn.dataset.status;
+    const isSelected = btn === el;
+    const style = ATT_STATUS_COLOR[s] || 'background:#f3f4f6;color:#374151';
+    btn.style.cssText = `padding:2px 8px;font-size:10px;font-weight:${isSelected?'700':'500'};border-radius:10px;cursor:pointer;${isSelected ? style : 'background:#f3f4f6;color:#9ca3af'};border:1px solid ${isSelected?'rgba(0,0,0,0.1)':'transparent'}`;
+  });
+  autoSaveAtt(el);
+}
+
+// 자동 저장 (값 변경 시 즉시)
+function autoSaveAtt(el) {
+  const row = el.closest('[data-emp]');
+  if(!row) return;
+  const date = row.dataset.date;
+  const empName = row.dataset.emp;
+  const inVal = row.querySelector('.att-in')?.value || '';
+  const outVal = row.querySelector('.att-out')?.value || '';
+  const activeStatus = row.querySelector('.att-status-btn[style*="font-weight:700"]') || row.querySelector('.att-status-btn[style*="font-weight: 700"]');
+  const status = activeStatus ? activeStatus.dataset.status : '정상';
+  const note = row.querySelector('.att-note')?.value || '';
+
+  saveAttendanceRecord(date, empName, inVal, outVal, status, note);
+}
+
+// 기록 저장
+function saveAttendanceRecord(date, empName, inVal, outVal, status, note) {
   if(!date || !empName) return;
   const data = getAttendanceData();
   if(!data.records) data.records = {};
@@ -4562,9 +4562,36 @@ function saveAttendanceRecord(date, empName, inVal, outVal, status, note, rowEl)
     savedAt: new Date().toISOString()
   };
   saveAttendanceData(data);
+  updateAttSummary(data, date);
   renderAttendanceMonthly();
-  showToast('✅ ' + empName + ' ' + date + ' 기록 저장');
-  if(rowEl) { rowEl.style.background='#f0fdf4'; setTimeout(function(){ rowEl.style.background=''; }, 1000); }
+}
+
+// 요약 카드 업데이트
+function updateAttSummary(data, date) {
+  let inCount = 0, absentCount = 0, lateCount = 0, leaveCount = 0;
+  const dayRec = (data.records && data.records[date]) ? data.records[date] : {};
+  const totalEmp = (data.employees || []).length;
+
+  (data.employees || []).forEach(emp => {
+    const rec = dayRec[emp.name];
+    if(!rec || (!rec.in && rec.status !== '휴가' && rec.status !== '반차' && rec.status !== '출장')) {
+      if(rec && rec.status === '결근') absentCount++;
+      else absentCount++;
+      return;
+    }
+    const st = rec.status || '정상';
+    if(st === '정상') inCount++;
+    else if(st === '지각' || st === '조퇴') { inCount++; lateCount++; }
+    else if(st === '결근') absentCount++;
+    else if(st === '휴가' || st === '반차') leaveCount++;
+    else if(st === '출장') { inCount++; leaveCount++; }
+  });
+
+  const setEl = (id, val) => { const e = document.getElementById(id); if(e) e.textContent = val; };
+  setEl('attSumIn', inCount + '명');
+  setEl('attSumAbsent', absentCount + '명');
+  setEl('attSumLate', lateCount + '명');
+  setEl('attSumLeave', leaveCount + '명');
 }
 
 // 월별 현황 렌더링
