@@ -2995,8 +2995,9 @@ function loadRecord(id) {
     document.getElementById('vehicleTon').value = r.vehicle || '';
   }
 
-  // 주류 중량(톤) + 상차 센터 복원
+  // 주류 중량(톤) + 상차 센터 + 경유지 복원
   document.getElementById('lqWeight').value = r.lqWeight || '';
+  document.getElementById('cargoWeight').value = r.cargoWeight || '';
   if(dispatchMode === 'liquor') {
     // lqCenter 필드가 있으면 그대로 복원, 없으면 코드 prefix로 자동 감지
     if(r.lqCenter) {
@@ -3005,6 +3006,15 @@ function loadRecord(id) {
       const _cu = (r.code || '').replace(/[_\-]/g, '').toUpperCase();
       if(_cu.startsWith('ECLP')) document.getElementById('lqCenter').value = 'yj';
       else if(_cu.startsWith('ACLP')) document.getElementById('lqCenter').value = 'dp1';
+    }
+    // 경유지(2착 이후) 복원
+    if(r.liquorStops && Array.isArray(r.liquorStops) && r.liquorStops.length > 0) {
+      liquorStops = JSON.parse(JSON.stringify(r.liquorStops));
+      renderLiquorStops();
+      calcLiquorTotal();
+    } else {
+      liquorStops = [];
+      renderLiquorStops();
     }
   }
 
@@ -11988,6 +11998,7 @@ async function saveDispatch(closeAfter) {
           memo: hapjimMemo,
           stickyMemo: document.getElementById('stickyMemo').value,
           extraWorkFee: 0,
+          cargoWeight: document.getElementById('cargoWeight').value || '',
           lqWeight: dispatchMode === 'liquor' ? (document.getElementById('lqWeight').value || '') : '',
           lqCenter: dispatchMode === 'liquor' ? (document.getElementById('lqCenter').value || '') : '',
           // 합짐은 혼적 옵션 사용 안 함 (코드별 금액 직접 입력)
@@ -12231,6 +12242,7 @@ async function saveDispatch(closeAfter) {
       memo: document.getElementById('memo').value,
       stickyMemo: document.getElementById('stickyMemo').value,
       extraWorkFee: extraFee,
+      cargoWeight: document.getElementById('cargoWeight').value || '',
       lqWeight: dispatchMode === 'liquor' ? (document.getElementById('lqWeight').value || '') : '',
       lqCenter: dispatchMode === 'liquor' ? (document.getElementById('lqCenter').value || '') : '',
       liquorStops: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(liquorStops)) : undefined,
