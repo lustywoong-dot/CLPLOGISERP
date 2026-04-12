@@ -1504,6 +1504,18 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       </div>
     </div>
 
+    <!-- 차트 영역: 거래처별 매출 비교 + 배차유형별 비중 -->
+    <div style="display:grid;grid-template-columns:3fr 2fr;gap:10px;margin-top:10px">
+      <div class="card" style="padding:14px">
+        <div style="font-weight:700;font-size:12px;margin-bottom:10px">🏢 거래처별 매출 비교</div>
+        <div style="position:relative;height:280px"><canvas id="chartClientRevenue"></canvas></div>
+      </div>
+      <div class="card" style="padding:14px">
+        <div style="font-weight:700;font-size:12px;margin-bottom:10px">📋 배차유형별 비중</div>
+        <div style="position:relative;height:280px"><canvas id="chartDispatchType"></canvas></div>
+      </div>
+    </div>
+
     <!-- 차트 영역: 권역별 파이 + 기사별 순위 -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
       <div class="card" style="padding:14px">
@@ -3458,7 +3470,7 @@ const ROLE_TABS = {
   admin: ['dispatch','history','rate','rateRef','drivers','settlement','stats','attendance','settings'],
   dispatcher: ['dispatch','history','rate','rateRef','drivers'],
   settlement: ['settlement'],
-  viewer: ['history','rate','rateRef','stats']
+  viewer: ['history','rate','rateRef']
 };
 
 // 기본 계정 (구글시트 미연결 시 사용)
@@ -12974,6 +12986,8 @@ function loadStats() {
   // 차트 그리기
   renderRevenueChart(grouped);
   renderVolumeChart(grouped);
+  renderClientRevenueChart(filtered);
+  renderDispatchTypeChart(filtered);
   renderRegionChart(filtered);
   renderDriverRanking(filtered);
   renderStatsDetail(grouped);
@@ -13071,6 +13085,112 @@ function renderVolumeChart(grouped) {
         y: { position: 'left', title: { display: true, text: '건수', font: { size: 10 } }, ticks: { font: { size: 10 } } },
         y1: { position: 'right', title: { display: true, text: 'PLT', font: { size: 10 } }, ticks: { font: { size: 10 } }, grid: { drawOnChartArea: false } },
         x: { ticks: { font: { size: 10 }, maxRotation: 45 } }
+      }
+    }
+  });
+}
+
+function renderClientRevenueChart(data) {
+  const ctx = document.getElementById('chartClientRevenue');
+  if(statsCharts.clientRevenue) statsCharts.clientRevenue.destroy();
+
+  // 거래처별 + 기간별 매출 집계
+  const clients = ['락앤락', 'KCTC여주', 'KCTC덕평'];
+  const clientColors = { '락앤락': '#2563eb', 'KCTC여주': '#7c3aed', 'KCTC덕평': '#ea580c' };
+
+  // 기간별 그룹 키 추출 (기존 groupByPeriod와 동일 방식)
+  const periodKeys = new Set();
+  data.forEach(d => {
+    const date = d.date || '';
+    let key;
+    if(statsPeriod === 'daily') key = date;
+    else if(statsPeriod === 'monthly') key = date.substring(0, 7);
+    else key = date.substring(0, 4);
+    if(key) periodKeys.add(key);
+  });
+  const sortedKeys = [...periodKeys].sort();
+  const labels = sortedKeys.map(k => formatPeriodLabel(k));
+
+  // 거래처별 데이터셋 생성
+  const datasets = clients.map(client => {
+    const perPeriod = {};
+    data.forEach(d => {
+      if(getDispatchClient(d.code) !== client) return;
+      const date = d.date || '';
+      let key;
+      if(statsPeriod === 'daily') key = date;
+      else if(statsPeriod === 'monthly') key = date.substring(0, 7);
+      else key = date.substring(0, 4);
+      if(!key) return;
+      perPeriod[key] = (perPeriod[key] || 0) + (parseInt(d.total) || 0);
+    });
+    return {
+      label: client,
+      data: sortedKeys.map(k => perPeriod[k] || 0),
+      backgroundColor: clientColors[client] || '#9ca3af',
+      borderRadius: 3
+    };
+  });
+
+  statsCharts.clientRevenue = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 11 }, usePointStyle: true, padding: 12 } },
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + (ctx.raw||0).toLocaleString() + '원' } }
+      },
+      scales: {
+        x: { stacked: true, ticks: { font: { size: 10 }, maxRotation: 45 } },
+        y: { stacked: true, ticks: { font: { size: 10 }, callback: v => (v/10000).toLocaleString() + '만' } }
+      }
+    }
+  });
+}
+
+function renderDispatchTypeChart(data) {
+  const ctx = document.getElementById('chartDispatchType');
+  if(statsCharts.dispatchType) statsCharts.dispatchType.destroy();
+
+  // 배차유형별 집계
+  const typeMap = {};
+  data.forEach(d => {
+    const type = d.type || '미분류';
+    if(!typeMap[type]) typeMap[type] = { count: 0, revenue: 0 };
+    typeMap[type].count++;
+    typeMap[type].revenue += parseInt(d.total) || 0;
+  });
+
+  const sorted = Object.entries(typeMap).sort((a,b) => b[1].count - a[1].count);
+  const typeColors = {
+    '편도': '#2563eb', '왕복': '#ea580c', '반품': '#ca8a04',
+    '직송': '#059669', 'M짐': '#7c3aed', '주류': '#be185d', '미분류': '#9ca3af'
+  };
+
+  statsCharts.dispatchType = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: sorted.map(([k]) => k),
+      datasets: [{
+        data: sorted.map(([,v]) => v.count),
+        backgroundColor: sorted.map(([k]) => typeColors[k] || '#9ca3af'),
+        borderWidth: 2, borderColor: '#fff'
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { font: { size: 11 }, padding: 8, usePointStyle: true } },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const total = ctx.dataset.data.reduce((s,v)=>s+v,0);
+              const typeData = sorted[ctx.dataIndex][1];
+              return ctx.label + ': ' + ctx.raw + '건 (' + (ctx.raw/total*100).toFixed(1) + '%) / ' + (typeData.revenue/10000).toLocaleString() + '만원';
+            }
+          }
+        }
       }
     }
   });
