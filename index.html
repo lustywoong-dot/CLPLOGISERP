@@ -12348,9 +12348,15 @@ async function saveDispatch(closeAfter) {
         document.getElementById('dispatchDate').value = keepDate;
         document.getElementById('deliveryDate').value = keepDelivDate;
         document.getElementById('pickupAddr').value = keepPickup;
+        // 패널/편집바 닫기 + 테이블 높이 복원
+        const _p = document.getElementById('inlineDispatchPanel');
+        if(_p) _p.style.display = 'none';
+        const _b = document.getElementById('inlineEditBar');
+        if(_b) _b.style.display = 'none';
+        const _w = document.getElementById('inlineTableWrap');
+        if(_w) _w.style.maxHeight = '400px';
       } else {
         // F9: 폼 데이터 유지 + 편집 모드 유지 (바로 확인/추가 수정 가능)
-        // 저장 과정에서 값이 유실될 수 있는 필드를 방어적으로 복원
         const _kLqW = existing.lqWeight || '';
         const _kCgW = existing.cargoWeight || '';
         const _kLqC = existing.lqCenter || '';
