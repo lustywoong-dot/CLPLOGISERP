@@ -2999,13 +2999,22 @@ function loadRecord(id) {
   document.getElementById('lqWeight').value = r.lqWeight || '';
   document.getElementById('cargoWeight').value = r.cargoWeight || '';
   if(dispatchMode === 'liquor') {
-    // lqCenter 필드가 있으면 그대로 복원, 없으면 코드 prefix로 자동 감지
+    // lqCenter 필드가 있으면 그대로 복원, 없으면 상차지 주소 → 코드 순서로 감지
     if(r.lqCenter) {
       document.getElementById('lqCenter').value = r.lqCenter;
     } else {
-      const _cu = (r.code || '').replace(/[_\-]/g, '').toUpperCase();
-      if(_cu.startsWith('ECLP')) document.getElementById('lqCenter').value = 'yj';
-      else if(_cu.startsWith('ACLP')) document.getElementById('lqCenter').value = 'dp1';
+      const _pickup = (r.pickup || '');
+      if(_pickup.includes('덕평2') || _pickup.includes('덕평로661')) {
+        document.getElementById('lqCenter').value = 'dp2';
+      } else if(_pickup.includes('덕평1') || _pickup.includes('서이천로')) {
+        document.getElementById('lqCenter').value = 'dp1';
+      } else if(_pickup.includes('여주') || _pickup.includes('대신로')) {
+        document.getElementById('lqCenter').value = 'yj';
+      } else {
+        const _cu = (r.code || '').replace(/[_\-]/g, '').toUpperCase();
+        if(_cu.startsWith('ECLP')) document.getElementById('lqCenter').value = 'yj';
+        else if(_cu.startsWith('ACLP')) document.getElementById('lqCenter').value = 'dp1';
+      }
     }
     // 경유지(2착 이후) 복원
     if(r.liquorStops && Array.isArray(r.liquorStops) && r.liquorStops.length > 0) {
