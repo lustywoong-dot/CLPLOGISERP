@@ -1560,6 +1560,64 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       </div>
     </div>
 
+    <!-- 수익성 분석 -->
+    <div class="stats-section-label">수익성 심층 분석</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <!-- 거래처별 수익성 -->
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#2563eb">
+        <div class="stats-chart-title">🏢 거래처별 수익성 비교</div>
+        <div class="table-wrap" style="max-height:280px;overflow-y:auto">
+          <table>
+            <thead>
+              <tr>
+                <th>거래처</th>
+                <th style="text-align:center">건수</th>
+                <th style="text-align:right">매출</th>
+                <th style="text-align:right">매입</th>
+                <th style="text-align:right">마진</th>
+                <th style="text-align:center">마진율</th>
+                <th style="text-align:right">건당 마진</th>
+              </tr>
+            </thead>
+            <tbody id="statsClientProfitBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <!-- 지역별 마진율 TOP -->
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#059669">
+        <div class="stats-chart-title">🗺 지역별 마진율 TOP 15</div>
+        <div class="table-wrap" style="max-height:280px;overflow-y:auto">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:30px">순위</th>
+                <th>지역</th>
+                <th style="text-align:center">건수</th>
+                <th style="text-align:right">평균 매출</th>
+                <th style="text-align:right">평균 마진</th>
+                <th style="text-align:center">마진율</th>
+              </tr>
+            </thead>
+            <tbody id="statsRegionProfitBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 성장률 + 집중도 -->
+    <div style="display:grid;grid-template-columns:3fr 2fr;gap:10px;margin-top:10px">
+      <!-- 월별 성장률 -->
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#7c3aed">
+        <div class="stats-chart-title">📊 월별 성장률 추이</div>
+        <div style="position:relative;height:250px"><canvas id="chartGrowthRate"></canvas></div>
+      </div>
+      <!-- 거래처 집중도 -->
+      <div class="card stats-chart-card" style="padding:16px;border-top-color:#dc2626">
+        <div class="stats-chart-title">⚠ 거래처 매출 집중도</div>
+        <div id="statsConcentration" style="padding:8px"></div>
+      </div>
+    </div>
+
     <!-- 상세 테이블 -->
     <div class="stats-section-label">상세 데이터</div>
     <div class="card stats-chart-card" style="padding:16px;border-top-color:#6b7280">
@@ -13009,6 +13067,10 @@ function loadStats() {
   renderDispatchTypeChart(filtered);
   renderRegionChart(filtered);
   renderDriverRanking(filtered);
+  renderClientProfitability(filtered);
+  renderRegionProfitability(filtered);
+  renderGrowthRateChart(allData);
+  renderConcentration(filtered);
   renderStatsDetail(grouped);
 }
 
@@ -13286,6 +13348,215 @@ function renderDriverRanking(data) {
       <td style="text-align:right;color:${marginColor};font-weight:600">${d.margin.toLocaleString()}</td>
     </tr>`;
   }).join('');
+}
+
+// ─── 거래처별 수익성 분석 ───
+function renderClientProfitability(data) {
+  const clients = {};
+  data.forEach(d => {
+    const client = getDispatchClient(d.code) || '기타';
+    if(!clients[client]) clients[client] = { count:0, revenue:0, cost:0, margin:0 };
+    clients[client].count++;
+    clients[client].revenue += parseInt(d.total) || 0;
+    clients[client].cost += parseInt(d.driverPay) || 0;
+    clients[client].margin += parseInt(d.margin) || 0;
+  });
+
+  const sorted = Object.entries(clients).sort((a,b) => b[1].revenue - a[1].revenue);
+  const body = document.getElementById('statsClientProfitBody');
+  if(!body) return;
+
+  // 합계 행 추가
+  const totals = sorted.reduce((t,[,d]) => ({ count: t.count+d.count, revenue: t.revenue+d.revenue, cost: t.cost+d.cost, margin: t.margin+d.margin }), { count:0, revenue:0, cost:0, margin:0 });
+
+  body.innerHTML = sorted.map(([name, d]) => {
+    const rate = d.revenue > 0 ? (d.margin/d.revenue*100).toFixed(1) : '0.0';
+    const perMargin = d.count > 0 ? Math.round(d.margin / d.count) : 0;
+    const rateColor = parseFloat(rate) >= 30 ? '#059669' : parseFloat(rate) >= 20 ? '#ca8a04' : '#dc2626';
+    return `<tr>
+      <td style="font-weight:700">${name}</td>
+      <td style="text-align:center">${d.count}건</td>
+      <td style="text-align:right;color:var(--accent);font-weight:600">${(d.revenue/10000).toLocaleString()}만</td>
+      <td style="text-align:right">${(d.cost/10000).toLocaleString()}만</td>
+      <td style="text-align:right;color:var(--success);font-weight:600">${(d.margin/10000).toLocaleString()}만</td>
+      <td style="text-align:center;font-weight:700;color:${rateColor}">${rate}%</td>
+      <td style="text-align:right;font-weight:600">${perMargin.toLocaleString()}원</td>
+    </tr>`;
+  }).join('') + `<tr style="font-weight:800;background:#f8fafc;border-top:2px solid var(--primary)">
+    <td>합계</td>
+    <td style="text-align:center">${totals.count}건</td>
+    <td style="text-align:right;color:var(--accent)">${(totals.revenue/10000).toLocaleString()}만</td>
+    <td style="text-align:right">${(totals.cost/10000).toLocaleString()}만</td>
+    <td style="text-align:right;color:var(--success)">${(totals.margin/10000).toLocaleString()}만</td>
+    <td style="text-align:center">${totals.revenue > 0 ? (totals.margin/totals.revenue*100).toFixed(1) : '0.0'}%</td>
+    <td style="text-align:right">${totals.count > 0 ? Math.round(totals.margin/totals.count).toLocaleString() : '0'}원</td>
+  </tr>`;
+}
+
+// ─── 지역별 마진율 TOP 15 ───
+function renderRegionProfitability(data) {
+  const regions = {};
+  data.forEach(d => {
+    const region = d.delivery || '';
+    if(!region) return;
+    if(!regions[region]) regions[region] = { count:0, revenue:0, margin:0 };
+    regions[region].count++;
+    regions[region].revenue += parseInt(d.total) || 0;
+    regions[region].margin += parseInt(d.margin) || 0;
+  });
+
+  // 3건 이상만 (통계적 의미), 마진율 내림차순
+  const sorted = Object.entries(regions)
+    .filter(([,d]) => d.count >= 3 && d.revenue > 0)
+    .map(([name, d]) => ({ name, ...d, rate: d.margin/d.revenue*100, avgRev: Math.round(d.revenue/d.count), avgMar: Math.round(d.margin/d.count) }))
+    .sort((a,b) => b.rate - a.rate)
+    .slice(0, 15);
+
+  const body = document.getElementById('statsRegionProfitBody');
+  if(!body) return;
+
+  body.innerHTML = sorted.length === 0
+    ? '<tr><td colspan="6" style="text-align:center;color:var(--text-light);padding:20px">3건 이상 데이터가 있는 지역이 없습니다</td></tr>'
+    : sorted.map((d, i) => {
+    const rateColor = d.rate >= 30 ? '#059669' : d.rate >= 20 ? '#ca8a04' : '#dc2626';
+    const bar = Math.min(d.rate, 50);
+    return `<tr>
+      <td style="text-align:center;font-weight:700">${i+1}</td>
+      <td style="font-weight:600">${d.name}</td>
+      <td style="text-align:center">${d.count}건</td>
+      <td style="text-align:right">${d.avgRev.toLocaleString()}원</td>
+      <td style="text-align:right;color:var(--success)">${d.avgMar.toLocaleString()}원</td>
+      <td style="text-align:center"><span style="display:inline-block;width:40px;text-align:right;font-weight:700;color:${rateColor}">${d.rate.toFixed(1)}%</span><span style="display:inline-block;width:50px;height:6px;background:#e5e7eb;border-radius:3px;margin-left:4px;vertical-align:middle"><span style="display:block;height:100%;width:${bar*2}%;background:${rateColor};border-radius:3px"></span></span></td>
+    </tr>`;
+  }).join('');
+}
+
+// ─── 월별 성장률 차트 ───
+function renderGrowthRateChart(allData) {
+  const ctx = document.getElementById('chartGrowthRate');
+  if(statsCharts.growthRate) statsCharts.growthRate.destroy();
+
+  // 월별 집계 (전체 데이터 기준, 필터 무시 — 성장률은 전체 흐름이 중요)
+  const monthly = {};
+  let filteredForGrowth = allData;
+  if(statsClientMode !== 'all') {
+    filteredForGrowth = allData.filter(d => getDispatchClient(d.code) === statsClientMode);
+  }
+  filteredForGrowth.forEach(d => {
+    const key = (d.date || '').substring(0, 7);
+    if(!key || key.length < 7) return;
+    if(!monthly[key]) monthly[key] = { revenue: 0, count: 0 };
+    monthly[key].revenue += parseInt(d.total) || 0;
+    monthly[key].count++;
+  });
+
+  const keys = Object.keys(monthly).sort();
+  if(keys.length < 2) {
+    statsCharts.growthRate = new Chart(ctx, { type:'bar', data:{ labels:['데이터 부족'], datasets:[{ data:[0] }] }, options:{ responsive:true, maintainAspectRatio:false } });
+    return;
+  }
+
+  const labels = [];
+  const revenueGrowth = [];
+  const countGrowth = [];
+
+  for(let i = 1; i < keys.length; i++) {
+    const prev = monthly[keys[i-1]];
+    const curr = monthly[keys[i]];
+    const parts = keys[i].split('-');
+    labels.push((parseInt(parts[1])||0) + '월');
+    revenueGrowth.push(prev.revenue > 0 ? ((curr.revenue - prev.revenue) / prev.revenue * 100) : 0);
+    countGrowth.push(prev.count > 0 ? ((curr.count - prev.count) / prev.count * 100) : 0);
+  }
+
+  statsCharts.growthRate = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: '매출 성장률(%)', data: revenueGrowth, backgroundColor: revenueGrowth.map(v => v >= 0 ? 'rgba(5,150,105,0.7)' : 'rgba(220,38,38,0.7)'), borderRadius: 3 },
+        { label: '건수 성장률(%)', data: countGrowth, type: 'line', borderColor: '#2563eb', backgroundColor: 'transparent', tension: 0.3, pointRadius: 4, pointBackgroundColor: '#2563eb' }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'top', labels: { font: { size: 11 }, usePointStyle: true, padding: 12 } },
+        tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + (ctx.raw||0).toFixed(1) + '%' } }
+      },
+      scales: {
+        y: { ticks: { font: { size: 10 }, callback: v => v.toFixed(0) + '%' } },
+        x: { ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+// ─── 거래처 매출 집중도 분석 ───
+function renderConcentration(data) {
+  const container = document.getElementById('statsConcentration');
+  if(!container) return;
+
+  const clients = {};
+  let totalRevenue = 0;
+  data.forEach(d => {
+    const client = getDispatchClient(d.code) || '기타';
+    const rev = parseInt(d.total) || 0;
+    clients[client] = (clients[client] || 0) + rev;
+    totalRevenue += rev;
+  });
+
+  if(totalRevenue === 0) {
+    container.innerHTML = '<div style="text-align:center;color:var(--text-light);padding:20px">데이터 없음</div>';
+    return;
+  }
+
+  const sorted = Object.entries(clients).sort((a,b) => b[1] - a[1]);
+
+  // HHI (Herfindahl-Hirschman Index) 계산 — 시장 집중도 지표
+  let hhi = 0;
+  sorted.forEach(([,rev]) => {
+    const share = (rev / totalRevenue) * 100;
+    hhi += share * share;
+  });
+
+  const hhiLevel = hhi >= 2500 ? { text: '고집중', color: '#dc2626', desc: '특정 거래처 의존도가 높습니다' }
+    : hhi >= 1500 ? { text: '중집중', color: '#ca8a04', desc: '적정 수준이나 모니터링 필요' }
+    : { text: '분산', color: '#059669', desc: '거래처가 잘 분산되어 있습니다' };
+
+  let html = `<div style="text-align:center;margin-bottom:12px">
+    <div style="font-size:11px;color:var(--text-light)">HHI 집중도 지수</div>
+    <div style="font-size:28px;font-weight:800;color:${hhiLevel.color}">${Math.round(hhi).toLocaleString()}</div>
+    <div style="display:inline-block;padding:2px 10px;border-radius:10px;font-size:11px;font-weight:700;color:white;background:${hhiLevel.color}">${hhiLevel.text}</div>
+    <div style="font-size:10px;color:var(--text-light);margin-top:4px">${hhiLevel.desc}</div>
+  </div>`;
+
+  // 거래처별 비중 바
+  html += '<div style="margin-top:8px">';
+  sorted.forEach(([name, rev]) => {
+    const pct = (rev / totalRevenue * 100).toFixed(1);
+    const barColor = parseFloat(pct) >= 50 ? '#dc2626' : parseFloat(pct) >= 30 ? '#ca8a04' : '#2563eb';
+    html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+      <span style="font-size:11px;font-weight:600;width:60px;text-align:right">${name}</span>
+      <div style="flex:1;height:18px;background:#f1f5f9;border-radius:4px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${barColor};border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:4px">
+          ${parseFloat(pct) >= 10 ? `<span style="font-size:9px;color:white;font-weight:700">${pct}%</span>` : ''}
+        </div>
+      </div>
+      ${parseFloat(pct) < 10 ? `<span style="font-size:9px;color:var(--text-light);font-weight:600">${pct}%</span>` : ''}
+    </div>`;
+  });
+  html += '</div>';
+
+  // 위험 알림
+  const topShare = sorted.length > 0 ? (sorted[0][1] / totalRevenue * 100) : 0;
+  if(topShare >= 50) {
+    html += `<div style="margin-top:8px;padding:6px 10px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:10px;color:#991b1b">
+      ⚠ <b>${sorted[0][0]}</b> 매출 비중 ${topShare.toFixed(1)}% — 거래처 다각화를 검토하세요
+    </div>`;
+  }
+
+  container.innerHTML = html;
 }
 
 function renderStatsDetail(grouped) {
