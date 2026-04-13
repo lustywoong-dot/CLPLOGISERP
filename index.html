@@ -771,7 +771,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
 
       <!-- 주류모드: 센터 선택 -->
       <div id="lqCenterRow" style="display:none;margin-bottom:6px">
-        <div class="form-grid" style="grid-template-columns:150px 1fr">
+        <div class="form-grid" style="grid-template-columns:150px auto 1fr">
           <div class="form-group">
             <label>🍷 상차 센터</label>
             <select id="lqCenter" onchange="onCenterChange()" style="font-size:12px;border-color:#7c3aed;font-weight:600">
@@ -779,6 +779,13 @@ body.hide-cost-col .col-sensitive { display: none !important; }
               <option value="dp2">KCTC덕평2센터</option>
               <option value="yj">KCTC여주센터</option>
             </select>
+          </div>
+          <div class="form-group">
+            <label>📋 서류 수령</label>
+            <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;padding:4px 0">
+              <input type="checkbox" id="lqOfficeDoc" onchange="onCoreFieldChange()" style="width:15px;height:15px">
+              <span style="color:#7c3aed;font-weight:600">사무실 수령</span>
+            </label>
           </div>
           <div style="font-size:11px;color:#7c3aed;line-height:28px;padding-top:18px">※ 배차코드 ECLP→여주 / ACLP→덕평 자동 감지</div>
         </div>
@@ -3260,6 +3267,9 @@ function loadRecord(id) {
         else if(_cu.startsWith('ACLP')) document.getElementById('lqCenter').value = 'dp1';
       }
     }
+    // 서류 수령 방식 복원
+    const _officeDocEl = document.getElementById('lqOfficeDoc');
+    if(_officeDocEl) _officeDocEl.checked = !!r.lqOfficeDoc;
     // 경유지(2착 이후) 복원
     if(r.liquorStops && Array.isArray(r.liquorStops) && r.liquorStops.length > 0) {
       liquorStops = JSON.parse(JSON.stringify(r.liquorStops));
@@ -7803,8 +7813,15 @@ function generateSMS() {
     const cleanCode = code.replace(/[_\-]/g, '');
     const center = document.getElementById('lqCenter').value;
     
-    // 센터별 키오스크 안내
-    const kioskMsg = {
+    // 서류 수령 방식 체크
+    const isOfficeDoc = document.getElementById('lqOfficeDoc')?.checked;
+
+    // 센터별 키오스크 안내 vs 사무실 수령 안내
+    const kioskMsg = isOfficeDoc ? {
+      'yj': '→ 사무실에서 서류를 수령하세요.\n→ 서류 꼭 지참하셔야 합니다.',
+      'dp1': '→ 사무실에서 서류를 수령하세요.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행',
+      'dp2': '→ 사무실에서 서류를 수령하세요.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행'
+    } : {
       'yj': '→ 키오스크 단말기는 1층 우측 현관 안쪽에 있습니다.\n→ 서류 꼭 지참하셔야 합니다.',
       'dp1': '→ 키오스크 단말기는 2층 중앙 현관 안쪽에 있습니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행',
       'dp2': '→ 키오스크 단말기는 B동 1층 우측 현관 내부에 있습니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행'
@@ -7836,6 +7853,8 @@ ${kioskMsg[center] || ''}`;
 
     sms += `\n\n※ 인수증 사진 전송 부탁드립니다.
 ※ 인수증 우편 발송 부탁드립니다.
+※ 현장에서 쓰레기 투기 절대 금지
+※ 슬리퍼 착용 금지 (안전화/운동화 착용)
 ※ 고정/반고정 문의 010-3111-3087
 ※ 감사합니다. (주)씨엘피`;
 
@@ -7854,6 +7873,8 @@ ${kioskMsg[center] || ''}`;
 
 ※ 인수증 사진 전송 부탁드립니다.
 ※ 인수증 우편 발송 부탁드립니다.
+※ 현장에서 쓰레기 투기 절대 금지
+※ 슬리퍼 착용 금지 (안전화/운동화 착용)
 ※ 고정/반고정 문의 010-3111-3087
 ※ 감사합니다. (주)씨엘피`;
   }
@@ -12345,6 +12366,7 @@ async function saveDispatch(closeAfter) {
           cargoWeight: document.getElementById('cargoWeight').value || '',
           lqWeight: dispatchMode === 'liquor' ? (document.getElementById('lqWeight').value || '') : '',
           lqCenter: dispatchMode === 'liquor' ? (document.getElementById('lqCenter').value || '') : '',
+          lqOfficeDoc: dispatchMode === 'liquor' ? !!document.getElementById('lqOfficeDoc')?.checked : false,
           // 합짐은 혼적 옵션 사용 안 함 (코드별 금액 직접 입력)
           isMixed: false,
           mixedMjimIdx: '',
@@ -12589,6 +12611,7 @@ async function saveDispatch(closeAfter) {
       cargoWeight: document.getElementById('cargoWeight').value || '',
       lqWeight: dispatchMode === 'liquor' ? (document.getElementById('lqWeight').value || '') : '',
       lqCenter: dispatchMode === 'liquor' ? (document.getElementById('lqCenter').value || '') : '',
+      lqOfficeDoc: dispatchMode === 'liquor' ? !!document.getElementById('lqOfficeDoc')?.checked : false,
       liquorStops: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(liquorStops)) : undefined,
       // 혼적(M짐) 정보 저장 — 수정 모드에서 단가 손상 방지
       isMixed: !!document.getElementById('mixedCargoCheck')?.checked,
