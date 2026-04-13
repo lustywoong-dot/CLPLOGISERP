@@ -771,7 +771,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
 
       <!-- 주류모드: 센터 선택 -->
       <div id="lqCenterRow" style="display:none;margin-bottom:6px">
-        <div class="form-grid" style="grid-template-columns:150px auto 1fr">
+        <div class="form-grid" style="grid-template-columns:150px 1fr">
           <div class="form-group">
             <label>🍷 상차 센터</label>
             <select id="lqCenter" onchange="onCenterChange()" style="font-size:12px;border-color:#7c3aed;font-weight:600">
@@ -779,13 +779,6 @@ body.hide-cost-col .col-sensitive { display: none !important; }
               <option value="dp2">KCTC덕평2센터</option>
               <option value="yj">KCTC여주센터</option>
             </select>
-          </div>
-          <div class="form-group">
-            <label>📋 서류 수령</label>
-            <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;padding:4px 0">
-              <input type="checkbox" id="lqOfficeDoc" onchange="onCoreFieldChange()" style="width:15px;height:15px">
-              <span style="color:#7c3aed;font-weight:600">사무실 수령</span>
-            </label>
           </div>
           <div style="font-size:11px;color:#7c3aed;line-height:28px;padding-top:18px">※ 배차코드 ECLP→여주 / ACLP→덕평 자동 감지</div>
         </div>
@@ -817,6 +810,15 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <label>세부주소</label>
           <input type="text" id="deliveryDetailAddr" placeholder="상세 주소 입력" oninput="onCoreFieldChange()">
         </div>
+      </div>
+
+      <!-- 서류 수령 방식 (락앤락/주류 공통) -->
+      <div style="margin-top:5px;display:flex;align-items:center;gap:8px">
+        <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;padding:3px 10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px" title="체크하면 SMS에 '사무실에서 서류 수령' 안내가 표시됩니다">
+          <input type="checkbox" id="lqOfficeDoc" onchange="onCoreFieldChange()" style="width:14px;height:14px">
+          <span style="font-weight:600;color:#374151">📋 사무실 서류수령</span>
+          <span style="font-size:10px;color:var(--text-light)">(미체크 시 키오스크 안내)</span>
+        </label>
       </div>
 
       <!-- 2행: 담당자 -->
@@ -7861,11 +7863,16 @@ ${kioskMsg[center] || ''}`;
   } else {
     // === 락앤락 모드 SMS ===
     const cleanCode = code.replace(/[_\-]/g, '');
+    const _isOfficeDoc = document.getElementById('lqOfficeDoc')?.checked;
+    const _docMsg = _isOfficeDoc
+      ? '→ 사무실에서 서류를 수령하세요.'
+      : '→ 키오스크에서 서류를 출력하세요. (P만 영어 나머지 숫자)';
     sms = `[배송 안내]
 ■ 배송일: ${dateStr}
 ■ 거래처: ${clientName || '-'}
 1. 상차지: ${pickup || '-'}
-2. 키오스크코드: ${cleanCode || '-'}(P만 영어 나머지 숫자)
+2. 키오스크코드: ${cleanCode || '-'}
+${_docMsg}
 3. 수량/중량: ${qtyInfo}
 
 4. 하차지: ${detailAddr || '-'}
