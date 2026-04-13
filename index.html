@@ -12248,7 +12248,7 @@ function _calcSyncHash(d) {
 }
 
 // 시트 동기화 시 로컬 전용 필드 보존 (시트에 없는 필드를 기존 로컬 데이터에서 병합)
-const _LOCAL_ONLY_FIELDS = ['lqWeight','lqCenter','lqOfficeDoc','lqWaypointFee','liquorStops','cargoWeight','isMixed','mixedMjimIdx','mixedMjimSize','hapjimGroup','stickyMemo','lqOfficeDoc'];
+const _LOCAL_ONLY_FIELDS = ['lqWeight','lqCenter','lqOfficeDoc','lqWaypointFee','liquorStops','cargoWeight','isMixed','mixedMjimIdx','mixedMjimSize','hapjimGroup','stickyMemo'];
 function _mergeLocalFields(sheetData) {
   const localMap = {};
   dispatchLog.forEach(r => { if(r.id) localMap[r.id] = r; });
@@ -12414,8 +12414,9 @@ async function saveDispatch(closeAfter) {
           cargoWeight: document.getElementById('cargoWeight').value || '',
           lqWeight: dispatchMode === 'liquor' ? (document.getElementById('lqWeight').value || '') : '',
           lqCenter: dispatchMode === 'liquor' ? (document.getElementById('lqCenter').value || '') : '',
-          lqOfficeDoc: dispatchMode === 'liquor' ? !!document.getElementById('lqOfficeDoc')?.checked : false,
-      lqWaypointFee: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqWaypointFee')?.value) || 0) : 0,
+          lqOfficeDoc: !!document.getElementById('lqOfficeDoc')?.checked,
+          lqWaypointFee: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqWaypointFee')?.value) || 0) : 0,
+          liquorStops: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(liquorStops)) : undefined,
           // 합짐은 혼적 옵션 사용 안 함 (코드별 금액 직접 입력)
           isMixed: false,
           mixedMjimIdx: '',
@@ -12660,7 +12661,7 @@ async function saveDispatch(closeAfter) {
       cargoWeight: document.getElementById('cargoWeight').value || '',
       lqWeight: dispatchMode === 'liquor' ? (document.getElementById('lqWeight').value || '') : '',
       lqCenter: dispatchMode === 'liquor' ? (document.getElementById('lqCenter').value || '') : '',
-      lqOfficeDoc: dispatchMode === 'liquor' ? !!document.getElementById('lqOfficeDoc')?.checked : false,
+      lqOfficeDoc: !!document.getElementById('lqOfficeDoc')?.checked,
       lqWaypointFee: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqWaypointFee')?.value) || 0) : 0,
       liquorStops: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(liquorStops)) : undefined,
       // 혼적(M짐) 정보 저장 — 수정 모드에서 단가 손상 방지
