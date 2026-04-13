@@ -3182,12 +3182,20 @@ function loadRecord(id) {
   
   selectedRecordId = id;
 
-  // 배차 유형 설정 (주류 타입은 드롭다운에 옵션 표시 필요)
-  if(r.type === '주류') {
+  // 배차 유형 설정
+  const _typeSelect = document.getElementById('dispatchType');
+  if(r.type === '주류' || dispatchMode === 'liquor') {
     const lqOpt = document.getElementById('optDispatchLiquor');
     if(lqOpt) lqOpt.style.display = '';
+    _typeSelect.disabled = false;
+    _typeSelect.value = '주류';
+    _typeSelect.disabled = true;
+    _typeSelect.style.background = '#f5f3ff';
+    _typeSelect.style.color = '#7c3aed';
+    _typeSelect.style.fontWeight = '700';
+  } else {
+    _typeSelect.value = r.type || '편도';
   }
-  document.getElementById('dispatchType').value = r.type || '편도';
   onTypeChange();
   
   // 기본 필드
@@ -5660,7 +5668,15 @@ function setDispatchMode(mode) {
   if(mode === 'liquor') {
     if(lqOpt) lqOpt.style.display = '';
     typeSelect.value = '주류';
+    typeSelect.disabled = true;
+    typeSelect.style.background = '#f5f3ff';
+    typeSelect.style.color = '#7c3aed';
+    typeSelect.style.fontWeight = '700';
   } else {
+    typeSelect.disabled = false;
+    typeSelect.style.background = '';
+    typeSelect.style.color = '';
+    typeSelect.style.fontWeight = '';
     if(typeSelect.value === '주류') typeSelect.value = '편도';
     if(lqOpt) lqOpt.style.display = 'none';
   }
