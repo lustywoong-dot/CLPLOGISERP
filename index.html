@@ -5869,7 +5869,7 @@ function renderLiquorStops() {
     html += `<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;padding:4px 6px;background:#faf5ff;border:1px solid #e9d5ff;border-radius:5px">
       <span style="font-size:10px;font-weight:700;color:#7c3aed;min-width:28px">${i+2}착</span>
       <input type="text" value="${s.dest}" placeholder="배송처" oninput="updateLiquorStop(${i},'dest',this.value)" style="width:100px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
-      <input type="text" value="${s.area}" list="regionList" placeholder="권역" onchange="updateLiquorStop(${i},'area',this.value)" style="width:65px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
+      <input type="text" value="${s.area}" list="regionList" placeholder="권역" oninput="updateLiquorStop(${i},'area',this.value)" style="width:65px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
       <input type="text" value="${s.addr}" placeholder="주소" oninput="updateLiquorStop(${i},'addr',this.value)" style="flex:1;min-width:100px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
       <input type="text" value="${s.contact}" placeholder="담당자" oninput="updateLiquorStop(${i},'contact',this.value)" style="width:55px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
       <input type="text" value="${s.phone}" placeholder="연락처" oninput="updateLiquorStop(${i},'phone',this.value)" style="width:90px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
@@ -12683,10 +12683,12 @@ async function saveDispatch(closeAfter) {
         const _kLqW = existing.lqWeight || '';
         const _kCgW = existing.cargoWeight || '';
         const _kLqC = existing.lqCenter || '';
+        const _kWpF = existing.lqWaypointFee || 0;
         showInlineEditInfo(existing);
         if(_kLqW) document.getElementById('lqWeight').value = _kLqW;
         if(_kCgW) document.getElementById('cargoWeight').value = _kCgW;
         if(_kLqC && dispatchMode === 'liquor') document.getElementById('lqCenter').value = _kLqC;
+        if(_kWpF && dispatchMode === 'liquor') document.getElementById('lqWaypointFee').value = _kWpF;
       }
       return;
     }
@@ -12736,6 +12738,7 @@ async function saveDispatch(closeAfter) {
     const _keepLqWeight = records[0].lqWeight || '';
     const _keepCargoWeight = records[0].cargoWeight || '';
     const _keepLqCenter = records[0].lqCenter || '';
+    const _keepWpFee = records[0].lqWaypointFee || 0;
     selectedRecordId = records[0].id;
     document.getElementById('dispatchCode').style.background = '#fef3c7';
     showInlineEditInfo(records[0]);
@@ -12743,6 +12746,7 @@ async function saveDispatch(closeAfter) {
     if(_keepLqWeight) document.getElementById('lqWeight').value = _keepLqWeight;
     if(_keepCargoWeight) document.getElementById('cargoWeight').value = _keepCargoWeight;
     if(_keepLqCenter && dispatchMode === 'liquor') document.getElementById('lqCenter').value = _keepLqCenter;
+    if(_keepWpFee && dispatchMode === 'liquor') document.getElementById('lqWaypointFee').value = _keepWpFee;
     showToast('✅ 저장 완료 — 폼에서 바로 확인/수정 가능 (새 배차는 F2)');
   }
 
