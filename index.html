@@ -5812,7 +5812,18 @@ function removeLiquorStop(idx) {
   liquorStops.splice(idx, 1);
   renderLiquorStops();
   calcLiquorTotal();
-  generateSMS();
+  onCoreFieldChange();
+}
+
+function moveLiquorStop(idx, dir) {
+  const newIdx = idx + dir;
+  if(newIdx < 0 || newIdx >= liquorStops.length) return;
+  const temp = liquorStops[idx];
+  liquorStops[idx] = liquorStops[newIdx];
+  liquorStops[newIdx] = temp;
+  renderLiquorStops();
+  onCoreFieldChange();
+  showToast('📍 경유지 순서 변경: ' + (idx+2) + '착 ↔ ' + (newIdx+2) + '착');
 }
 
 function getLiquorRateTable() {
@@ -5873,6 +5884,10 @@ function renderLiquorStops() {
       <input type="text" value="${s.addr}" placeholder="주소" oninput="updateLiquorStop(${i},'addr',this.value)" style="flex:1;min-width:100px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
       <input type="text" value="${s.contact}" placeholder="담당자" oninput="updateLiquorStop(${i},'contact',this.value)" style="width:55px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
       <input type="text" value="${s.phone}" placeholder="연락처" oninput="updateLiquorStop(${i},'phone',this.value)" style="width:90px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
+      <div style="display:flex;flex-direction:column;gap:1px">
+        <button onclick="moveLiquorStop(${i},-1)" ${i===0?'disabled':''} style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:9px;padding:0 4px;color:#7c3aed;line-height:14px;${i===0?'opacity:0.3;cursor:default':''}" title="위로">▲</button>
+        <button onclick="moveLiquorStop(${i},1)" ${i===liquorStops.length-1?'disabled':''} style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:9px;padding:0 4px;color:#7c3aed;line-height:14px;${i===liquorStops.length-1?'opacity:0.3;cursor:default':''}" title="아래로">▼</button>
+      </div>
       <button onclick="removeLiquorStop(${i})" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px;padding:2px 4px" title="삭제">✕</button>
     </div>`;
   });
