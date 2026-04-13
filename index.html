@@ -937,10 +937,15 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       </div>
       <!-- 주류 경유지 (주류 모드에서만 표시) -->
       <div id="lqWaypointSection" style="display:none;margin-top:8px;border:1px solid #c4b5fd;border-radius:6px;overflow:hidden">
-        <div style="display:flex;align-items:center;padding:6px 10px;background:#f5f3ff;gap:8px">
+        <div style="display:flex;align-items:center;padding:6px 10px;background:#f5f3ff;gap:8px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:700;color:#7c3aed">📍 경유지 (2착 이후)</span>
           <span id="lqStopCount" style="font-size:11px;color:var(--text-light)">0건</span>
-          <span id="lqWaypointTotal" style="font-size:11px;font-weight:700;color:#7c3aed;margin-left:4px"></span>
+          <div style="display:flex;align-items:center;gap:4px;margin-left:8px">
+            <label style="font-size:10px;font-weight:600;color:#7c3aed">경유비:</label>
+            <input type="number" id="lqWaypointFee" min="0" step="5000" value="0" placeholder="0" onchange="calcLiquorTotal();calculate();onCoreFieldChange()" oninput="calcLiquorTotal();calculate();onCoreFieldChange()" style="width:90px;padding:3px 6px;font-size:12px;font-weight:700;color:#7c3aed;border:1px solid #c4b5fd;border-radius:4px;text-align:right">
+            <span style="font-size:10px;color:var(--text-light)">원</span>
+          </div>
+          <span id="lqWaypointTotal" style="font-size:11px;font-weight:700;color:#7c3aed"></span>
           <button class="btn btn-sm" onclick="addLiquorStop()" style="margin-left:auto;background:#7c3aed;color:white;padding:4px 10px;font-size:11px">+ 경유지 추가</button>
         </div>
         <div id="lqStopsArea" style="padding:8px;background:white;max-height:400px;overflow-y:auto">
@@ -3270,9 +3275,11 @@ function loadRecord(id) {
         else if(_cu.startsWith('ACLP')) document.getElementById('lqCenter').value = 'dp1';
       }
     }
-    // 서류 수령 방식 복원
+    // 서류 수령 방식 + 경유비 복원
     const _officeDocEl = document.getElementById('lqOfficeDoc');
     if(_officeDocEl) _officeDocEl.checked = !!r.lqOfficeDoc;
+    const _wpFeeEl = document.getElementById('lqWaypointFee');
+    if(_wpFeeEl) _wpFeeEl.value = r.lqWaypointFee || 0;
     // 경유지(2착 이후) 복원
     if(r.liquorStops && Array.isArray(r.liquorStops) && r.liquorStops.length > 0) {
       liquorStops = JSON.parse(JSON.stringify(r.liquorStops));
@@ -4878,7 +4885,7 @@ function calculate() {
   // 총 매출 (주류: 1착 단가 + 경유지 단가 합산)
   let waypointTotal = 0;
   if(dispatchMode === 'liquor') {
-    waypointTotal = liquorStops.reduce((s, st) => s + (st.rate||0), 0);
+    waypointTotal = parseInt(document.getElementById('lqWaypointFee')?.value) || 0;
   }
   const extraFee = parseInt(document.getElementById('extraWorkFee').value) || 0;
   const total = baseRate + manualFee + waitFee + roundFee + waypointTotal + extraFee;
@@ -5387,6 +5394,9 @@ function resetForm() {
   document.getElementById('vehicleTon').value = '';
   document.getElementById('cargoWeight').value = '';
   document.getElementById('lqWeight').value = '';
+  document.getElementById('lqWaypointFee').value = '0';
+  const _odEl = document.getElementById('lqOfficeDoc');
+  if(_odEl) _odEl.checked = false;
   document.getElementById('memo').value = '';
   document.getElementById('deliveryDetailAddr').value = '';
   document.getElementById('deliveryContact').value = '';
@@ -5853,20 +5863,16 @@ function renderLiquorStops() {
     return;
   }
   document.getElementById('lqStopCount').textContent = liquorStops.length + '건';
-  
+
   let html = '';
   liquorStops.forEach((s, i) => {
-    const rateDisplay = s.rate ? s.rate.toLocaleString() : '';
     html += `<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;padding:4px 6px;background:#faf5ff;border:1px solid #e9d5ff;border-radius:5px">
       <span style="font-size:10px;font-weight:700;color:#7c3aed;min-width:28px">${i+2}착</span>
-      <input type="text" value="${s.dest}" placeholder="배송처" oninput="updateLiquorStop(${i},'dest',this.value)" style="width:90px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
+      <input type="text" value="${s.dest}" placeholder="배송처" oninput="updateLiquorStop(${i},'dest',this.value)" style="width:100px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
       <input type="text" value="${s.area}" list="regionList" placeholder="권역" onchange="updateLiquorStop(${i},'area',this.value)" style="width:65px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
-      <input type="text" value="${s.addr}" placeholder="주소" oninput="updateLiquorStop(${i},'addr',this.value)" style="flex:1;min-width:80px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
+      <input type="text" value="${s.addr}" placeholder="주소" oninput="updateLiquorStop(${i},'addr',this.value)" style="flex:1;min-width:100px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
       <input type="text" value="${s.contact}" placeholder="담당자" oninput="updateLiquorStop(${i},'contact',this.value)" style="width:55px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
       <input type="text" value="${s.phone}" placeholder="연락처" oninput="updateLiquorStop(${i},'phone',this.value)" style="width:90px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
-      <input type="text" value="${s.qty}" placeholder="수량" oninput="updateLiquorStop(${i},'qty',this.value)" style="width:50px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
-      <input type="text" value="${s.weight}" placeholder="톤" oninput="updateLiquorStop(${i},'weight',this.value)" style="width:45px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
-      <input type="number" value="${rateDisplay}" placeholder="단가" onchange="updateLiquorStop(${i},'rate',this.value)" style="width:70px;padding:3px 5px;font-size:11px;border:1px solid #7c3aed;border-radius:3px;font-weight:700;text-align:right;color:#7c3aed">
       <button onclick="removeLiquorStop(${i})" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px;padding:2px 4px" title="삭제">✕</button>
     </div>`;
   });
@@ -5874,9 +5880,9 @@ function renderLiquorStops() {
 }
 
 function calcLiquorTotal() {
-  const waypointTotal = liquorStops.reduce((s, st) => s + (st.rate||0), 0);
+  const fee = parseInt(document.getElementById('lqWaypointFee')?.value) || 0;
   document.getElementById('lqStopCount').textContent = liquorStops.length + '건';
-  document.getElementById('lqWaypointTotal').textContent = waypointTotal > 0 ? '경유 단가합계: ' + waypointTotal.toLocaleString() + '원' : '';
+  document.getElementById('lqWaypointTotal').textContent = fee > 0 ? '경유비: ' + fee.toLocaleString() + '원' : '';
 }
 
 // ============================================
@@ -12375,6 +12381,7 @@ async function saveDispatch(closeAfter) {
           lqWeight: dispatchMode === 'liquor' ? (document.getElementById('lqWeight').value || '') : '',
           lqCenter: dispatchMode === 'liquor' ? (document.getElementById('lqCenter').value || '') : '',
           lqOfficeDoc: dispatchMode === 'liquor' ? !!document.getElementById('lqOfficeDoc')?.checked : false,
+      lqWaypointFee: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqWaypointFee')?.value) || 0) : 0,
           // 합짐은 혼적 옵션 사용 안 함 (코드별 금액 직접 입력)
           isMixed: false,
           mixedMjimIdx: '',
@@ -12565,7 +12572,7 @@ async function saveDispatch(closeAfter) {
   let roundFee = type === '왕복' ? Math.round(baseRate * 0.5) : 0;
   let waypointTotal = 0;
   if(dispatchMode === 'liquor') {
-    waypointTotal = liquorStops.reduce((s, st) => s + (st.rate||0), 0);
+    waypointTotal = parseInt(document.getElementById('lqWaypointFee')?.value) || 0;
   }
   const extraFee = parseInt(document.getElementById('extraWorkFee').value) || 0;
   total = baseRate + manualFee + waitFee + roundFee + waypointTotal + extraFee;
@@ -12620,6 +12627,7 @@ async function saveDispatch(closeAfter) {
       lqWeight: dispatchMode === 'liquor' ? (document.getElementById('lqWeight').value || '') : '',
       lqCenter: dispatchMode === 'liquor' ? (document.getElementById('lqCenter').value || '') : '',
       lqOfficeDoc: dispatchMode === 'liquor' ? !!document.getElementById('lqOfficeDoc')?.checked : false,
+      lqWaypointFee: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqWaypointFee')?.value) || 0) : 0,
       liquorStops: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(liquorStops)) : undefined,
       // 혼적(M짐) 정보 저장 — 수정 모드에서 단가 손상 방지
       isMixed: !!document.getElementById('mixedCargoCheck')?.checked,
