@@ -8929,7 +8929,7 @@ async function syncFromSheet() {
       return;
     }
     if(data.success) {
-      dispatchLog = data.data;
+      dispatchLog = _mergeLocalFields(data.data);
       saveDispatchHistory();
       renderHistory();
       renderInlineHistory();
@@ -12232,6 +12232,25 @@ function _calcSyncHash(d) {
   return len + '|' + cksum + '|' + (d[0]?.id||'') + '|' + (d[len-1]?.id||'');
 }
 
+// 시트 동기화 시 로컬 전용 필드 보존 (시트에 없는 필드를 기존 로컬 데이터에서 병합)
+const _LOCAL_ONLY_FIELDS = ['lqWeight','lqCenter','lqOfficeDoc','lqWaypointFee','liquorStops','cargoWeight','isMixed','mixedMjimIdx','mixedMjimSize','hapjimGroup','stickyMemo','lqOfficeDoc'];
+function _mergeLocalFields(sheetData) {
+  const localMap = {};
+  dispatchLog.forEach(r => { if(r.id) localMap[r.id] = r; });
+  sheetData.forEach(r => {
+    const local = localMap[r.id];
+    if(local) {
+      _LOCAL_ONLY_FIELDS.forEach(f => {
+        if(local[f] !== undefined && local[f] !== null && local[f] !== '' &&
+           (r[f] === undefined || r[f] === null || r[f] === '')) {
+          r[f] = local[f];
+        }
+      });
+    }
+  });
+  return sheetData;
+}
+
 // 초기 로딩 시 조용한 동기화 (토스트 없음, 30초 차단 우회)
 async function _silentSyncOnLoad() {
   const url = getSheetUrl();
@@ -12240,7 +12259,7 @@ async function _silentSyncOnLoad() {
     const res = await fetch(url + '?action=getAll');
     const data = await res.json();
     if(data.success && data.data) {
-      dispatchLog = data.data;
+      dispatchLog = _mergeLocalFields(data.data);
       saveDispatchHistory();
       renderHistory();
       renderInlineHistory();
@@ -12263,7 +12282,7 @@ async function autoSync() {
       const newHash = _calcSyncHash(d);
       if(newHash !== _lastSyncHash) {
         const prevCount = dispatchLog.length;
-        dispatchLog = data.data;
+        dispatchLog = _mergeLocalFields(data.data);
         saveDispatchHistory();
         renderHistory();
         renderInlineHistory();
