@@ -1019,7 +1019,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <div class="form-group">
           <label>상차지</label>
           <select id="pickupAddr" onchange="forceRegenerateSMS()" style="font-size:12px">
-            <option value="이천시 부발읍 고백리 241 (락앤락)">락앤락 (이천 부발)</option>
+            <option value="이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)">락앤락 (이천 부발)</option>
             <option value="경기 여주시 대신면 대신로 894-10 (KCTC여주센터)">KCTC여주센터</option>
             <option value="경기 이천시 마장면 덕평로661번길87 (KCTC덕평2센터)">KCTC덕평2센터</option>
             <option value="경기 이천시 마장면 서이천로 91 (KCTC덕평1센터)">KCTC덕평1센터</option>
@@ -3219,7 +3219,7 @@ function loadRecord(id) {
   document.getElementById('clientName').value = r.clientName || '';
   document.getElementById('dispatchDate').value = sanitizeDate(r.date);
   document.getElementById('deliveryDate').value = sanitizeDate(r.deliveryDate || r.date);
-  document.getElementById('pickupAddr').value = r.pickup || '이천시 부발읍 고백리 241 (락앤락)';
+  document.getElementById('pickupAddr').value = r.pickup || '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
   document.getElementById('deliveryDetailAddr').value = r.deliveryAddr || '';
   document.getElementById('deliveryContact').value = r.deliveryContact || '';
   document.getElementById('deliveryPhone').value = r.deliveryPhone || '';
@@ -3927,7 +3927,7 @@ function init() {
   document.getElementById('dispatchDate').value = _today.getFullYear()+'-'+String(_today.getMonth()+1).padStart(2,'0')+'-'+String(_today.getDate()).padStart(2,'0');
   document.getElementById('deliveryDate').value = _tomorrow.getFullYear()+'-'+String(_tomorrow.getMonth()+1).padStart(2,'0')+'-'+String(_tomorrow.getDate()).padStart(2,'0');
   // 상차지 기본값 (브라우저 캐싱 방지)
-  document.getElementById('pickupAddr').value = '이천시 부발읍 고백리 241 (락앤락)';
+  document.getElementById('pickupAddr').value = '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
   
   // 권역 datalist
   const regionDL = document.getElementById('regionList');
@@ -5410,7 +5410,7 @@ function resetForm() {
   if(dispatchMode === 'liquor') {
     onCenterChange();
   } else {
-    document.getElementById('pickupAddr').value = '이천시 부발읍 고백리 241 (락앤락)';
+    document.getElementById('pickupAddr').value = '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
   }
   // 수동 편집 모드 해제
   smsManualMode = false;
@@ -5707,7 +5707,7 @@ function setDispatchMode(mode) {
   if(mode === 'liquor') {
     onCenterChange();
   } else {
-    document.getElementById('pickupAddr').value = '이천시 부발읍 고백리 241 (락앤락)';
+    document.getElementById('pickupAddr').value = '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
     forceRegenerateSMS();
   }
 }
@@ -7200,7 +7200,7 @@ async function saveBulkOrders() {
       date: today,
       deliveryDate: orderDeliveryDate,
       type: dispatchMode === 'liquor' ? '주류' : '편도',
-      pickup: document.getElementById('pickupAddr').value || '이천시 부발읍 고백리 241 (락앤락)',
+      pickup: document.getElementById('pickupAddr').value || '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)',
       delivery: o.delivery || '',
       deliveryAddr: o.deliveryAddr || '',
       deliveryContact: o.deliveryContact || '',
