@@ -3219,7 +3219,9 @@ function loadRecord(id) {
   document.getElementById('clientName').value = r.clientName || '';
   document.getElementById('dispatchDate').value = sanitizeDate(r.date);
   document.getElementById('deliveryDate').value = sanitizeDate(r.deliveryDate || r.date);
-  document.getElementById('pickupAddr').value = r.pickup || '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
+  // 구버전 상차지 문자열 자동 정규화 (락앤락 → KCTC풀필먼트3센터 1층)
+  const _pickupRaw = (r.pickup || '').replace('(락앤락)', '(KCTC풀필먼트3센터 1층)');
+  document.getElementById('pickupAddr').value = _pickupRaw || '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
   document.getElementById('deliveryDetailAddr').value = r.deliveryAddr || '';
   document.getElementById('deliveryContact').value = r.deliveryContact || '';
   document.getElementById('deliveryPhone').value = r.deliveryPhone || '';
@@ -7800,7 +7802,11 @@ function generateSMS() {
   if(smsManualMode) return;
   const delivDate = document.getElementById('deliveryDate').value || document.getElementById('dispatchDate').value || '';
   const clientName = document.getElementById('clientName').value || '';
-  const pickup = document.getElementById('pickupAddr').value || '';
+  let pickup = document.getElementById('pickupAddr').value || '';
+  // 락앤락 모드인데 상차지 값이 비어 있으면(옛 옵션 불일치 등) 기본값 보정
+  if(!pickup && dispatchMode !== 'liquor') {
+    pickup = '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
+  }
   const code = document.getElementById('dispatchCode').value.trim() || '';
   const plt = document.getElementById('palletCount').value || '0';
   const weight = document.getElementById('cargoWeight').value || '';
