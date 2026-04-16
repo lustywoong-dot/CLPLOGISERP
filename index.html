@@ -7727,7 +7727,9 @@ function updateSMSFieldInPlace() {
   // 줄 단위 교체 (패턴 매칭되는 줄만, 없으면 건너뜀)
   sms = sms.replace(/^(3\. 수량\/중량:).*$/m, '$1 ' + qtyInfo);
   sms = sms.replace(/^(■ 거래처:).*$/m, '$1 ' + clientName);
-  sms = sms.replace(/^(2\. 키오스크코드:).*$/m, '$1 ' + code);
+  const _officeDocChecked = document.getElementById('lqOfficeDoc')?.checked;
+  const _lbl = _officeDocChecked ? '배송코드' : '키오스크코드';
+  sms = sms.replace(/^2\. (키오스크코드|배송코드):.*$/m, '2. ' + _lbl + ': ' + code);
 
   // 하차지/1착 줄 교체 (단일 배송 or 다착)
   if(sms.match(/^하차지: /m)) {
@@ -7859,10 +7861,11 @@ function generateSMS() {
     
     const hasStops = liquorStops.length > 0;
     
+    const _codeLabel = isOfficeDoc ? '배송코드' : '키오스크코드';
     sms = `[배송 안내]
 ■ 배송일: ${dateStr}${hasStops ? '' : '\n■ 거래처: ' + (clientName || '-')}
 1. 상차지: ${pickup || '-'}
-2. 키오스크코드: ${cleanCode || '-'}
+2. ${_codeLabel}: ${cleanCode || '-'}
 3. 수량/중량: ${qtyInfo}
 ${kioskMsg[center] || ''}`;
 
@@ -7895,11 +7898,12 @@ ${kioskMsg[center] || ''}`;
     const _docMsg = _isOfficeDoc
       ? '→ 사무실에서 서류를 수령하세요.'
       : '→ 키오스크에서 서류를 출력하세요. (P만 영어 나머지 숫자)';
+    const _codeLabel2 = _isOfficeDoc ? '배송코드' : '키오스크코드';
     sms = `[배송 안내]
 ■ 배송일: ${dateStr}
 ■ 거래처: ${clientName || '-'}
 1. 상차지: ${pickup || '-'}
-2. 키오스크코드: ${cleanCode || '-'}
+2. ${_codeLabel2}: ${cleanCode || '-'}
 ${_docMsg}
 3. 수량/중량: ${qtyInfo}
 
