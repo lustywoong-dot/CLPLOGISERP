@@ -4998,9 +4998,9 @@ function checkCodeDuplicate() {
   const existing = code ? dispatchLog.find(r => r.code === code && r.id !== selectedRecordId) : null;
 
   if(existing) {
-    // 기존 건 존재 → 에러 대신 "불러오기" 안내 (배송일 표시 추가)
+    // 기존 건 존재 → 배송일 표시 + 자동 별건 저장 안내
     const existDate = sanitizeDate(existing.deliveryDate || existing.date || '') || '(날짜없음)';
-    errEl.innerHTML = '⚠ 기존 배차 건이 있습니다 (배송일: <b>' + existDate + '</b>). <button onclick="loadRecord(' + existing.id + ')" style="background:#3b82f6;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:10px;cursor:pointer;margin-left:4px">📋 불러와서 수정</button> <button onclick="allowNewCode()" style="background:#d97706;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:10px;cursor:pointer;margin-left:2px">➕ 새로 등록</button>';
+    errEl.innerHTML = 'ℹ 같은 코드 기존 건 있음 (배송일: <b>' + existDate + '</b>) — <span style="color:#059669;font-weight:700">배송일 다르면 자동으로 별건 저장됨</span>. <button onclick="loadRecord(' + existing.id + ')" style="background:#3b82f6;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:10px;cursor:pointer;margin-left:4px">📋 기존 건 수정</button>';
     errEl.style.display = 'block';
     errEl.style.color = '#92400e';
     inputEl.style.borderColor = '#d97706';
@@ -12555,9 +12555,10 @@ async function saveDispatch(closeAfter) {
   let isUpdate = selectedRecordId && dispatchLog.some(r => r.id === selectedRecordId);
 
   // 신규 등록 시 중복 체크 — 코드+배송일 둘 다 일치해야 '같은 건'으로 판단
+  // (같은 코드라도 날짜가 다르면 별건. 매일 반복되는 고정 라인 배차 대응)
   if(!isUpdate && !code.startsWith('TEMP_') && !_allowDuplicateCode) {
     const inputDeliveryDate = sanitizeDate(document.getElementById('deliveryDate').value);
-    // 1순위: 코드+배송일 완전 일치 → 자동 수정 모드
+    // 코드+배송일 완전 일치 → 자동 수정 모드 (같은 건)
     const exactMatch = dispatchLog.find(r =>
       r.code === code &&
       sanitizeDate(r.deliveryDate || r.date || '') === inputDeliveryDate
@@ -12566,15 +12567,8 @@ async function saveDispatch(closeAfter) {
       selectedRecordId = exactMatch.id;
       isUpdate = true;
       showToast('ℹ 기존 배차 [' + code + '] (' + inputDeliveryDate + ') 수정 모드로 전환');
-    } else {
-      // 2순위: 같은 코드+다른 날짜 존재 → 사용자 확인 후 별건 등록
-      const sameCodeDiffDate = dispatchLog.find(r => r.code === code);
-      if(sameCodeDiffDate) {
-        const otherDate = sanitizeDate(sameCodeDiffDate.deliveryDate || sameCodeDiffDate.date || '') || '(날짜없음)';
-        const ok = confirm('⚠ 같은 코드 [' + code + ']의 기존 배차가 있습니다.\n\n기존 배송일: ' + otherDate + '\n입력 배송일: ' + inputDeliveryDate + '\n\n다른 날짜이므로 새 건으로 저장할까요?\n\n[확인] 새 건으로 저장\n[취소] 중단 (기존 건 수정하려면 배차이력에서 선택)');
-        if(!ok) return;
-      }
     }
+    // 같은 코드+다른 날짜는 별건으로 자동 저장 (기존 데이터 보존)
   }
 
   // 강제 새 등록 플래그 초기화
