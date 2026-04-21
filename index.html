@@ -12702,6 +12702,27 @@ async function saveDispatch(closeAfter) {
       const oldCode = existing.code;
       const newData = records[0];
       Object.keys(newData).forEach(k => { if(k !== 'id') existing[k] = newData[k]; });
+
+      // 차량(기사) 추가된 경우: records[1+]를 신규 레코드로 저장 (중복 방지)
+      const addedRecords = [];
+      if(records.length > 1) {
+        for(let i = 1; i < records.length; i++) {
+          const subRec = records[i];
+          const subDeliveryDate = sanitizeDate(subRec.deliveryDate || subRec.date || '');
+          const dup = dispatchLog.find(r =>
+            r.id !== existing.id &&
+            r.code === subRec.code &&
+            sanitizeDate(r.deliveryDate||r.date||'') === subDeliveryDate
+          );
+          if(!dup) {
+            dispatchLog.unshift(subRec);
+            addedRecords.push(subRec);
+            _newRecordIds.add(subRec.id);
+            setTimeout(() => { _newRecordIds.delete(subRec.id); }, _NEW_BADGE_TTL);
+          }
+        }
+      }
+
       saveDispatchHistory();
       
       // 수정된 배송일이 필터 범위 밖이면 자동 확장
@@ -12713,8 +12734,13 @@ async function saveDispatch(closeAfter) {
 
       if(isConnected()) {
         try { await saveToSheet(existing); } catch(e) {}
+        for(const ar of addedRecords) {
+          try { await saveToSheet(ar); } catch(e) {}
+        }
       }
-      showToast('✅ 배차 수정 완료!');
+      showToast(addedRecords.length > 0
+        ? '✅ 배차 수정 완료! (차량 ' + addedRecords.length + '건 추가)'
+        : '✅ 배차 수정 완료!');
 
       if(closeAfter) {
         selectedRecordId = null;
