@@ -4998,8 +4998,9 @@ function checkCodeDuplicate() {
   const existing = code ? dispatchLog.find(r => r.code === code && r.id !== selectedRecordId) : null;
 
   if(existing) {
-    // 기존 건 존재 → 에러 대신 "불러오기" 안내
-    errEl.innerHTML = '⚠ 기존 배차 건이 있습니다. <button onclick="loadRecord(' + existing.id + ')" style="background:#3b82f6;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:10px;cursor:pointer;margin-left:4px">📋 불러와서 수정</button> <button onclick="allowNewCode()" style="background:#d97706;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:10px;cursor:pointer;margin-left:2px">➕ 새로 등록</button>';
+    // 기존 건 존재 → 에러 대신 "불러오기" 안내 (배송일 표시 추가)
+    const existDate = sanitizeDate(existing.deliveryDate || existing.date || '') || '(날짜없음)';
+    errEl.innerHTML = '⚠ 기존 배차 건이 있습니다 (배송일: <b>' + existDate + '</b>). <button onclick="loadRecord(' + existing.id + ')" style="background:#3b82f6;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:10px;cursor:pointer;margin-left:4px">📋 불러와서 수정</button> <button onclick="allowNewCode()" style="background:#d97706;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:10px;cursor:pointer;margin-left:2px">➕ 새로 등록</button>';
     errEl.style.display = 'block';
     errEl.style.color = '#92400e';
     inputEl.style.borderColor = '#d97706';
@@ -12381,11 +12382,12 @@ async function saveDispatch(closeAfter) {
       const panelEntry = hapjimTotals.find(h => h.code === hCode);
       const codeTotal = (panelEntry && panelEntry.total > 0) ? panelEntry.total : codeBaseRate;
 
+      const hapjimDeliveryDate = sanitizeDate(document.getElementById('deliveryDate').value);
       driverList.forEach((drv, di) => {
         const recCode = driverList.length > 1 ? `${hCode}-${di+1}` : hCode;
 
-        // 중복 체크
-        if(dispatchLog.some(r => r.code === recCode)) return;
+        // 중복 체크 — 코드+배송일 둘 다 일치할 때만 스킵
+        if(dispatchLog.some(r => r.code === recCode && sanitizeDate(r.deliveryDate||r.date||'') === hapjimDeliveryDate)) return;
 
         const driverPay = (ci === 0) ? (drv.pay || 0) : 0; // 첫 코드에만 지급액
         const margin = driverPay > 0 ? codeTotal - driverPay : 0;
@@ -12552,14 +12554,26 @@ async function saveDispatch(closeAfter) {
   // 수정 모드 판단
   let isUpdate = selectedRecordId && dispatchLog.some(r => r.id === selectedRecordId);
 
-  // 신규 등록 시 중복 체크
+  // 신규 등록 시 중복 체크 — 코드+배송일 둘 다 일치해야 '같은 건'으로 판단
   if(!isUpdate && !code.startsWith('TEMP_') && !_allowDuplicateCode) {
-    const existingRec = dispatchLog.find(r => r.code === code);
-    if(existingRec) {
-      // 기존 건을 자동으로 수정 모드로 전환
-      selectedRecordId = existingRec.id;
+    const inputDeliveryDate = sanitizeDate(document.getElementById('deliveryDate').value);
+    // 1순위: 코드+배송일 완전 일치 → 자동 수정 모드
+    const exactMatch = dispatchLog.find(r =>
+      r.code === code &&
+      sanitizeDate(r.deliveryDate || r.date || '') === inputDeliveryDate
+    );
+    if(exactMatch) {
+      selectedRecordId = exactMatch.id;
       isUpdate = true;
-      showToast('ℹ 기존 배차 [' + code + '] 수정 모드로 전환');
+      showToast('ℹ 기존 배차 [' + code + '] (' + inputDeliveryDate + ') 수정 모드로 전환');
+    } else {
+      // 2순위: 같은 코드+다른 날짜 존재 → 사용자 확인 후 별건 등록
+      const sameCodeDiffDate = dispatchLog.find(r => r.code === code);
+      if(sameCodeDiffDate) {
+        const otherDate = sanitizeDate(sameCodeDiffDate.deliveryDate || sameCodeDiffDate.date || '') || '(날짜없음)';
+        const ok = confirm('⚠ 같은 코드 [' + code + ']의 기존 배차가 있습니다.\n\n기존 배송일: ' + otherDate + '\n입력 배송일: ' + inputDeliveryDate + '\n\n다른 날짜이므로 새 건으로 저장할까요?\n\n[확인] 새 건으로 저장\n[취소] 중단 (기존 건 수정하려면 배차이력에서 선택)');
+        if(!ok) return;
+      }
     }
   }
 
@@ -12630,13 +12644,14 @@ async function saveDispatch(closeAfter) {
   if(driverList.length === 0) driverList.push({ route:'', name:'', phone:'', vehicleNo:'', pay:0 });
 
   const records = [];
+  const mainDeliveryDate = sanitizeDate(document.getElementById('deliveryDate').value);
   driverList.forEach((drv, di) => {
     const recCode = driverList.length > 1 ? `${code}-${di+1}` : code;
     const driverPay = drv.pay || 0;
     const margin = driverPay > 0 ? total - driverPay : 0;
 
-    // 중복 체크 (서브코드 포함)
-    if(di > 0 && dispatchLog.some(r => r.code === recCode)) return;
+    // 중복 체크 (서브코드 포함) — 코드+배송일 둘 다 일치할 때만 스킵
+    if(di > 0 && dispatchLog.some(r => r.code === recCode && sanitizeDate(r.deliveryDate||r.date||'') === mainDeliveryDate)) return;
 
     records.push({
       id: Date.now() + di,
