@@ -12639,8 +12639,10 @@ async function saveDispatch(closeAfter) {
 
   const records = [];
   const mainDeliveryDate = sanitizeDate(document.getElementById('deliveryDate').value);
+  // 다중 기사 서브코드 생성 시 이중 접미사 방지 (예: ACLP_180_01-1 → ACLP_180_01)
+  const baseCode = code.replace(/-\d+$/, '');
   driverList.forEach((drv, di) => {
-    const recCode = driverList.length > 1 ? `${code}-${di+1}` : code;
+    const recCode = driverList.length > 1 ? `${baseCode}-${di+1}` : code;
     const driverPay = drv.pay || 0;
     const margin = driverPay > 0 ? total - driverPay : 0;
 
