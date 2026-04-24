@@ -7729,8 +7729,20 @@ function updateSMSFieldInPlace() {
   sms = sms.replace(/^(3\. 수량\/중량:).*$/m, '$1 ' + qtyInfo);
   sms = sms.replace(/^(■ 거래처:).*$/m, '$1 ' + clientName);
   const _officeDocChecked = document.getElementById('lqOfficeDoc')?.checked;
-  const _lbl = _officeDocChecked ? '배송코드' : '키오스크코드';
-  sms = sms.replace(/^2\. (키오스크코드|배송코드):.*$/m, '2. ' + _lbl + ': ' + code);
+  const _isLiquorMode = dispatchMode === 'liquor';
+  if (!_isLiquorMode && _officeDocChecked) {
+    // 락앤락 모드 + 사무실 서류수령 체크: 2번 줄 완전 삭제 (기사 혼란 방지)
+    sms = sms.replace(/^2\. (키오스크코드|배송코드):.*\n?/m, '');
+  } else {
+    const _lbl = _officeDocChecked ? '배송코드' : '키오스크코드';
+    const _newLine = '2. ' + _lbl + ': ' + code;
+    if (sms.match(/^2\. (키오스크코드|배송코드):/m)) {
+      sms = sms.replace(/^2\. (키오스크코드|배송코드):.*$/m, _newLine);
+    } else {
+      // 체크 해제 시 삭제됐던 줄 복구: 1. 상차지 줄 바로 뒤에 삽입
+      sms = sms.replace(/^(1\. 상차지:.*)$/m, '$1\n' + _newLine);
+    }
+  }
 
   // 하차지/1착 줄 교체 (단일 배송 or 다착)
   if(sms.match(/^하차지: /m)) {
@@ -7899,13 +7911,13 @@ ${kioskMsg[center] || ''}`;
     const _docMsg = _isOfficeDoc
       ? '→ 사무실에서 서류를 수령하세요.'
       : '→ 키오스크에서 서류를 출력하세요. (P만 영어 나머지 숫자)';
-    const _codeLabel2 = _isOfficeDoc ? '배송코드' : '키오스크코드';
+    // 사무실 서류수령 체크 시 2번 배송코드 줄 생략 (기사 혼란 방지)
+    const _codeLine = _isOfficeDoc ? '' : `2. 키오스크코드: ${cleanCode || '-'}\n`;
     sms = `[배송 안내]
 ■ 배송일: ${dateStr}
 ■ 거래처: ${clientName || '-'}
 1. 상차지: ${pickup || '-'}
-2. ${_codeLabel2}: ${cleanCode || '-'}
-${_docMsg}
+${_codeLine}${_docMsg}
 3. 수량/중량: ${qtyInfo}
 
 4. 하차지: ${detailAddr || '-'}
