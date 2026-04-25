@@ -8026,7 +8026,7 @@ function generateSMS() {
 
     const _codeLabel = isOfficeDoc ? '배송코드' : '키오스크코드';
     sms = `[배송 안내]
-■ 배송일: ${dateStr}${hasStops ? '' : '\n■ 거래처: ' + (clientName || '-') + (_liquorReturn ? '  🔄 회송' : '')}
+■ 배송일: ${dateStr}${hasStops ? '' : '\n■ 거래처: ' + (clientName || '-')}
 1. 상차지: ${_liquorPickupBlock}
 2. ${_codeLabel}: ${cleanCode || '-'}
 3. 수량/중량: ${qtyInfo}
@@ -8068,9 +8068,8 @@ ${kioskMsg[center] || ''}`;
     const _codeLine = _isOfficeDoc ? '' : `2. 키오스크코드: ${cleanCode || '-'}\n`;
 
     // 회송 모드: 상차지↔하차지 위치 swap
-    let _pickupBlock, _deliveryBlock, _returnBadge = '';
+    let _pickupBlock, _deliveryBlock;
     if(isReturnMode) {
-      _returnBadge = '  🔄 회송';
       let _ret = `${clientName || '-'} (${region || '-'})`;
       if(detailAddr) _ret += `\n   주소: ${detailAddr}`;
       if(contactInfo && contactInfo !== '-') _ret += `\n   담당자: ${contactInfo}`;
@@ -8083,7 +8082,7 @@ ${kioskMsg[center] || ''}`;
 
     sms = `[배송 안내]
 ■ 배송일: ${dateStr}
-■ 거래처: ${clientName || '-'}${_returnBadge}
+■ 거래처: ${clientName || '-'}
 1. 상차지: ${_pickupBlock}
 ${_codeLine}${_docMsg}
 3. 수량/중량: ${qtyInfo}
