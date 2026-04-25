@@ -1841,6 +1841,36 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           </table>
         </div>
       </div>
+
+      <!-- 로그인 이력 (관리자 전용) -->
+      <div class="card" style="margin-top:12px">
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span><span class="icon">🕒</span> 로그인 이력 (관리자 전용)</span>
+          <span style="display:flex;gap:6px">
+            <button class="btn btn-sm" onclick="renderLoginHistory()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:4px 10px;font-size:11px">🔄 새로고침</button>
+            <button class="btn btn-sm" onclick="clearLoginHistory()" style="background:#fff;border:1px solid #fca5a5;color:#dc2626;padding:4px 10px;font-size:11px">🗑 전체 삭제</button>
+          </span>
+        </div>
+        <div style="font-size:11px;color:var(--text-light);margin-bottom:8px">
+          최근 로그인 시간/IP/위치/접속기기를 기록합니다 (브라우저 로컬 저장, 최근 200건). 외부에서 접속한 흔적이 있는지 확인용.
+          <span style="color:#dc2626">※ 이 기기에서 발생한 로그인만 기록됩니다 (다른 기기 접속은 안 보입니다).</span>
+        </div>
+        <div style="max-height:300px;overflow-y:auto;border:1px solid var(--border);border-radius:6px">
+          <table style="width:100%;font-size:11px;border-collapse:collapse">
+            <thead style="position:sticky;top:0;background:var(--bg);z-index:1">
+              <tr style="border-bottom:1px solid var(--border)">
+                <th style="padding:6px 8px;text-align:left">시간</th>
+                <th style="padding:6px 8px;text-align:left">아이디</th>
+                <th style="padding:6px 8px;text-align:left">권한</th>
+                <th style="padding:6px 8px;text-align:left">IP</th>
+                <th style="padding:6px 8px;text-align:left">위치</th>
+                <th style="padding:6px 8px;text-align:left">접속기기</th>
+              </tr>
+            </thead>
+            <tbody id="loginHistoryBody"><tr><td colspan="6" style="padding:12px;text-align:center;color:var(--text-light)">기록 없음</td></tr></tbody>
+          </table>
+        </div>
+      </div>
       </div>
 
       <div class="card-title"><span class="icon">📋</span> Apps Script 코드 (복사용)</div>
@@ -3761,6 +3791,150 @@ async function syncUsersFromSheet() {
   return false;
 }
 
+// ============================================
+// 로그인 이력 기록 (관리자가 외부 접속 흔적 확인용)
+// ============================================
+const _LOGIN_LOG_KEY = 'clp_login_log';
+const _LOGIN_LOG_MAX = 200;
+
+// 외부 IP/위치 조회 (실패해도 OK)
+async function _fetchClientIPInfo() {
+  // 1차: ipapi.co (무료 1000/day, IP+위치+국가)
+  try {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 3500);
+    const res = await fetch('https://ipapi.co/json/', { signal: ctrl.signal });
+    clearTimeout(tid);
+    if(res.ok) {
+      const j = await res.json();
+      if(j && j.ip) {
+        return {
+          ip: j.ip || '',
+          city: j.city || '',
+          region: j.region || '',
+          country: j.country_name || j.country || ''
+        };
+      }
+    }
+  } catch(e) { /* fallback */ }
+  // 2차: ipify (IP만)
+  try {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), 2500);
+    const res = await fetch('https://api.ipify.org?format=json', { signal: ctrl.signal });
+    clearTimeout(tid);
+    if(res.ok) {
+      const j = await res.json();
+      return { ip: j.ip || '', city: '', region: '', country: '' };
+    }
+  } catch(e) { /* IP 못 구해도 로그는 남김 */ }
+  return { ip: '', city: '', region: '', country: '' };
+}
+
+// 사용자 친화 timestamp (sanitizeDate 규칙 — toISOString 금지, getFullYear 사용)
+function _formatLoginTs(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+function _shortUserAgent(ua) {
+  if(!ua) return '';
+  // 브라우저 + OS 단순화
+  let browser = 'Unknown';
+  if(/Edg\//.test(ua)) browser = 'Edge';
+  else if(/OPR\//.test(ua)) browser = 'Opera';
+  else if(/Chrome\//.test(ua)) browser = 'Chrome';
+  else if(/Safari\//.test(ua) && !/Chrome\//.test(ua)) browser = 'Safari';
+  else if(/Firefox\//.test(ua)) browser = 'Firefox';
+  let os = '';
+  if(/Windows NT 10/.test(ua)) os = 'Win10/11';
+  else if(/Windows/.test(ua)) os = 'Windows';
+  else if(/Mac OS X/.test(ua)) os = 'macOS';
+  else if(/Android/.test(ua)) os = 'Android';
+  else if(/iPhone|iPad/.test(ua)) os = 'iOS';
+  else if(/Linux/.test(ua)) os = 'Linux';
+  return browser + (os ? ' / ' + os : '');
+}
+
+function _readLoginLog() {
+  try {
+    const raw = localStorage.getItem(_LOGIN_LOG_KEY);
+    if(!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch(e) { return []; }
+}
+
+function _writeLoginLog(arr) {
+  try {
+    // 최신 N건만 유지 (앞이 최신)
+    const trimmed = arr.slice(0, _LOGIN_LOG_MAX);
+    localStorage.setItem(_LOGIN_LOG_KEY, JSON.stringify(trimmed));
+  } catch(e) { /* localStorage 가득 찼을 수 있음 — 조용히 무시 */ }
+}
+
+// 로그인 성공 시 호출 (비동기지만 await 안 해도 됨, 백그라운드 기록)
+async function recordLoginEvent(username, role) {
+  const entry = {
+    ts: _formatLoginTs(new Date()),
+    username: username || '-',
+    role: role || '-',
+    ip: '',
+    city: '',
+    region: '',
+    country: '',
+    ua: _shortUserAgent(navigator.userAgent || ''),
+    uaFull: (navigator.userAgent || '').slice(0, 250)
+  };
+  // IP/위치는 비동기 — 먼저 빈 값으로 즉시 기록 후 채워넣기
+  const log = _readLoginLog();
+  log.unshift(entry);
+  _writeLoginLog(log);
+  try {
+    const info = await _fetchClientIPInfo();
+    if(info && (info.ip || info.city)) {
+      // 방금 추가한 첫 항목에 IP 정보 머지
+      const cur = _readLoginLog();
+      if(cur[0] && cur[0].ts === entry.ts && cur[0].username === entry.username) {
+        cur[0].ip = info.ip || '';
+        cur[0].city = info.city || '';
+        cur[0].region = info.region || '';
+        cur[0].country = info.country || '';
+        _writeLoginLog(cur);
+      }
+    }
+  } catch(e) { /* 외부 API 실패 — 로그는 그대로 남음 */ }
+}
+
+function renderLoginHistory() {
+  const tbody = document.getElementById('loginHistoryBody');
+  if(!tbody) return;
+  const log = _readLoginLog();
+  if(log.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="padding:12px;text-align:center;color:var(--text-light)">기록 없음</td></tr>';
+    return;
+  }
+  tbody.innerHTML = log.map(e => {
+    const loc = [e.city, e.region, e.country].filter(Boolean).join(', ') || '-';
+    const ipColor = e.ip ? '#1f2937' : '#9ca3af';
+    return `<tr style="border-bottom:1px solid #f3f4f6">
+      <td style="padding:5px 8px;font-family:monospace;color:#6b7280">${e.ts || '-'}</td>
+      <td style="padding:5px 8px;font-weight:600">${e.username || '-'}</td>
+      <td style="padding:5px 8px;color:#2563eb">${e.role || '-'}</td>
+      <td style="padding:5px 8px;font-family:monospace;color:${ipColor}">${e.ip || '-'}</td>
+      <td style="padding:5px 8px">${loc}</td>
+      <td style="padding:5px 8px;color:#6b7280" title="${(e.uaFull || '').replace(/"/g, '&quot;')}">${e.ua || '-'}</td>
+    </tr>`;
+  }).join('');
+}
+
+function clearLoginHistory() {
+  if(!confirm('로그인 이력을 모두 삭제할까요? 삭제된 기록은 복구할 수 없습니다.')) return;
+  try { localStorage.removeItem(_LOGIN_LOG_KEY); } catch(e) {}
+  renderLoginHistory();
+  showToast('✅ 로그인 이력이 삭제되었습니다');
+}
+
 async function doLogin() {
   const id = document.getElementById('loginId').value.trim();
   const pw = document.getElementById('loginPw').value;
@@ -3802,6 +3976,8 @@ async function doLogin() {
   
   if(!user) { showLoginError('아이디 또는 비밀번호가 틀렸습니다'); return; }
   sessionStorage.setItem('clp_session', JSON.stringify({ id: user.id, name: user.name, role: user.role }));
+  // 로그인 이력 기록 (백그라운드 — await 하지 않음)
+  try { recordLoginEvent(user.id, user.role); } catch(e) {}
   document.getElementById('loginOverlay').style.display = 'none';
   document.getElementById('mainApp').style.display = '';
   applyRole(user);
@@ -3879,7 +4055,10 @@ function applyRole(user) {
   if(role === 'settlement') {
     document.querySelectorAll('[onclick*="saveDispatch"]').forEach(el => el.style.display = 'none');
   }
-  if(role === 'admin') renderUserList();
+  if(role === 'admin') {
+    renderUserList();
+    try { renderLoginHistory(); } catch(e) {}
+  }
 }
 
 function renderUserList() {
