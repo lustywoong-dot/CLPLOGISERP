@@ -507,6 +507,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
   <div class="tab" data-tab="rateRef" onclick="switchTab('rateRef')">📊 단가 참고</div>
   <div class="tab" data-tab="drivers" onclick="switchTab('drivers')">차량 등록</div>
   <div class="tab" data-tab="settlement" onclick="switchTab('settlement')">📑 기사 정산</div>
+  <div class="tab" data-tab="receipt" onclick="switchTab('receipt')">📋 인수증 체크</div>
   <div class="tab" data-tab="stats" onclick="switchTab('stats')">📈 통계</div>
   <div class="tab" data-tab="attendance" onclick="switchTab('attendance')">📋 출퇴근부</div>
   <div class="tab" data-tab="settings" onclick="switchTab('settings')">⚙️ 설정</div>
@@ -1470,6 +1471,86 @@ body.hide-cost-col .col-sensitive { display: none !important; }
   </div>
 
   <!-- 설정 패널 -->
+  <!-- ============================================ -->
+  <!-- 인수증 체크 패널 (LNL / 덕평 / 여주) -->
+  <!-- ============================================ -->
+  <div id="panel-receipt" class="panel">
+    <div class="card">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <span><span class="icon">📋</span> 인수증 체크리스트</span>
+        <span id="receiptStatBadge" style="font-size:11px;color:var(--text-light);font-weight:400"></span>
+      </div>
+      <div class="info-banner" style="margin-bottom:10px;font-size:11px">
+        📌 거래처별 인수증 회수/스캔 현황을 직접 입력·관리합니다 (배차 데이터와 별도 저장).
+        회수/스캔 셀을 클릭하면 빈칸 → O → X 순으로 토글됩니다.
+      </div>
+      <!-- 거래처 서브탭 -->
+      <div style="display:flex;gap:4px;margin-bottom:10px;background:#f1f5f9;border-radius:6px;padding:3px;flex-wrap:wrap">
+        <button class="receipt-client-tab" data-client="LNL" onclick="setReceiptClient('LNL')" style="flex:1;min-width:80px;padding:8px 12px;border:none;background:#fff;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;color:var(--primary)">🔵 LNL (락앤락)</button>
+        <button class="receipt-client-tab" data-client="덕평" onclick="setReceiptClient('덕평')" style="flex:1;min-width:80px;padding:8px 12px;border:none;background:transparent;border-radius:4px;cursor:pointer;font-size:13px;color:var(--text-light)">🟣 덕평2</button>
+        <button class="receipt-client-tab" data-client="여주" onclick="setReceiptClient('여주')" style="flex:1;min-width:80px;padding:8px 12px;border:none;background:transparent;border-radius:4px;cursor:pointer;font-size:13px;color:var(--text-light)">🟢 여주</button>
+      </div>
+      <!-- 컨트롤 바 -->
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
+        <div style="display:flex;gap:4px;align-items:center">
+          <label style="font-size:11px;font-weight:600">월 선택</label>
+          <input type="month" id="receiptMonth" onchange="onReceiptMonthChange()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+        </div>
+        <div style="display:flex;gap:4px;align-items:center">
+          <label style="font-size:11px;font-weight:600">필터</label>
+          <select id="receiptFilter" onchange="renderReceiptCheck()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+            <option value="all">전체</option>
+            <option value="unreceived">미회수만</option>
+            <option value="unscanned">미스캔만</option>
+            <option value="incomplete">미완료(회수 또는 스캔 X)</option>
+            <option value="complete">완료(회수+스캔 모두 O)</option>
+          </select>
+        </div>
+        <input type="text" id="receiptSearch" placeholder="🔍 코드/비고 검색..." oninput="renderReceiptCheck()" style="padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:180px">
+        <span style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn btn-sm btn-primary" onclick="openAddReceiptDialog()" style="padding:6px 12px;font-size:12px">+ 항목 추가</button>
+          <button class="btn btn-sm" onclick="exportReceiptCheck()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:6px 10px;font-size:11px">📄 CSV 내보내기</button>
+        </span>
+      </div>
+      <!-- 추가 폼 (숨김 → 토글) -->
+      <div id="receiptAddForm" style="display:none;background:#f8fafc;border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:10px">
+        <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:end">
+          <div><label style="font-size:11px;font-weight:600">날짜</label><br><input type="date" id="newReceiptDate" style="padding:5px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px"></div>
+          <div><label style="font-size:11px;font-weight:600">배차코드</label><br><input type="text" id="newReceiptCode" placeholder="예: P_005_01" style="padding:5px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;width:140px"></div>
+          <div><label style="font-size:11px;font-weight:600">회수</label><br>
+            <select id="newReceiptReceived" style="padding:5px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px">
+              <option value="">-</option><option value="O">O</option><option value="X">X</option>
+            </select>
+          </div>
+          <div><label style="font-size:11px;font-weight:600">스캔</label><br>
+            <select id="newReceiptScanned" style="padding:5px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px">
+              <option value="">-</option><option value="O">O</option><option value="X">X</option>
+            </select>
+          </div>
+          <div style="flex:1;min-width:160px"><label style="font-size:11px;font-weight:600">비고</label><br><input type="text" id="newReceiptMemo" placeholder="비고" style="padding:5px 8px;font-size:12px;border:1px solid var(--border);border-radius:4px;width:100%"></div>
+          <button class="btn btn-sm btn-primary" onclick="addReceiptItem()" style="padding:6px 14px;font-size:12px;font-weight:700">💾 추가</button>
+          <button class="btn btn-sm" onclick="closeAddReceiptDialog()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:6px 12px;font-size:12px">취소</button>
+        </div>
+      </div>
+      <!-- 표 -->
+      <div style="overflow-x:auto">
+        <table id="receiptTable" style="width:100%;font-size:12px;border-collapse:collapse">
+          <thead style="background:#f9fafb">
+            <tr>
+              <th style="padding:8px;border:1px solid #e5e7eb;text-align:left;width:110px">날짜</th>
+              <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">배차코드</th>
+              <th style="padding:8px;border:1px solid #e5e7eb;width:60px">회수</th>
+              <th style="padding:8px;border:1px solid #e5e7eb;width:60px">스캔</th>
+              <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">비고</th>
+              <th style="padding:8px;border:1px solid #e5e7eb;width:60px">관리</th>
+            </tr>
+          </thead>
+          <tbody id="receiptBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <!-- ============================================ -->
   <!-- 통계 패널 -->
   <!-- ============================================ -->
@@ -3880,9 +3961,9 @@ async function loadDispatchHistory() {
 // ============================================
 const ROLE_LABELS = { admin: '관리자', dispatcher: '배차 담당', settlement: '정산 담당', viewer: '조회' };
 const ROLE_TABS = {
-  admin: ['dispatch','history','rate','clpFixed','rateRef','drivers','settlement','stats','attendance','settings'],
-  dispatcher: ['dispatch','history','rate','clpFixed','rateRef','drivers'],
-  settlement: ['settlement','clpFixed'],
+  admin: ['dispatch','history','rate','clpFixed','rateRef','drivers','settlement','receipt','stats','attendance','settings'],
+  dispatcher: ['dispatch','history','rate','clpFixed','rateRef','drivers','receipt'],
+  settlement: ['settlement','clpFixed','receipt'],
   viewer: ['history','rate','clpFixed','rateRef']
 };
 
@@ -4421,6 +4502,7 @@ function switchTab(name) {
   if(name === 'stats') initStats();
   if(name === 'rateRef') initRateRef();
   if(name === 'clpFixed') { try { renderClpFixedRates(); } catch(e) {} }
+  if(name === 'receipt') { try { renderReceiptCheck(); } catch(e) {} }
   if(name === 'drivers') {
     // 로컬이 비어있으면 시트에서 자동 가져오기 (정산탭과 동일 패턴)
     if(getRegisteredDrivers().length === 0 && typeof isConnected === 'function' && isConnected()) {
@@ -9992,6 +10074,217 @@ let settlementData = [];
 let settlementView = 'summary';
 let settlementConfirmed = {};
 try { settlementConfirmed = JSON.parse(localStorage.getItem('clp_settlement_confirmed') || '{}'); } catch(e) { console.warn('정산확인 파싱 오류:', e.message); }
+
+// ============================================
+// 인수증 체크 (LNL / 덕평 / 여주) — dispatchLog와 별도 저장
+// 스키마: { id, client('LNL'|'덕평'|'여주'), date('YYYY-MM-DD'), code, received('O'|'X'|''), scanned('O'|'X'|''), memo, updatedBy, updatedAt }
+// ============================================
+let receiptCheckData = [];
+let receiptActiveClient = 'LNL';     // 현재 보고 있는 거래처 서브탭
+let receiptActiveMonth = '';         // 현재 보고 있는 월 'YYYY-MM' (빈 문자열 = 전체)
+try { receiptCheckData = JSON.parse(localStorage.getItem('clp_receipt_check_data') || '[]'); } catch(e) { receiptCheckData = []; console.warn('인수증 체크 파싱 오류:', e.message); }
+function saveReceiptCheckLocal() {
+  try {
+    localStorage.setItem('clp_receipt_check_data', JSON.stringify(receiptCheckData));
+  } catch(e) {
+    if(e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message))) {
+      console.warn('인수증 체크 저장 실패 (quota):', e.message);
+      if(typeof showToast === 'function') showToast('⚠ 로컬 저장 용량 초과 — 설정 탭에서 캐시 정리하세요');
+    } else {
+      console.warn('인수증 체크 저장 실패:', e.message);
+    }
+  }
+}
+
+// 거래처 서브탭 변경
+function setReceiptClient(client) {
+  receiptActiveClient = client;
+  // 서브탭 스타일 갱신
+  document.querySelectorAll('.receipt-client-tab').forEach(b => {
+    if(b.dataset.client === client) {
+      b.style.background = '#fff';
+      b.style.color = 'var(--primary)';
+      b.style.fontWeight = '600';
+    } else {
+      b.style.background = 'transparent';
+      b.style.color = 'var(--text-light)';
+      b.style.fontWeight = '400';
+    }
+  });
+  renderReceiptCheck();
+}
+
+// 월 변경
+function onReceiptMonthChange() {
+  receiptActiveMonth = document.getElementById('receiptMonth').value || '';
+  renderReceiptCheck();
+}
+
+// 추가 폼 토글
+function openAddReceiptDialog() {
+  const f = document.getElementById('receiptAddForm');
+  if(!f) return;
+  f.style.display = '';
+  // 기본값: 오늘 날짜
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('newReceiptDate').value = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  document.getElementById('newReceiptCode').focus();
+}
+function closeAddReceiptDialog() {
+  const f = document.getElementById('receiptAddForm');
+  if(f) f.style.display = 'none';
+  ['newReceiptDate','newReceiptCode','newReceiptMemo'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  ['newReceiptReceived','newReceiptScanned'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+}
+
+// 항목 추가
+function addReceiptItem() {
+  const date = document.getElementById('newReceiptDate').value || '';
+  const code = (document.getElementById('newReceiptCode').value || '').trim();
+  const received = document.getElementById('newReceiptReceived').value || '';
+  const scanned = document.getElementById('newReceiptScanned').value || '';
+  const memo = (document.getElementById('newReceiptMemo').value || '').trim();
+  if(!date || !code) { showToast('⚠ 날짜와 배차코드를 입력하세요'); return; }
+  // 중복 체크 (같은 거래처 + 날짜 + 코드)
+  const dup = receiptCheckData.find(r => r.client === receiptActiveClient && r.date === date && r.code === code);
+  if(dup) {
+    if(!confirm(`이미 등록된 항목입니다 (${date} / ${code}). 덮어쓸까요?`)) return;
+    dup.received = received;
+    dup.scanned = scanned;
+    dup.memo = memo;
+    dup.updatedBy = (typeof getUserName === 'function' ? getUserName() : '') || '-';
+    dup.updatedAt = _formatLoginTs(new Date());
+  } else {
+    receiptCheckData.unshift({
+      id: Date.now() + Math.floor(Math.random()*1000),
+      client: receiptActiveClient,
+      date, code, received, scanned, memo,
+      updatedBy: (typeof getUserName === 'function' ? getUserName() : '') || '-',
+      updatedAt: _formatLoginTs(new Date())
+    });
+  }
+  saveReceiptCheckLocal();
+  closeAddReceiptDialog();
+  renderReceiptCheck();
+  showToast('✅ 항목 추가 완료');
+}
+
+// 회수/스캔 토글: '' → 'O' → 'X' → ''
+function toggleReceiptStatus(id, field) {
+  const r = receiptCheckData.find(x => x.id === id);
+  if(!r) return;
+  const cycle = ['', 'O', 'X'];
+  const cur = r[field] || '';
+  const next = cycle[(cycle.indexOf(cur) + 1) % cycle.length];
+  r[field] = next;
+  r.updatedBy = (typeof getUserName === 'function' ? getUserName() : '') || '-';
+  r.updatedAt = _formatLoginTs(new Date());
+  saveReceiptCheckLocal();
+  renderReceiptCheck();
+}
+
+// 비고 인라인 편집
+function editReceiptMemo(id, value) {
+  const r = receiptCheckData.find(x => x.id === id);
+  if(!r) return;
+  r.memo = (value || '').trim();
+  r.updatedBy = (typeof getUserName === 'function' ? getUserName() : '') || '-';
+  r.updatedAt = _formatLoginTs(new Date());
+  saveReceiptCheckLocal();
+}
+
+// 항목 삭제
+function deleteReceiptItem(id) {
+  const idx = receiptCheckData.findIndex(x => x.id === id);
+  if(idx < 0) return;
+  if(!confirm('이 항목을 삭제할까요?')) return;
+  receiptCheckData.splice(idx, 1);
+  saveReceiptCheckLocal();
+  renderReceiptCheck();
+  showToast('✅ 삭제 완료');
+}
+
+// 표 렌더
+function renderReceiptCheck() {
+  const tbody = document.getElementById('receiptBody');
+  if(!tbody) return;
+  const search = (document.getElementById('receiptSearch')?.value || '').trim().toLowerCase();
+  const filter = document.getElementById('receiptFilter')?.value || 'all';
+  let rows = receiptCheckData.filter(r => r.client === receiptActiveClient);
+  // 월 필터
+  if(receiptActiveMonth) {
+    rows = rows.filter(r => (r.date || '').startsWith(receiptActiveMonth));
+  }
+  // 검색
+  if(search) {
+    rows = rows.filter(r => (r.code || '').toLowerCase().includes(search) || (r.memo || '').toLowerCase().includes(search));
+  }
+  // 상태 필터
+  if(filter === 'unreceived') rows = rows.filter(r => r.received !== 'O');
+  else if(filter === 'unscanned') rows = rows.filter(r => r.scanned !== 'O');
+  else if(filter === 'incomplete') rows = rows.filter(r => r.received !== 'O' || r.scanned !== 'O');
+  else if(filter === 'complete') rows = rows.filter(r => r.received === 'O' && r.scanned === 'O');
+
+  // 정렬: 날짜 내림차순 → 코드 오름차순
+  rows.sort((a, b) => {
+    if((b.date || '') !== (a.date || '')) return (b.date || '').localeCompare(a.date || '');
+    return (a.code || '').localeCompare(b.code || '');
+  });
+
+  // 통계 뱃지
+  const total = receiptCheckData.filter(r => r.client === receiptActiveClient && (!receiptActiveMonth || (r.date||'').startsWith(receiptActiveMonth))).length;
+  const recv = receiptCheckData.filter(r => r.client === receiptActiveClient && (!receiptActiveMonth || (r.date||'').startsWith(receiptActiveMonth)) && r.received === 'O').length;
+  const scn = receiptCheckData.filter(r => r.client === receiptActiveClient && (!receiptActiveMonth || (r.date||'').startsWith(receiptActiveMonth)) && r.scanned === 'O').length;
+  const badge = document.getElementById('receiptStatBadge');
+  if(badge) {
+    badge.innerHTML = `총 <b style="color:#111827">${total}</b>건 / 회수 <b style="color:#059669">${recv}</b> / 스캔 <b style="color:#2563eb">${scn}</b>` + (total - recv > 0 ? ` <span style="color:#dc2626">미회수 ${total-recv}</span>` : '');
+  }
+
+  if(rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--text-light)">${receiptActiveClient} ${receiptActiveMonth ? receiptActiveMonth + ' ' : ''}항목이 없습니다. 우측 [+ 항목 추가] 버튼으로 등록하세요.</td></tr>`;
+    return;
+  }
+
+  const cellStyle = (v) => {
+    if(v === 'O') return 'background:#d1fae5;color:#065f46;font-weight:700';
+    if(v === 'X') return 'background:#fee2e2;color:#991b1b;font-weight:700';
+    return 'background:#fff;color:#9ca3af';
+  };
+  tbody.innerHTML = rows.map(r => `
+    <tr style="border-bottom:1px solid #f3f4f6">
+      <td style="padding:6px 8px;border:1px solid #e5e7eb;font-family:monospace;color:#374151">${r.date || '-'}</td>
+      <td style="padding:6px 8px;border:1px solid #e5e7eb;font-family:monospace;font-weight:600">${r.code || '-'}</td>
+      <td style="padding:0;border:1px solid #e5e7eb;text-align:center;${cellStyle(r.received)}cursor:pointer" onclick="toggleReceiptStatus(${r.id}, 'received')" title="클릭: 빈칸→O→X">${r.received || '·'}</td>
+      <td style="padding:0;border:1px solid #e5e7eb;text-align:center;${cellStyle(r.scanned)}cursor:pointer" onclick="toggleReceiptStatus(${r.id}, 'scanned')" title="클릭: 빈칸→O→X">${r.scanned || '·'}</td>
+      <td style="padding:2px 4px;border:1px solid #e5e7eb"><input type="text" value="${(r.memo||'').replace(/"/g,'&quot;')}" onchange="editReceiptMemo(${r.id}, this.value)" placeholder="비고" style="width:100%;padding:4px 6px;border:1px solid transparent;background:transparent;font-size:12px" onfocus="this.style.background='#fff';this.style.borderColor='#d1d5db'" onblur="this.style.background='transparent';this.style.borderColor='transparent'"></td>
+      <td style="padding:6px 8px;border:1px solid #e5e7eb;text-align:center"><button onclick="deleteReceiptItem(${r.id})" style="background:#fff;border:1px solid #fca5a5;color:#dc2626;padding:3px 8px;font-size:11px;border-radius:4px;cursor:pointer">삭제</button></td>
+    </tr>
+  `).join('');
+}
+
+// CSV 내보내기
+function exportReceiptCheck() {
+  let rows = receiptCheckData.filter(r => r.client === receiptActiveClient);
+  if(receiptActiveMonth) rows = rows.filter(r => (r.date || '').startsWith(receiptActiveMonth));
+  if(rows.length === 0) { showToast('내보낼 항목이 없습니다'); return; }
+  rows.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.code || '').localeCompare(b.code || ''));
+  let csv = '﻿날짜,배차코드,회수,스캔,비고\n';
+  rows.forEach(r => {
+    const memoEsc = '"' + String(r.memo || '').replace(/"/g, '""') + '"';
+    csv += `${r.date || ''},${r.code || ''},${r.received || ''},${r.scanned || ''},${memoEsc}\n`;
+  });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `인수증체크_${receiptActiveClient}${receiptActiveMonth ? '_' + receiptActiveMonth : ''}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('✅ CSV 내보내기 완료');
+}
 
 // v5 마이그레이션 완료 - 버전 체크 불필요
 try {
