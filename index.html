@@ -1905,6 +1905,23 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           </table>
         </div>
       </div>
+
+      <!-- 로컬 캐시 관리 (관리자 전용) -->
+      <div class="card" style="margin-top:12px">
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between">
+          <span><span class="icon">🧹</span> 로컬 캐시 관리 (관리자 전용)</span>
+          <button class="btn btn-sm" onclick="renderStorageStatus()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:4px 10px;font-size:11px">🔄 새로고침</button>
+        </div>
+        <div style="font-size:11px;color:var(--text-light);margin-bottom:8px">
+          저장 시 'QuotaExceededError'가 발생하면 이 도구로 옛 캐시를 정리하세요. 시트 데이터는 영향 없습니다.
+        </div>
+        <div id="storageStatusBox" style="font-size:11px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:10px;font-family:monospace"></div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          <button class="btn btn-sm" onclick="cleanupOrphansAndReport()" style="background:#fef3c7;border:1px solid #f59e0b;color:#92400e;padding:6px 12px;font-size:11px;font-weight:600">🗑 이력에 없는 메모 정리</button>
+          <button class="btn btn-sm" onclick="clearSettlementCache()" style="background:#fee2e2;border:1px solid #fca5a5;color:#dc2626;padding:6px 12px;font-size:11px;font-weight:600">⚠ 정산 로컬 캐시 삭제</button>
+          <button class="btn btn-sm" onclick="clearAllMemos()" style="background:#fee2e2;border:1px solid #fca5a5;color:#dc2626;padding:6px 12px;font-size:11px;font-weight:600">⚠ 모든 메모 삭제</button>
+        </div>
+      </div>
       </div>
 
       <div class="card-title"><span class="icon">📋</span> Apps Script 코드 (복사용)</div>
@@ -4063,6 +4080,71 @@ function clearLoginHistory() {
   showToast('✅ 로그인 이력이 삭제되었습니다');
 }
 
+// ============================================
+// 로컬 캐시 관리 (관리자용)
+// ============================================
+function _localStorageUsage() {
+  // 키별 size + total
+  const out = { items: [], total: 0 };
+  try {
+    for(let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      const v = localStorage.getItem(k) || '';
+      const sz = (k.length + v.length) * 2; // UTF-16 가정
+      out.items.push({ key: k, bytes: sz });
+      out.total += sz;
+    }
+    out.items.sort((a, b) => b.bytes - a.bytes);
+  } catch(e) {}
+  return out;
+}
+
+function _fmtBytes(n) {
+  if(n < 1024) return n + 'B';
+  if(n < 1024*1024) return (n/1024).toFixed(1) + 'KB';
+  return (n/1024/1024).toFixed(2) + 'MB';
+}
+
+function renderStorageStatus() {
+  const box = document.getElementById('storageStatusBox');
+  if(!box) return;
+  const u = _localStorageUsage();
+  const top = u.items.slice(0, 8);
+  let html = `<div style="font-weight:700;margin-bottom:6px;color:#374151">총 사용량: ${_fmtBytes(u.total)} <span style="color:var(--text-light);font-weight:400">(브라우저별 한계 보통 5~10MB)</span></div>`;
+  html += `<div style="max-height:160px;overflow-y:auto">`;
+  top.forEach(it => {
+    const pct = u.total > 0 ? (it.bytes / u.total * 100).toFixed(1) : '0';
+    const color = it.bytes > 1024*1024 ? '#dc2626' : (it.bytes > 100*1024 ? '#f59e0b' : '#6b7280');
+    html += `<div style="display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px dashed #e5e7eb"><span style="color:${color}">${it.key}</span><span style="color:#374151">${_fmtBytes(it.bytes)} <small style="color:#9ca3af">(${pct}%)</small></span></div>`;
+  });
+  html += `</div>`;
+  box.innerHTML = html;
+}
+
+function cleanupOrphansAndReport() {
+  const before = _localStorageUsage().total;
+  let cleaned = 0;
+  try { cleaned = cleanupOrphanMemos(); } catch(e) {}
+  const after = _localStorageUsage().total;
+  const saved = before - after;
+  showToast(`✅ 메모 ${cleaned}건 정리 (절약: ${_fmtBytes(saved)})`, 4000);
+  renderStorageStatus();
+}
+
+function clearSettlementCache() {
+  if(!confirm('정산 로컬 캐시(clp_settlement_data)를 삭제할까요?\n시트에는 영향 없으며 다음 동기화 시 다시 받아옵니다.')) return;
+  try { localStorage.removeItem('clp_settlement_data'); } catch(e) {}
+  showToast('✅ 정산 로컬 캐시 삭제 완료 — 동기화 버튼을 눌러 다시 받아오세요', 5000);
+  renderStorageStatus();
+}
+
+function clearAllMemos() {
+  if(!confirm('모든 배차 메모(clp_dispatch_memos)를 삭제할까요?\n복구할 수 없습니다.')) return;
+  try { localStorage.removeItem('clp_dispatch_memos'); } catch(e) {}
+  showToast('✅ 모든 메모 삭제 완료');
+  renderStorageStatus();
+}
+
 async function doLogin() {
   const id = document.getElementById('loginId').value.trim();
   const pw = document.getElementById('loginPw').value;
@@ -4186,6 +4268,7 @@ function applyRole(user) {
   if(role === 'admin') {
     renderUserList();
     try { renderLoginHistory(); } catch(e) {}
+    try { renderStorageStatus(); } catch(e) {}
   }
 }
 
@@ -5748,10 +5831,57 @@ function saveMemoForCode(code, memo) {
   if(!code) return;
   const date = document.getElementById('deliveryDate')?.value || document.getElementById('dispatchDate')?.value || '';
   const key = date ? date + '|' + code : code;
-  let memos = JSON.parse(localStorage.getItem('clp_dispatch_memos') || '{}');
+  let memos = {};
+  try { memos = JSON.parse(localStorage.getItem('clp_dispatch_memos') || '{}'); } catch(e) { memos = {}; }
   memos[key] = memo;
-  // 이전 코드만으로 저장된 건도 유지 (하위 호환)
-  localStorage.setItem('clp_dispatch_memos', JSON.stringify(memos));
+  try {
+    localStorage.setItem('clp_dispatch_memos', JSON.stringify(memos));
+  } catch(e) {
+    // localStorage 용량 초과 시: dispatchLog에 없는 고아 메모 자동 정리 후 재시도
+    if(e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message))) {
+      try {
+        cleanupOrphanMemos();
+        memos = JSON.parse(localStorage.getItem('clp_dispatch_memos') || '{}');
+        memos[key] = memo;
+        localStorage.setItem('clp_dispatch_memos', JSON.stringify(memos));
+      } catch(e2) {
+        console.warn('메모 저장 실패 (quota):', e2.message);
+        if(typeof showToast === 'function') showToast('⚠ 메모 저장 용량 초과 — 설정 탭에서 캐시 정리하세요');
+      }
+    } else {
+      console.warn('메모 저장 실패:', e.message);
+    }
+  }
+}
+
+// 고아 메모 정리: 현재 dispatchLog에 없는 코드의 메모를 삭제하여 localStorage 용량 확보
+function cleanupOrphanMemos() {
+  let memos = {};
+  try { memos = JSON.parse(localStorage.getItem('clp_dispatch_memos') || '{}'); } catch(e) { return 0; }
+  const liveCodes = new Set();
+  const liveKeys = new Set();
+  if(typeof dispatchLog !== 'undefined' && Array.isArray(dispatchLog)) {
+    dispatchLog.forEach(r => {
+      if(r && r.code) {
+        liveCodes.add(r.code);
+        const d = r.deliveryDate || r.date || '';
+        if(d) liveKeys.add(d + '|' + r.code);
+      }
+    });
+  }
+  let cleaned = 0;
+  Object.keys(memos).forEach(key => {
+    // 키가 'date|code' 형태인지, 'code' 단독인지 분기
+    if(key.indexOf('|') >= 0) {
+      if(!liveKeys.has(key)) { delete memos[key]; cleaned++; }
+    } else {
+      if(!liveCodes.has(key)) { delete memos[key]; cleaned++; }
+    }
+  });
+  if(cleaned > 0) {
+    try { localStorage.setItem('clp_dispatch_memos', JSON.stringify(memos)); } catch(e) {}
+  }
+  return cleaned;
 }
 
 function loadMemoForCode(code) {
@@ -9556,7 +9686,17 @@ async function syncFromSheet() {
 
 // 정산 데이터 저장 (로컬 + 구글시트 백업)
 function saveSettlementLocal() {
-  localStorage.setItem('clp_settlement_data', JSON.stringify(settlementData));
+  try {
+    localStorage.setItem('clp_settlement_data', JSON.stringify(settlementData));
+  } catch(e) {
+    if(e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message))) {
+      // 용량 초과 시 메모리에는 유지, 시트 백업으로 보존
+      console.warn('정산 캐시 용량 초과 — 시트 백업으로 대체');
+      if(typeof showToast === 'function') showToast('⚠ 정산 로컬 캐시 용량 초과 — 설정 탭의 캐시 정리 권장');
+    } else {
+      console.warn('정산 저장 실패:', e.message);
+    }
+  }
   backupSettlementToSheet();
 }
 
@@ -15040,9 +15180,12 @@ function updateDriverRecommend() {
 
   // 정산 데이터에서 해당 지역 배차 실적 집계
   const driverMap = {};
+  const _argArea = String(area || '');
   settlementData.forEach(d => {
     if(!d.area || !d.name) return;
-    if(!d.area.includes(area) && !area.includes(d.area)) return;
+    // d.area가 문자열이 아닌 경우(number 등) 안전 변환
+    const _dArea = String(d.area || '');
+    if(!_dArea.includes(_argArea) && !_argArea.includes(_dArea)) return;
     const key = d.name + '|' + (d.phone || '') + '|' + (d.vehicle || '');
     if(!driverMap[key]) driverMap[key] = { name: d.name, phone: d.phone || '', vehicle: d.vehicle || '', count: 0, lastDate: '' };
     driverMap[key].count++;
