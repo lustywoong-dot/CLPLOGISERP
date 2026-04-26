@@ -1510,7 +1510,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <input type="text" id="receiptSearch" placeholder="🔍 코드/비고 검색..." oninput="renderReceiptCheck()" style="padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:180px">
         <span style="margin-left:auto;display:flex;gap:6px">
           <button class="btn btn-sm btn-primary" onclick="openAddReceiptDialog()" style="padding:6px 12px;font-size:12px" title="배차에 없는 옛 인수증 수동 등록용">+ 수동 추가</button>
-          <button class="btn btn-sm" onclick="exportReceiptCheck()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:6px 10px;font-size:11px">📄 CSV 내보내기</button>
+          <button class="btn btn-sm" onclick="exportReceiptCheck()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:6px 10px;font-size:11px" title="전체요약 + 거래처별(LNL/덕평/여주) + 미회수 시트로 엑셀 다운로드">📥 엑셀 출력</button>
         </span>
       </div>
       <!-- 추가 폼 (숨김 → 토글) -->
@@ -10354,51 +10354,161 @@ function onReceiptResetClick(el) {
   resetReceiptCheck(d, c);
 }
 
-// CSV 내보내기 (현재 화면 기준)
-function exportReceiptCheck() {
-  // 현재 표시 중인 행을 그대로 export
+// 거래처별 인수증 데이터 수집 (자동 + 수동 통합)
+function _collectReceiptRows(client, month) {
   const seen = new Set();
   const rows = [];
   if(typeof dispatchLog !== 'undefined' && Array.isArray(dispatchLog)) {
     dispatchLog.forEach(r => {
       if(!r || !r.code) return;
-      if(getReceiptClient(r.code) !== receiptActiveClient) return;
+      if(getReceiptClient(r.code) !== client) return;
       const date = (typeof sanitizeDate === 'function' ? sanitizeDate(r.deliveryDate || r.date || '') : (r.deliveryDate || r.date || ''));
       if(!date) return;
-      if(receiptActiveMonth && !date.startsWith(receiptActiveMonth)) return;
+      if(month && !date.startsWith(month)) return;
       const key = date + '|' + r.code;
       if(seen.has(key)) return;
       seen.add(key);
-      const c = receiptCheckData.find(x => x.client === receiptActiveClient && x.date === date && x.code === r.code);
-      rows.push({ date, code: r.code, clientName: r.clientName || '', received: c?.received || '', scanned: c?.scanned || '', memo: c?.memo || '' });
+      const c = receiptCheckData.find(x => x.client === client && x.date === date && x.code === r.code);
+      rows.push({
+        date, code: r.code,
+        clientName: r.clientName || '',
+        received: c?.received || '',
+        scanned: c?.scanned || '',
+        memo: c?.memo || '',
+        manual: false
+      });
     });
   }
   receiptCheckData.forEach(c => {
-    if(c.client !== receiptActiveClient) return;
-    if(receiptActiveMonth && !(c.date || '').startsWith(receiptActiveMonth)) return;
+    if(c.client !== client) return;
+    if(month && !(c.date || '').startsWith(month)) return;
     const key = (c.date || '') + '|' + (c.code || '');
     if(seen.has(key)) return;
     seen.add(key);
-    rows.push({ date: c.date, code: c.code, clientName: '(수동)', received: c.received || '', scanned: c.scanned || '', memo: c.memo || '' });
+    rows.push({
+      date: c.date, code: c.code,
+      clientName: '(수동)',
+      received: c.received || '', scanned: c.scanned || '', memo: c.memo || '',
+      manual: true
+    });
+  });
+  rows.sort((a, b) =>
+    (a.date || '').localeCompare(b.date || '') ||
+    (a.code || '').localeCompare(b.code || '')
+  );
+  return rows;
+}
+
+// 엑셀 출력 — 정산 출력 패턴 (다중 시트, 합계 포함)
+async function exportReceiptCheck() {
+  if(typeof XLSX === 'undefined') {
+    showToast('⚠ 엑셀 라이브러리 로드 실패 — 새로고침 후 다시 시도');
+    return;
+  }
+  const month = receiptActiveMonth || ''; // 빈 문자열이면 전체 기간
+  const monthLabel = month || '전체기간';
+
+  // 거래처별 데이터 수집
+  const allClients = ['LNL', '덕평', '여주'];
+  const dataByClient = {};
+  let grandTotal = 0;
+  allClients.forEach(c => {
+    dataByClient[c] = _collectReceiptRows(c, month);
+    grandTotal += dataByClient[c].length;
   });
 
-  if(rows.length === 0) { showToast('내보낼 항목이 없습니다'); return; }
-  rows.sort((a, b) => (a.date || '').localeCompare(b.date || '') || (a.code || '').localeCompare(b.code || ''));
-  let csv = '﻿날짜,배차코드,거래처,회수,스캔,비고\n';
-  rows.forEach(r => {
-    const enc = (s) => '"' + String(s || '').replace(/"/g, '""') + '"';
-    csv += `${r.date || ''},${enc(r.code)},${enc(r.clientName)},${r.received || ''},${r.scanned || ''},${enc(r.memo)}\n`;
+  if(grandTotal === 0) {
+    showToast('내보낼 항목이 없습니다 (해당 월 배차 없음)');
+    return;
+  }
+
+  // 다운로드 사전 체크 (정산 패턴)
+  if(typeof preDownloadCheck === 'function') {
+    const ok = await preDownloadCheck('인수증체크 ' + monthLabel, grandTotal);
+    if(!ok) return;
+  }
+
+  const wb = XLSX.utils.book_new();
+
+  // 1. 전체 요약 시트
+  const summaryRows = [['거래처', '총 건수', '회수 O', '회수 X/미체크', '스캔 O', '스캔 X/미체크', '회수율(%)', '스캔율(%)']];
+  let totalAll = 0, recvAll = 0, scnAll = 0;
+  allClients.forEach(c => {
+    const rows = dataByClient[c];
+    const total = rows.length;
+    const recv = rows.filter(r => r.received === 'O').length;
+    const recvX = total - recv;
+    const scn = rows.filter(r => r.scanned === 'O').length;
+    const scnX = total - scn;
+    summaryRows.push([
+      c, total, recv, recvX, scn, scnX,
+      total > 0 ? +((recv/total)*100).toFixed(1) : 0,
+      total > 0 ? +((scn/total)*100).toFixed(1) : 0
+    ]);
+    totalAll += total; recvAll += recv; scnAll += scn;
   });
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `인수증체크_${receiptActiveClient}${receiptActiveMonth ? '_' + receiptActiveMonth : ''}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  showToast('✅ CSV 내보내기 완료');
+  summaryRows.push([
+    '합계', totalAll, recvAll, totalAll - recvAll, scnAll, totalAll - scnAll,
+    totalAll > 0 ? +((recvAll/totalAll)*100).toFixed(1) : 0,
+    totalAll > 0 ? +((scnAll/totalAll)*100).toFixed(1) : 0
+  ]);
+  const summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
+  // 컬럼 너비
+  summaryWs['!cols'] = [
+    {wch:10},{wch:10},{wch:10},{wch:14},{wch:10},{wch:14},{wch:12},{wch:12}
+  ];
+  XLSX.utils.book_append_sheet(wb, summaryWs, '전체요약');
+
+  // 2. 거래처별 시트
+  allClients.forEach(c => {
+    const rows = dataByClient[c];
+    if(rows.length === 0) return;
+    const aoa = [['NO', '날짜', '배차코드', '거래처(자동)', '회수', '스캔', '비고']];
+    rows.forEach((r, i) => {
+      aoa.push([
+        i + 1,
+        r.date || '',
+        r.code || '',
+        r.clientName || '',
+        r.received || '',
+        r.scanned || '',
+        r.memo || ''
+      ]);
+    });
+    // 합계 행
+    const recv = rows.filter(r => r.received === 'O').length;
+    const scn = rows.filter(r => r.scanned === 'O').length;
+    aoa.push(['', '', '', '합계', `회수 ${recv}/${rows.length}`, `스캔 ${scn}/${rows.length}`, '']);
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [
+      {wch:5},{wch:12},{wch:18},{wch:24},{wch:8},{wch:8},{wch:30}
+    ];
+    // 시트명: LNL / 덕평 / 여주
+    XLSX.utils.book_append_sheet(wb, ws, c);
+  });
+
+  // 3. 미회수만 시트 (전체 거래처 통합)
+  const unrecvAll = [];
+  allClients.forEach(c => {
+    dataByClient[c].forEach(r => {
+      if(r.received !== 'O') unrecvAll.push({ ...r, client: c });
+    });
+  });
+  if(unrecvAll.length > 0) {
+    const aoa = [['NO', '거래처', '날짜', '배차코드', '회수', '스캔', '비고']];
+    unrecvAll.forEach((r, i) => {
+      aoa.push([
+        i + 1, r.client, r.date || '', r.code || '',
+        r.received || '', r.scanned || '', r.memo || ''
+      ]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{wch:5},{wch:8},{wch:12},{wch:18},{wch:8},{wch:8},{wch:30}];
+    XLSX.utils.book_append_sheet(wb, ws, '미회수');
+  }
+
+  XLSX.writeFile(wb, `CLP_인수증체크_${monthLabel}.xlsx`);
+  showToast(`📥 엑셀 다운로드 완료! (전체요약 + 거래처별 + 미회수, 총 ${grandTotal}건)`);
 }
 
 // v5 마이그레이션 완료 - 버전 체크 불필요
