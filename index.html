@@ -10399,8 +10399,8 @@ function _collectReceiptRows(client, month) {
   return rows;
 }
 
-// 거래처별 시트 빌더 (A4 가로 2단 레이아웃)
-function _buildClientSheetA4(rows, client, monthLabel) {
+// (구버전 SheetJS 기반 시트 빌더 — exportReceiptCheck 가 ExcelJS로 전환되어 미사용. 보존만)
+function _buildClientSheetA4_LEGACY(rows, client, monthLabel) {
   const HALF = 25;          // 좌/우 각각 25건
   const PAGE = HALF * 2;     // 한 페이지 50건
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE));
@@ -10504,10 +10504,10 @@ function _buildClientSheetA4(rows, client, monthLabel) {
   return ws;
 }
 
-// 엑셀 출력 — 정산 출력 패턴 (다중 시트, A4 2단 레이아웃)
+// 엑셀 출력 — ExcelJS 기반 (색상/스타일 + A4 가로 2단 레이아웃)
 async function exportReceiptCheck() {
-  if(typeof XLSX === 'undefined') {
-    showToast('⚠ 엑셀 라이브러리 로드 실패 — 새로고침 후 다시 시도');
+  if(typeof ExcelJS === 'undefined') {
+    showToast('⚠ ExcelJS 로드 실패 — 새로고침 후 다시 시도');
     return;
   }
   const month = receiptActiveMonth || '';
@@ -10520,63 +10520,259 @@ async function exportReceiptCheck() {
     dataByClient[c] = _collectReceiptRows(c, month);
     grandTotal += dataByClient[c].length;
   });
-
-  if(grandTotal === 0) {
-    showToast('내보낼 항목이 없습니다 (해당 월 배차 없음)');
-    return;
-  }
+  if(grandTotal === 0) { showToast('내보낼 항목이 없습니다 (해당 월 배차 없음)'); return; }
 
   if(typeof preDownloadCheck === 'function') {
     const ok = await preDownloadCheck('인수증체크 ' + monthLabel, grandTotal);
     if(!ok) return;
   }
 
-  const wb = XLSX.utils.book_new();
+  const wb = new ExcelJS.Workbook();
+  // 색상/폰트/테두리
+  const navyFill = { type:'pattern', pattern:'solid', fgColor:{argb:'FF1A365D'} };
+  const lightBlue = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF0F4FF'} };
+  const greenFill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFD1FAE5'} };
+  const redFill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFEE2E2'} };
+  const grayFill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFF9FAFB'} };
+  const yellowFill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFEF9C3'} };
+  const headerFont = { bold:true, color:{argb:'FFFFFFFF'}, size:11, name:'맑은 고딕' };
+  const titleFont = { bold:true, size:18, name:'맑은 고딕', color:{argb:'FF1A365D'} };
+  const subFont = { bold:true, size:11, name:'맑은 고딕', color:{argb:'FF1A365D'} };
+  const dataFont = { size:10, name:'맑은 고딕' };
+  const codeFont = { bold:true, size:10, name:'Consolas', color:{argb:'FF111827'} };
+  const dateFont = { size:10, name:'Consolas', color:{argb:'FF374151'} };
+  const boldFont = { bold:true, size:10, name:'맑은 고딕' };
+  const greenFont = { bold:true, size:13, name:'맑은 고딕', color:{argb:'FF065F46'} };
+  const redFont = { bold:true, size:13, name:'맑은 고딕', color:{argb:'FF991B1B'} };
+  const grayFont = { size:11, name:'맑은 고딕', color:{argb:'FFD1D5DB'} };
+  const thinBorder = {
+    top:{style:'thin',color:{argb:'FFD1D5DB'}},
+    bottom:{style:'thin',color:{argb:'FFD1D5DB'}},
+    left:{style:'thin',color:{argb:'FFD1D5DB'}},
+    right:{style:'thin',color:{argb:'FFD1D5DB'}}
+  };
+  const clientThemeFill = {
+    'LNL': { type:'pattern', pattern:'solid', fgColor:{argb:'FFDBEAFE'} },
+    '덕평': { type:'pattern', pattern:'solid', fgColor:{argb:'FFEDE9FE'} },
+    '여주': { type:'pattern', pattern:'solid', fgColor:{argb:'FFD1FAE5'} }
+  };
 
-  // 1. 전체 요약 시트 (A4 세로, 짧음)
-  const summaryRows = [
-    ['주식회사 씨엘피 (CLP)  ·  인수증 체크 요약'],
-    [`기간: ${monthLabel}    출력일: ${_formatLoginTs(new Date())}`],
-    [],
-    ['거래처', '총 건수', '회수 O', '미회수', '스캔 O', '미스캔', '회수율(%)', '스캔율(%)']
-  ];
+  // ─── 1. 전체 요약 시트 (A4 세로) ─────────────────────
+  const wsSum = wb.addWorksheet('전체요약', {
+    pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1, fitToHeight: 1, horizontalCentered: true },
+    pageMargins: { left: 0.5, right: 0.5, top: 0.6, bottom: 0.5, header: 0.3, footer: 0.3 }
+  });
+  wsSum.columns = [{width:14},{width:11},{width:11},{width:11},{width:11},{width:11},{width:13},{width:13}];
+  wsSum.mergeCells('A1:H1');
+  const sT = wsSum.getCell('A1');
+  sT.value = '주식회사 씨엘피 (CLP) — 인수증 체크 요약';
+  sT.font = titleFont;
+  sT.alignment = { horizontal:'center', vertical:'middle' };
+  wsSum.getRow(1).height = 36;
+  wsSum.mergeCells('A2:H2');
+  wsSum.getCell('A2').border = { bottom:{ style:'medium', color:{argb:'FF1A365D'}}};
+  wsSum.mergeCells('A3:H3');
+  const sS = wsSum.getCell('A3');
+  sS.value = `기간: ${monthLabel}        출력일: ${_formatLoginTs(new Date())}`;
+  sS.font = subFont;
+  sS.alignment = { horizontal:'center' };
+  wsSum.getRow(3).height = 20;
+  const sumHdrs = ['거래처', '총 건수', '회수 O', '미회수', '스캔 O', '미스캔', '회수율(%)', '스캔율(%)'];
+  sumHdrs.forEach((h, i) => {
+    const c = wsSum.getCell(5, i + 1);
+    c.value = h;
+    c.font = headerFont; c.fill = navyFill;
+    c.alignment = { horizontal:'center', vertical:'middle' };
+    c.border = thinBorder;
+  });
+  wsSum.getRow(5).height = 26;
   let totalAll = 0, recvAll = 0, scnAll = 0;
-  allClients.forEach(c => {
-    const rows = dataByClient[c];
+  allClients.forEach((cl, idx) => {
+    const rows = dataByClient[cl];
     const total = rows.length;
     const recv = rows.filter(r => r.received === 'O').length;
     const scn = rows.filter(r => r.scanned === 'O').length;
-    summaryRows.push([
-      c, total, recv, total - recv, scn, total - scn,
-      total > 0 ? +((recv/total)*100).toFixed(1) : 0,
-      total > 0 ? +((scn/total)*100).toFixed(1) : 0
-    ]);
     totalAll += total; recvAll += recv; scnAll += scn;
+    const rowNum = 6 + idx;
+    const recvRate = total > 0 ? +((recv/total)*100).toFixed(1) : 0;
+    const scnRate = total > 0 ? +((scn/total)*100).toFixed(1) : 0;
+    const data = [cl, total, recv, total - recv, scn, total - scn, recvRate, scnRate];
+    data.forEach((v, i) => {
+      const c = wsSum.getCell(rowNum, i + 1);
+      c.value = v;
+      c.alignment = { horizontal: i === 0 ? 'center' : 'right', vertical:'middle' };
+      c.border = thinBorder;
+      c.font = (i === 0) ? subFont : dataFont;
+      if(i === 0) c.fill = clientThemeFill[cl] || lightBlue;
+      if((i === 3 || i === 5) && v > 0) { c.fill = redFill; c.font = { ...redFont, size: 10 }; }
+      if((i === 2 || i === 4) && v > 0) { c.fill = greenFill; c.font = { ...greenFont, size: 10 }; }
+      if(i === 6 || i === 7) {
+        if(v >= 90) c.fill = greenFill;
+        else if(v < 70) c.fill = redFill;
+        else c.fill = yellowFill;
+      }
+    });
+    wsSum.getRow(rowNum).height = 24;
   });
-  summaryRows.push([
-    '합계', totalAll, recvAll, totalAll - recvAll, scnAll, totalAll - scnAll,
-    totalAll > 0 ? +((recvAll/totalAll)*100).toFixed(1) : 0,
-    totalAll > 0 ? +((scnAll/totalAll)*100).toFixed(1) : 0
-  ]);
-  const summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
-  summaryWs['!cols'] = [{wch:14},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:12},{wch:12}];
-  summaryWs['!merges'] = [
-    { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
-    { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }
-  ];
-  summaryWs['!pageSetup'] = { orientation: 'portrait', paperSize: 9, fitToWidth: 1, fitToHeight: 1, scale: 100 };
-  summaryWs['!margins'] = { left: 0.5, right: 0.5, top: 0.6, bottom: 0.5, header: 0.3, footer: 0.3 };
-  XLSX.utils.book_append_sheet(wb, summaryWs, '전체요약');
+  const sumTotalRow = 6 + allClients.length;
+  const tR = totalAll > 0 ? +((recvAll/totalAll)*100).toFixed(1) : 0;
+  const tS = totalAll > 0 ? +((scnAll/totalAll)*100).toFixed(1) : 0;
+  const tData = ['합계', totalAll, recvAll, totalAll - recvAll, scnAll, totalAll - scnAll, tR, tS];
+  tData.forEach((v, i) => {
+    const c = wsSum.getCell(sumTotalRow, i + 1);
+    c.value = v;
+    c.alignment = { horizontal: i === 0 ? 'center' : 'right', vertical:'middle' };
+    c.fill = lightBlue;
+    c.font = subFont;
+    c.border = { top:{style:'medium',color:{argb:'FF1A365D'}}, bottom:{style:'medium',color:{argb:'FF1A365D'}}, left:{style:'thin',color:{argb:'FFD1D5DB'}}, right:{style:'thin',color:{argb:'FFD1D5DB'}}};
+  });
+  wsSum.getRow(sumTotalRow).height = 28;
 
-  // 2. 거래처별 시트 (A4 가로 2단)
-  allClients.forEach(c => {
-    const rows = dataByClient[c];
+  // ─── 2. 거래처별 시트 (A4 가로 2단) ─────────────────
+  allClients.forEach(client => {
+    const rows = dataByClient[client];
     if(rows.length === 0) return;
-    const ws = _buildClientSheetA4(rows, c, monthLabel);
-    XLSX.utils.book_append_sheet(wb, ws, c);
+    const ws = wb.addWorksheet(client, {
+      pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true },
+      pageMargins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 }
+    });
+    ws.columns = [
+      {width:5},{width:12},{width:18},{width:8},{width:8},{width:24},
+      {width:2},
+      {width:5},{width:12},{width:18},{width:8},{width:8},{width:24}
+    ];
+    const HALF = 25;
+    const PAGE = HALF * 2;
+    const pageCount = Math.max(1, Math.ceil(rows.length / PAGE));
+    let curRow = 1;
+    for(let p = 0; p < pageCount; p++) {
+      // 타이틀
+      ws.mergeCells(curRow, 1, curRow, 13);
+      const tC = ws.getCell(curRow, 1);
+      tC.value = '주식회사 씨엘피 (CLP)  ·  인수증 체크리스트';
+      tC.font = titleFont;
+      tC.alignment = { horizontal:'center', vertical:'middle' };
+      ws.getRow(curRow).height = 32;
+      curRow++;
+      // 밑줄
+      ws.mergeCells(curRow, 1, curRow, 13);
+      ws.getCell(curRow, 1).border = { bottom:{ style:'medium', color:{argb:'FF1A365D'}}};
+      ws.getRow(curRow).height = 4;
+      curRow++;
+      // 거래처/기간/페이지
+      ws.mergeCells(curRow, 1, curRow, 4);
+      const cInfo = ws.getCell(curRow, 1);
+      cInfo.value = `거래처: ${client}`;
+      cInfo.font = subFont;
+      cInfo.fill = clientThemeFill[client];
+      cInfo.alignment = { horizontal:'center', vertical:'middle' };
+      cInfo.border = thinBorder;
+      ws.mergeCells(curRow, 5, curRow, 9);
+      const pInfo = ws.getCell(curRow, 5);
+      pInfo.value = `기간: ${monthLabel}`;
+      pInfo.font = subFont;
+      pInfo.alignment = { horizontal:'center', vertical:'middle' };
+      pInfo.border = thinBorder;
+      ws.mergeCells(curRow, 10, curRow, 13);
+      const pgInfo = ws.getCell(curRow, 10);
+      pgInfo.value = `페이지 ${p+1} / ${pageCount}`;
+      pgInfo.font = subFont;
+      pgInfo.alignment = { horizontal:'center', vertical:'middle' };
+      pgInfo.border = thinBorder;
+      ws.getRow(curRow).height = 22;
+      curRow++;
+      // 빈 행
+      ws.getRow(curRow).height = 6;
+      curRow++;
+      // 컬럼 헤더
+      const headers = ['NO', '날짜', '배차코드', '회수', '스캔', '비고', '', 'NO', '날짜', '배차코드', '회수', '스캔', '비고'];
+      headers.forEach((h, i) => {
+        if(h === '') return;
+        const c = ws.getCell(curRow, i + 1);
+        c.value = h;
+        c.font = headerFont;
+        c.fill = navyFill;
+        c.alignment = { horizontal:'center', vertical:'middle' };
+        c.border = thinBorder;
+      });
+      ws.getRow(curRow).height = 24;
+      curRow++;
+      // 데이터 25행
+      for(let i = 0; i < HALF; i++) {
+        const leftIdx = p * PAGE + i;
+        const rightIdx = p * PAGE + HALF + i;
+        const L = rows[leftIdx];
+        const R = rows[rightIdx];
+        const writeSide = (offset, rec, idx) => {
+          const cells = [
+            { c: 1+offset, v: rec ? idx+1 : '', font: dataFont, h:'center' },
+            { c: 2+offset, v: rec?.date || '', font: dateFont, h:'center' },
+            { c: 3+offset, v: rec?.code || '', font: codeFont, h:'center' },
+            { c: 4+offset, v: rec?.received || (rec ? '·' : ''), h:'center', status: rec?.received },
+            { c: 5+offset, v: rec?.scanned || (rec ? '·' : ''), h:'center', status: rec?.scanned },
+            { c: 6+offset, v: rec?.memo || '', font: dataFont, h:'left' }
+          ];
+          cells.forEach(({c, v, font, h, status}) => {
+            const cell = ws.getCell(curRow, c);
+            cell.value = v;
+            cell.alignment = { horizontal: h, vertical:'middle' };
+            cell.border = thinBorder;
+            if(status === 'O') { cell.fill = greenFill; cell.font = greenFont; }
+            else if(status === 'X') { cell.fill = redFill; cell.font = redFont; }
+            else if(status === undefined && font) { cell.font = font; }
+            else { cell.font = grayFont; }
+          });
+        };
+        writeSide(0, L, leftIdx);
+        writeSide(7, R, rightIdx);
+        ws.getCell(curRow, 7).fill = grayFill;
+        ws.getRow(curRow).height = 19;
+        curRow++;
+      }
+      // 페이지 합계 + 확인 서명란
+      const pageStart = p * PAGE;
+      const pageEnd = Math.min(pageStart + PAGE, rows.length);
+      const pageRows = rows.slice(pageStart, pageEnd);
+      const pRecv = pageRows.filter(r => r.received === 'O').length;
+      const pScn = pageRows.filter(r => r.scanned === 'O').length;
+      ws.mergeCells(curRow, 1, curRow, 2);
+      const sumC = ws.getCell(curRow, 1);
+      sumC.value = `페이지 ${p+1} 합계`;
+      sumC.font = boldFont; sumC.fill = lightBlue;
+      sumC.alignment = { horizontal:'center', vertical:'middle' };
+      sumC.border = thinBorder;
+      [
+        { c: 3, v: `${pageRows.length}건` },
+        { c: 4, v: `회수 ${pRecv}` },
+        { c: 5, v: `스캔 ${pScn}` },
+        { c: 6, v: '' }
+      ].forEach(({c, v}) => {
+        const cell = ws.getCell(curRow, c);
+        cell.value = v;
+        cell.fill = lightBlue;
+        cell.font = subFont;
+        cell.alignment = { horizontal:'center', vertical:'middle' };
+        cell.border = thinBorder;
+      });
+      ws.getCell(curRow, 7).fill = grayFill;
+      ws.mergeCells(curRow, 8, curRow, 13);
+      const cnf = ws.getCell(curRow, 8);
+      cnf.value = '확인:                                                              (서명)';
+      cnf.font = boldFont; cnf.fill = lightBlue;
+      cnf.alignment = { horizontal:'left', vertical:'middle', indent: 2 };
+      cnf.border = thinBorder;
+      ws.getRow(curRow).height = 28;
+      curRow++;
+      // 페이지 사이 + 페이지 나누기
+      if(p < pageCount - 1) {
+        ws.getRow(curRow).height = 6;
+        ws.getRow(curRow).addPageBreak();
+        curRow++;
+      }
+    }
   });
 
-  // 3. 미회수만 시트 (3개 거래처 통합) — A4 세로, 단일 표
+  // ─── 3. 미회수 시트 (A4 세로) ────────────────────────
   const unrecvAll = [];
   allClients.forEach(c => {
     dataByClient[c].forEach(r => {
@@ -10584,28 +10780,67 @@ async function exportReceiptCheck() {
     });
   });
   if(unrecvAll.length > 0) {
-    const aoa = [
-      ['주식회사 씨엘피 (CLP)  ·  미회수 인수증 목록'],
-      [`기간: ${monthLabel}    총 ${unrecvAll.length}건`],
-      [],
-      ['NO', '거래처', '날짜', '배차코드', '회수', '스캔', '비고']
-    ];
-    unrecvAll.forEach((r, i) => {
-      aoa.push([i + 1, r.client, r.date || '', r.code || '', r.received || '', r.scanned || '', r.memo || '']);
+    const wsU = wb.addWorksheet('미회수', {
+      pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true, fitToWidth: 1 },
+      pageMargins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.4, header: 0.3, footer: 0.3 }
     });
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{wch:5},{wch:8},{wch:12},{wch:18},{wch:8},{wch:8},{wch:30}];
-    ws['!merges'] = [
-      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
-      { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }
-    ];
-    ws['!pageSetup'] = { orientation: 'portrait', paperSize: 9, fitToWidth: 1, fitToHeight: 0 };
-    ws['!margins'] = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.4, header: 0.3, footer: 0.3 };
-    XLSX.utils.book_append_sheet(wb, ws, '미회수');
+    wsU.columns = [{width:5},{width:9},{width:12},{width:18},{width:8},{width:8},{width:32}];
+    wsU.mergeCells('A1:G1');
+    const t = wsU.getCell('A1');
+    t.value = '주식회사 씨엘피 (CLP)  ·  미회수 인수증 목록';
+    t.font = titleFont;
+    t.alignment = { horizontal:'center', vertical:'middle' };
+    wsU.getRow(1).height = 32;
+    wsU.mergeCells('A2:G2');
+    wsU.getCell('A2').border = { bottom:{ style:'medium', color:{argb:'FF1A365D'}}};
+    wsU.getRow(2).height = 4;
+    wsU.mergeCells('A3:G3');
+    const sub = wsU.getCell('A3');
+    sub.value = `기간: ${monthLabel}    총 ${unrecvAll.length}건`;
+    sub.font = subFont;
+    sub.alignment = { horizontal:'center' };
+    wsU.getRow(3).height = 20;
+    const headers = ['NO', '거래처', '날짜', '배차코드', '회수', '스캔', '비고'];
+    headers.forEach((h, i) => {
+      const c = wsU.getCell(5, i + 1);
+      c.value = h;
+      c.font = headerFont; c.fill = navyFill;
+      c.alignment = { horizontal:'center', vertical:'middle' };
+      c.border = thinBorder;
+    });
+    wsU.getRow(5).height = 24;
+    unrecvAll.forEach((r, i) => {
+      const data = [i+1, r.client, r.date || '', r.code || '', r.received || '', r.scanned || '', r.memo || ''];
+      data.forEach((v, j) => {
+        const c = wsU.getCell(6 + i, j + 1);
+        c.value = v;
+        c.font = (j === 3) ? codeFont : (j === 2 ? dateFont : dataFont);
+        c.alignment = { horizontal: j === 6 ? 'left' : 'center', vertical:'middle' };
+        c.border = thinBorder;
+        if(j === 1) c.fill = clientThemeFill[r.client] || lightBlue;
+      });
+      const recvCell = wsU.getCell(6 + i, 5);
+      if(r.received === 'X') { recvCell.fill = redFill; recvCell.font = { ...redFont, size:11 }; }
+      else if(!r.received) { recvCell.fill = grayFill; recvCell.value = '·'; recvCell.font = grayFont; }
+      const scnCell = wsU.getCell(6 + i, 6);
+      if(r.scanned === 'O') { scnCell.fill = greenFill; scnCell.font = { ...greenFont, size:11 }; }
+      else if(r.scanned === 'X') { scnCell.fill = redFill; scnCell.font = { ...redFont, size:11 }; }
+      else if(!r.scanned) { scnCell.fill = grayFill; scnCell.value = '·'; scnCell.font = grayFont; }
+    });
   }
 
-  XLSX.writeFile(wb, `CLP_인수증체크_${monthLabel}.xlsx`);
-  showToast(`📥 엑셀 다운로드 완료! (전체요약 + 거래처별 A4 2단 + 미회수, 총 ${grandTotal}건)`, 5000);
+  // 다운로드
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `CLP_인수증체크_${monthLabel}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`📥 엑셀 다운로드 완료! 색상/스타일 적용 (총 ${grandTotal}건)`, 5000);
 }
 
 // v5 마이그레이션 완료 - 버전 체크 불필요
