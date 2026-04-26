@@ -10399,16 +10399,120 @@ function _collectReceiptRows(client, month) {
   return rows;
 }
 
-// 엑셀 출력 — 정산 출력 패턴 (다중 시트, 합계 포함)
+// 거래처별 시트 빌더 (A4 가로 2단 레이아웃)
+function _buildClientSheetA4(rows, client, monthLabel) {
+  const HALF = 25;          // 좌/우 각각 25건
+  const PAGE = HALF * 2;     // 한 페이지 50건
+  const pageCount = Math.max(1, Math.ceil(rows.length / PAGE));
+
+  const aoa = [];
+  const merges = [];        // 셀 병합
+  const rowBreaks = [];     // 페이지 나누기 (행 단위)
+  let curRow = 0;
+
+  for(let p = 0; p < pageCount; p++) {
+    const pageStart = p * PAGE;
+    // [Row 0] 회사명 + 거래처 + 기간 (병합 헤더)
+    aoa.push(['주식회사 씨엘피 (CLP)  ·  인수증 체크리스트', '', '', '', '', '', '', '', '', '', '', '', '']);
+    merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: 12 } });
+    curRow++;
+    // [Row 1] 거래처 / 월 / 페이지 표기
+    aoa.push([
+      `거래처: ${client}`, '', '',
+      `기간: ${monthLabel}`, '', '',
+      `페이지: ${p+1} / ${pageCount}`, '', '', '', '', '',
+      `(인쇄: A4 가로)`
+    ]);
+    merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: 2 } });
+    merges.push({ s: { r: curRow, c: 3 }, e: { r: curRow, c: 5 } });
+    merges.push({ s: { r: curRow, c: 6 }, e: { r: curRow, c: 11 } });
+    curRow++;
+    // [Row 2] 빈 행 (간격)
+    aoa.push(['', '', '', '', '', '', '', '', '', '', '', '', '']);
+    curRow++;
+    // [Row 3] 컬럼 헤더 (좌측 6컬럼 + 구분컬럼 + 우측 6컬럼 = 13)
+    aoa.push([
+      'NO', '날짜', '배차코드', '회수', '스캔', '비고',
+      '',
+      'NO', '날짜', '배차코드', '회수', '스캔', '비고'
+    ]);
+    curRow++;
+    // [Rows 4 ~ 4+24] 데이터 25행 (좌+우)
+    for(let i = 0; i < HALF; i++) {
+      const leftIdx = pageStart + i;
+      const rightIdx = pageStart + HALF + i;
+      const L = rows[leftIdx];
+      const R = rows[rightIdx];
+      aoa.push([
+        L ? leftIdx + 1 : '', L?.date || '', L?.code || '', L?.received || '', L?.scanned || '', L?.memo || '',
+        '',
+        R ? rightIdx + 1 : '', R?.date || '', R?.code || '', R?.received || '', R?.scanned || '', R?.memo || ''
+      ]);
+      curRow++;
+    }
+    // 페이지 통계 (좌측 합계 영역)
+    const pageEnd = Math.min(pageStart + PAGE, rows.length);
+    const pageRows = rows.slice(pageStart, pageEnd);
+    const recv = pageRows.filter(r => r.received === 'O').length;
+    const scn = pageRows.filter(r => r.scanned === 'O').length;
+    aoa.push([
+      `페이지 ${p+1} 합계`, '', `${pageRows.length}건`, `회수 ${recv}`, `스캔 ${scn}`, '',
+      '',
+      '확인:', '', '', '', '', '(서명)'
+    ]);
+    merges.push({ s: { r: curRow, c: 0 }, e: { r: curRow, c: 1 } });
+    merges.push({ s: { r: curRow, c: 7 }, e: { r: curRow, c: 11 } });
+    curRow++;
+
+    // 페이지 사이 빈 행 (마지막 페이지 제외)
+    if(p < pageCount - 1) {
+      aoa.push(['', '', '', '', '', '', '', '', '', '', '', '', '']);
+      // 페이지 나누기 (해당 행에서 끊음)
+      rowBreaks.push({ row: curRow, manual: true });
+      curRow++;
+    }
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  // 컬럼 너비: NO=5, 날짜=12, 코드=18, 회수=7, 스캔=7, 비고=22, 구분=2, ...반복
+  ws['!cols'] = [
+    {wch:5},{wch:12},{wch:18},{wch:7},{wch:7},{wch:22},
+    {wch:2},
+    {wch:5},{wch:12},{wch:18},{wch:7},{wch:7},{wch:22}
+  ];
+  ws['!merges'] = merges;
+  if(rowBreaks.length > 0) ws['!rowBreaks'] = rowBreaks;
+  // 인쇄 설정 (가로 A4, fit to width)
+  ws['!pageSetup'] = {
+    orientation: 'landscape',
+    paperSize: 9,           // A4
+    fitToWidth: 1,
+    fitToHeight: 0,
+    scale: 100
+  };
+  ws['!margins'] = {
+    left: 0.3, right: 0.3, top: 0.4, bottom: 0.4,
+    header: 0.2, footer: 0.2
+  };
+  // 행 높이 (헤더 살짝 크게)
+  ws['!rows'] = [
+    { hpt: 22 },              // 회사명
+    { hpt: 18 },              // 거래처/기간/페이지
+    { hpt: 8 },               // 간격
+    { hpt: 20 }               // 컬럼 헤더
+  ];
+  return ws;
+}
+
+// 엑셀 출력 — 정산 출력 패턴 (다중 시트, A4 2단 레이아웃)
 async function exportReceiptCheck() {
   if(typeof XLSX === 'undefined') {
     showToast('⚠ 엑셀 라이브러리 로드 실패 — 새로고침 후 다시 시도');
     return;
   }
-  const month = receiptActiveMonth || ''; // 빈 문자열이면 전체 기간
+  const month = receiptActiveMonth || '';
   const monthLabel = month || '전체기간';
 
-  // 거래처별 데이터 수집
   const allClients = ['LNL', '덕평', '여주'];
   const dataByClient = {};
   let grandTotal = 0;
@@ -10422,7 +10526,6 @@ async function exportReceiptCheck() {
     return;
   }
 
-  // 다운로드 사전 체크 (정산 패턴)
   if(typeof preDownloadCheck === 'function') {
     const ok = await preDownloadCheck('인수증체크 ' + monthLabel, grandTotal);
     if(!ok) return;
@@ -10430,18 +10533,21 @@ async function exportReceiptCheck() {
 
   const wb = XLSX.utils.book_new();
 
-  // 1. 전체 요약 시트
-  const summaryRows = [['거래처', '총 건수', '회수 O', '회수 X/미체크', '스캔 O', '스캔 X/미체크', '회수율(%)', '스캔율(%)']];
+  // 1. 전체 요약 시트 (A4 세로, 짧음)
+  const summaryRows = [
+    ['주식회사 씨엘피 (CLP)  ·  인수증 체크 요약'],
+    [`기간: ${monthLabel}    출력일: ${_formatLoginTs(new Date())}`],
+    [],
+    ['거래처', '총 건수', '회수 O', '미회수', '스캔 O', '미스캔', '회수율(%)', '스캔율(%)']
+  ];
   let totalAll = 0, recvAll = 0, scnAll = 0;
   allClients.forEach(c => {
     const rows = dataByClient[c];
     const total = rows.length;
     const recv = rows.filter(r => r.received === 'O').length;
-    const recvX = total - recv;
     const scn = rows.filter(r => r.scanned === 'O').length;
-    const scnX = total - scn;
     summaryRows.push([
-      c, total, recv, recvX, scn, scnX,
+      c, total, recv, total - recv, scn, total - scn,
       total > 0 ? +((recv/total)*100).toFixed(1) : 0,
       total > 0 ? +((scn/total)*100).toFixed(1) : 0
     ]);
@@ -10453,41 +10559,24 @@ async function exportReceiptCheck() {
     totalAll > 0 ? +((scnAll/totalAll)*100).toFixed(1) : 0
   ]);
   const summaryWs = XLSX.utils.aoa_to_sheet(summaryRows);
-  // 컬럼 너비
-  summaryWs['!cols'] = [
-    {wch:10},{wch:10},{wch:10},{wch:14},{wch:10},{wch:14},{wch:12},{wch:12}
+  summaryWs['!cols'] = [{wch:14},{wch:10},{wch:10},{wch:10},{wch:10},{wch:10},{wch:12},{wch:12}];
+  summaryWs['!merges'] = [
+    { s: { r: 0, c: 0 }, e: { r: 0, c: 7 } },
+    { s: { r: 1, c: 0 }, e: { r: 1, c: 7 } }
   ];
+  summaryWs['!pageSetup'] = { orientation: 'portrait', paperSize: 9, fitToWidth: 1, fitToHeight: 1, scale: 100 };
+  summaryWs['!margins'] = { left: 0.5, right: 0.5, top: 0.6, bottom: 0.5, header: 0.3, footer: 0.3 };
   XLSX.utils.book_append_sheet(wb, summaryWs, '전체요약');
 
-  // 2. 거래처별 시트
+  // 2. 거래처별 시트 (A4 가로 2단)
   allClients.forEach(c => {
     const rows = dataByClient[c];
     if(rows.length === 0) return;
-    const aoa = [['NO', '날짜', '배차코드', '거래처(자동)', '회수', '스캔', '비고']];
-    rows.forEach((r, i) => {
-      aoa.push([
-        i + 1,
-        r.date || '',
-        r.code || '',
-        r.clientName || '',
-        r.received || '',
-        r.scanned || '',
-        r.memo || ''
-      ]);
-    });
-    // 합계 행
-    const recv = rows.filter(r => r.received === 'O').length;
-    const scn = rows.filter(r => r.scanned === 'O').length;
-    aoa.push(['', '', '', '합계', `회수 ${recv}/${rows.length}`, `스캔 ${scn}/${rows.length}`, '']);
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [
-      {wch:5},{wch:12},{wch:18},{wch:24},{wch:8},{wch:8},{wch:30}
-    ];
-    // 시트명: LNL / 덕평 / 여주
+    const ws = _buildClientSheetA4(rows, c, monthLabel);
     XLSX.utils.book_append_sheet(wb, ws, c);
   });
 
-  // 3. 미회수만 시트 (전체 거래처 통합)
+  // 3. 미회수만 시트 (3개 거래처 통합) — A4 세로, 단일 표
   const unrecvAll = [];
   allClients.forEach(c => {
     dataByClient[c].forEach(r => {
@@ -10495,20 +10584,28 @@ async function exportReceiptCheck() {
     });
   });
   if(unrecvAll.length > 0) {
-    const aoa = [['NO', '거래처', '날짜', '배차코드', '회수', '스캔', '비고']];
+    const aoa = [
+      ['주식회사 씨엘피 (CLP)  ·  미회수 인수증 목록'],
+      [`기간: ${monthLabel}    총 ${unrecvAll.length}건`],
+      [],
+      ['NO', '거래처', '날짜', '배차코드', '회수', '스캔', '비고']
+    ];
     unrecvAll.forEach((r, i) => {
-      aoa.push([
-        i + 1, r.client, r.date || '', r.code || '',
-        r.received || '', r.scanned || '', r.memo || ''
-      ]);
+      aoa.push([i + 1, r.client, r.date || '', r.code || '', r.received || '', r.scanned || '', r.memo || '']);
     });
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = [{wch:5},{wch:8},{wch:12},{wch:18},{wch:8},{wch:8},{wch:30}];
+    ws['!merges'] = [
+      { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
+      { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } }
+    ];
+    ws['!pageSetup'] = { orientation: 'portrait', paperSize: 9, fitToWidth: 1, fitToHeight: 0 };
+    ws['!margins'] = { left: 0.4, right: 0.4, top: 0.5, bottom: 0.4, header: 0.3, footer: 0.3 };
     XLSX.utils.book_append_sheet(wb, ws, '미회수');
   }
 
   XLSX.writeFile(wb, `CLP_인수증체크_${monthLabel}.xlsx`);
-  showToast(`📥 엑셀 다운로드 완료! (전체요약 + 거래처별 + 미회수, 총 ${grandTotal}건)`);
+  showToast(`📥 엑셀 다운로드 완료! (전체요약 + 거래처별 A4 2단 + 미회수, 총 ${grandTotal}건)`, 5000);
 }
 
 // v5 마이그레이션 완료 - 버전 체크 불필요
