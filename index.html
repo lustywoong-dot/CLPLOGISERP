@@ -1139,6 +1139,35 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <tbody id="rateBody"></tbody>
         </table>
       </div>
+      <!-- CLP 고정요율표 (xlsx에서 추출, 단위: 만원) -->
+      <div id="clpFixedRateSection" style="margin-top:18px;padding-top:16px;border-top:2px solid var(--border)">
+        <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span><span class="icon">📋</span> CLP 고정요율표 <small style="font-size:11px;color:var(--text-light);font-weight:400">(단위: 만원)</small></span>
+          <span style="display:flex;gap:6px;align-items:center">
+            <input type="text" id="clpFixedSearch" placeholder="🔍 권역 검색..." oninput="renderClpFixedRates()" style="padding:5px 10px;border:1px solid var(--border);border-radius:6px;font-size:12px;width:160px">
+            <select id="clpFixedCenter" onchange="renderClpFixedRates()" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+              <option value="all">전체 센터</option>
+              <option value="덕평센터">덕평센터</option>
+              <option value="서이천센터">서이천센터</option>
+              <option value="여주센터">여주센터</option>
+            </select>
+          </span>
+        </div>
+        <div class="info-banner" style="margin-bottom:8px;font-size:11px">
+          📌 출발지 센터별 톤수 × 권역 단가입니다. 빈칸은 해당 센터/톤수에서 운행하지 않는 권역.
+        </div>
+        <div id="clpFixedTablesWrap" style="overflow-x:auto"></div>
+        <!-- 추가 요금표 -->
+        <div style="margin-top:14px">
+          <div style="font-weight:700;font-size:12px;color:#7c3aed;margin-bottom:6px">💰 추가 요금표 (단위: 원)</div>
+          <div style="overflow-x:auto"><table id="clpFixedExtraTable" style="width:100%;font-size:12px;border-collapse:collapse"></table></div>
+        </div>
+        <!-- 메모 -->
+        <div style="margin-top:10px;padding:8px 12px;background:#fef3c7;border:1px solid #fde68a;border-radius:6px;font-size:11px;color:#92400e">
+          <ul id="clpFixedMemoList" style="margin:0;padding-left:18px;line-height:1.7"></ul>
+        </div>
+      </div>
+
       <!-- M짐 단가 (락앤락 선택 시만 표시) -->
       <div id="mjimSection" style="margin-top:16px">
         <div style="font-weight:700;font-size:13px;color:var(--primary);margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--primary)">📦 M짐(혼적) 단가표</div>
@@ -2507,6 +2536,100 @@ const MJIM_RATES = [
 // ============================================
 const MANUAL_FEE = {
   "다마스":0, "라보":0, "1톤":10000, "2.5톤":20000, "3.5톤":20000, "5톤":30000, "5톤축":30000, "11톤":40000
+};
+
+// ============================================
+// CLP 고정요율표 (CLP고정요율.xlsx에서 추출 / 단위: 만원)
+// 단가표 조회 탭 참고용 (자동 단가 계산은 RATES 사용)
+// ============================================
+const CLP_FIXED_RATES = {
+  regions: [
+    ["수원"],
+    ["오산","광주"],
+    ["용인"],
+    ["화성"],
+    ["안성"],
+    ["이천"],
+    ["평택"],
+    ["안중"],
+    ["정남"],
+    ["광명"],
+    ["천안"],
+    ["아산"],
+    ["성남","하남"],
+    ["부천"],
+    ["분당"],
+    ["강남구","송파구","서초구"],
+    ["안양","군포","시흥"],
+    ["강서구"],
+    ["강동구"],
+    ["노원구","도봉구","강북구"],
+    ["춘천"],
+    ["홍천"],
+    ["의왕"],
+    ["위례"],
+    ["중랑구"],
+    ["용산"],
+    ["양천","구로","은평"],
+    ["금천","시흥","안산"],
+    ["관악"],
+    ["잠실"],
+    ["남양주"],
+    ["인천"],
+    ["김포"],
+    ["고양","일산"],
+    ["의정부"],
+    ["포천"],
+    ["양주"],
+    ["파주"],
+  ],
+  centers: [
+    {
+      name: "덕평센터",
+      tons: [
+        { ton: 1, rates: [null,5,4,6,6,null,null,null,null,6,7,7,5,7,5,null,null,null,5,6,10,10,null,null,6,null,null,6,null,null,null,7.5,8,8,8,9,null,null] },
+        { ton: 2.5, rates: [6,7,6,8,8,5,8,8,null,7,9,10,7,9,7,7,8,7,7,8,13,13,7,null,8,8,8,8,8,8,9,9,10,11,10,11,11,11] },
+        { ton: 3.5, rates: [7,8,7,9,9,7,9,null,10,9,11,11,9,11,9,9,9,9,8,9,15,15,9,null,9,9,9,9,null,null,10,11,12,12,11,12,12,12] },
+        { ton: 5, rates: [7,10,7,10,10,7,10,null,null,11,11,12,10,13,10,10,10,10,9,11,16,16,10,9,11,10,10,10,null,null,11,12,12,12,12,14,14,14] },
+        { ton: 5.5, rates: [9,11,9,12,null,null,null,null,null,12,13,13,11,14,11,11,12,11,11,12,null,null,12,null,12,11,12,12,null,null,13,13,14,14,13,15,16,16] },
+        { ton: 11, rates: [11,13,11,14,null,null,null,null,null,14,null,null,13,15,12,12,14,13,13,14,null,null,14,null,14,13,14,14,null,null,15,15,16,16,15,17,18,18] },
+        { ton: 18, rates: [13,15,13,16,null,null,null,null,null,16,null,null,15,16,14,14,16,15,15,16,null,null,16,null,16,15,16,16,null,null,17,17,18,18,17,19,20,20] },
+      ]
+    },
+    {
+      name: "서이천센터",
+      tons: [
+        { ton: 2.5, rates: [null,null,null,8,null,null,null,null,null,null,9,10,7,null,null,null,null,null,null,null,null,null,null,null,null,null,8,8,8,8,10,10,10,10,null,null,null,13] },
+        { ton: 3.5, rates: [null,null,null,null,null,null,null,null,null,null,11,12,null,null,null,null,null,null,null,null,null,null,null,null,null,null,9,9,9,8,10,null,12,12,null,null,null,13] },
+        { ton: 5, rates: [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,12,null,null,null,null] },
+      ]
+    },
+    {
+      name: "여주센터",
+      tons: [
+        { ton: 1, rates: [null,6,null,7,8,null,7,null,null,null,8,10,null,9,6,null,null,null,null,8,null,null,null,null,8,8,null,null,null,null,null,9,null,10,9,null,null,null] },
+        { ton: 2.5, rates: [7,9,7,9,9,5,9,null,null,null,10,11,8,11,9,9,9,null,9,9,null,null,8,null,9,9,9,9,null,null,null,11,12,12,11,13,12,13] },
+        { ton: 3.5, rates: [8,10,8,11,10,7,11,null,null,null,13,13,9,13,10,10,10,null,10,11,null,null,10,null,11,10,10,11,null,null,12,13,14,14,13,15,13,15] },
+        { ton: 5, rates: [10,11,10,12,11,10,11,null,null,null,13,14,10,14,11,12,11,null,11,13,null,null,11,null,13,12,11,11,null,null,13,14,14,14,14,17,15,17] },
+        { ton: 5.5, rates: [11,12,11,14,13,11,13,null,null,null,null,null,11,15,null,13,13,null,12,15,null,null,13,null,15,13,12,13,null,null,15,15,15,16,15,19,17,null] },
+        { ton: 11, rates: [13,14,13,16,15,13,15,null,null,null,null,null,13,17,null,15,15,null,14,17,null,null,15,null,17,15,14,null,null,null,17,17,17,18,17,21,19,null] },
+        { ton: 18, rates: [15,16,15,18,17,15,17,null,null,null,null,null,15,19,null,17,17,null,16,19,null,null,17,null,19,17,16,null,null,null,19,19,19,20,19,23,21,null] },
+      ]
+    },
+  ],
+  tonHeaders: ["1톤","2.5톤","3.5톤","5톤","5축","11톤","18톤"],
+  extraFees: [
+    { label: "동일권역", tons: [10000,10000,10000,15000,20000,20000,30000] },
+    { label: "타권역",   tons: [15000,15000,15000,20000,25000,25000,40000] },
+    { label: "작업비",   tons: [20000,20000,20000,30000,40000,40000,40000] },
+    { label: "대기료",   tons: [20000,20000,20000,20000,20000,20000,20000] },
+  ],
+  memos: [
+    "대기료는 2시간 대기 후 시간당 발생",
+    "50박스 이상 수작업 발생 시 비용 지급",
+    "여주/덕평 2회전 운행비 2만원",
+    "서초·종로 단가 같음",
+  ]
 };
 
 // 주류 단가표 - 덕평센터 (KY3)
@@ -4160,6 +4283,7 @@ function init() {
   renderRateClientTabs();
   renderRateTable();
   renderMjimTable();
+  try { renderClpFixedRates(); } catch(e) {}
   // localStorage 캐시로 즉시 렌더 (빠른 표시)
   renderHistory();
   renderInlineHistory();
@@ -4208,6 +4332,7 @@ function switchTab(name) {
   if(name === 'dispatch') updateTodayDashboard();
   if(name === 'stats') initStats();
   if(name === 'rateRef') initRateRef();
+  if(name === 'rate') { try { renderClpFixedRates(); } catch(e) {} }
   if(name === 'drivers') {
     // 로컬이 비어있으면 시트에서 자동 가져오기 (정산탭과 동일 패턴)
     if(getRegisteredDrivers().length === 0 && typeof isConnected === 'function' && isConnected()) {
@@ -5481,6 +5606,86 @@ function renderMjimTable() {
       <td class="amount">${m["3M"].toLocaleString()}</td>
     </tr>`;
   }).join('');
+}
+
+// ============================================
+// CLP 고정요율표 렌더링 (xlsx에서 추출, 참고용)
+// ============================================
+function renderClpFixedRates() {
+  const wrap = document.getElementById('clpFixedTablesWrap');
+  if(!wrap || typeof CLP_FIXED_RATES === 'undefined') return;
+
+  const search = (document.getElementById('clpFixedSearch')?.value || '').trim().toLowerCase();
+  const centerFilter = document.getElementById('clpFixedCenter')?.value || 'all';
+
+  // 검색어가 있으면 매칭되는 권역 인덱스만 표시
+  const regionMatches = CLP_FIXED_RATES.regions.map((cities, idx) => {
+    if(!search) return true;
+    return cities.some(c => c.toLowerCase().includes(search));
+  });
+
+  const visibleCenters = CLP_FIXED_RATES.centers.filter(c =>
+    centerFilter === 'all' || c.name === centerFilter
+  );
+
+  let html = '';
+  visibleCenters.forEach(center => {
+    html += `<div style="margin-bottom:14px">
+      <div style="font-weight:700;font-size:13px;color:var(--primary);margin-bottom:6px;padding:4px 8px;background:#eff6ff;border-radius:4px">🏢 ${center.name}</div>
+      <table style="width:100%;font-size:11px;border-collapse:collapse;border:1px solid #e5e7eb">
+        <thead>
+          <tr style="background:#f9fafb">
+            <th style="padding:5px 6px;border:1px solid #e5e7eb;position:sticky;left:0;background:#f9fafb;z-index:1;min-width:50px">톤수</th>`;
+    CLP_FIXED_RATES.regions.forEach((cities, idx) => {
+      if(!regionMatches[idx]) return;
+      const lbl = cities.join('<br>');
+      html += `<th style="padding:5px 4px;border:1px solid #e5e7eb;font-size:10px;font-weight:600;min-width:60px">${lbl}</th>`;
+    });
+    html += `</tr></thead><tbody>`;
+    center.tons.forEach(t => {
+      html += `<tr>
+        <td style="padding:4px 6px;border:1px solid #e5e7eb;font-weight:700;color:var(--accent);text-align:center;background:#fff;position:sticky;left:0;z-index:1">${t.ton}톤</td>`;
+      CLP_FIXED_RATES.regions.forEach((cities, idx) => {
+        if(!regionMatches[idx]) return;
+        const v = t.rates[idx];
+        const display = (v === null || v === undefined || v === '') ? '<span style="color:#d1d5db">-</span>' : `<span style="font-weight:600;color:#111827">${v}</span>`;
+        html += `<td style="padding:4px 6px;border:1px solid #e5e7eb;text-align:center">${display}</td>`;
+      });
+      html += `</tr>`;
+    });
+    html += `</tbody></table></div>`;
+  });
+
+  if(search && !regionMatches.some(Boolean)) {
+    html = `<div style="padding:20px;text-align:center;color:var(--text-light);font-size:12px">"${search}" 권역을 찾을 수 없습니다</div>`;
+  }
+  wrap.innerHTML = html;
+
+  // 추가 요금표
+  const extraTbl = document.getElementById('clpFixedExtraTable');
+  if(extraTbl && CLP_FIXED_RATES.extraFees) {
+    let exHtml = `<thead><tr style="background:#f9fafb">
+      <th style="padding:6px 8px;border:1px solid #e5e7eb;text-align:left">구분</th>`;
+    CLP_FIXED_RATES.tonHeaders.forEach(h => {
+      exHtml += `<th style="padding:6px 8px;border:1px solid #e5e7eb">${h}</th>`;
+    });
+    exHtml += `</tr></thead><tbody>`;
+    CLP_FIXED_RATES.extraFees.forEach(f => {
+      exHtml += `<tr><td style="padding:5px 8px;border:1px solid #e5e7eb;font-weight:700;color:#7c3aed">${f.label}</td>`;
+      f.tons.forEach(v => {
+        exHtml += `<td style="padding:5px 8px;border:1px solid #e5e7eb;text-align:center">${v.toLocaleString()}</td>`;
+      });
+      exHtml += `</tr>`;
+    });
+    exHtml += `</tbody>`;
+    extraTbl.innerHTML = exHtml;
+  }
+
+  // 메모
+  const memoList = document.getElementById('clpFixedMemoList');
+  if(memoList && CLP_FIXED_RATES.memos) {
+    memoList.innerHTML = CLP_FIXED_RATES.memos.map(m => `<li>${m}</li>`).join('');
+  }
 }
 
 // ============================================
