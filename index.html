@@ -10316,19 +10316,42 @@ function renderReceiptCheck() {
     if(v === 'X') return 'background:#fee2e2;color:#991b1b;font-weight:700';
     return 'background:#fff;color:#9ca3af';
   };
+  // HTML attribute용 escape (큰따옴표 → &quot;)
+  const attrEsc = (s) => String(s == null ? '' : s).replace(/"/g, '&quot;').replace(/&/g, '&amp;');
   tbody.innerHTML = filtered.map(r => {
-    const dEsc = JSON.stringify(r.date);
-    const cEsc = JSON.stringify(r.code);
+    const dA = attrEsc(r.date);
+    const cA = attrEsc(r.code);
     return `
     <tr style="border-bottom:1px solid #f3f4f6">
       <td style="padding:6px 8px;border:1px solid #e5e7eb;font-family:monospace;color:#374151">${r.date || '-'}</td>
       <td style="padding:6px 8px;border:1px solid #e5e7eb;font-family:monospace;font-weight:600">${r.code || '-'}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}${r.clientName ? '<br><small style="color:#6b7280;font-weight:400">' + r.clientName + '</small>' : ''}</td>
-      <td style="padding:0;border:1px solid #e5e7eb;text-align:center;font-size:14px;${cellStyle(r.received)}cursor:pointer;user-select:none" onclick="toggleReceiptStatus(${dEsc}, ${cEsc}, 'received')" title="클릭: 빈칸→O→X">${r.received || '·'}</td>
-      <td style="padding:0;border:1px solid #e5e7eb;text-align:center;font-size:14px;${cellStyle(r.scanned)}cursor:pointer;user-select:none" onclick="toggleReceiptStatus(${dEsc}, ${cEsc}, 'scanned')" title="클릭: 빈칸→O→X">${r.scanned || '·'}</td>
-      <td style="padding:2px 4px;border:1px solid #e5e7eb"><input type="text" value="${(r.memo||'').replace(/"/g,'&quot;')}" onchange="editReceiptMemo(${dEsc}, ${cEsc}, this.value)" placeholder="비고" style="width:100%;padding:4px 6px;border:1px solid transparent;background:transparent;font-size:12px" onfocus="this.style.background='#fff';this.style.borderColor='#d1d5db'" onblur="this.style.background='transparent';this.style.borderColor='transparent'"></td>
-      <td style="padding:6px 8px;border:1px solid #e5e7eb;text-align:center"><button onclick="resetReceiptCheck(${dEsc}, ${cEsc})" style="background:#fff;border:1px solid #fca5a5;color:#dc2626;padding:3px 8px;font-size:11px;border-radius:4px;cursor:pointer" title="회수/스캔/비고 초기화">초기화</button></td>
+      <td data-d="${dA}" data-c="${cA}" data-f="received" onclick="onReceiptCellClick(this)" style="padding:0;border:1px solid #e5e7eb;text-align:center;font-size:14px;${cellStyle(r.received)}cursor:pointer;user-select:none" title="클릭: 빈칸→O→X">${r.received || '·'}</td>
+      <td data-d="${dA}" data-c="${cA}" data-f="scanned" onclick="onReceiptCellClick(this)" style="padding:0;border:1px solid #e5e7eb;text-align:center;font-size:14px;${cellStyle(r.scanned)}cursor:pointer;user-select:none" title="클릭: 빈칸→O→X">${r.scanned || '·'}</td>
+      <td style="padding:2px 4px;border:1px solid #e5e7eb"><input type="text" value="${attrEsc(r.memo)}" data-d="${dA}" data-c="${cA}" onchange="onReceiptMemoChange(this)" placeholder="비고" style="width:100%;padding:4px 6px;border:1px solid transparent;background:transparent;font-size:12px" onfocus="this.style.background='#fff';this.style.borderColor='#d1d5db'" onblur="this.style.background='transparent';this.style.borderColor='transparent'"></td>
+      <td style="padding:6px 8px;border:1px solid #e5e7eb;text-align:center"><button data-d="${dA}" data-c="${cA}" onclick="onReceiptResetClick(this)" style="background:#fff;border:1px solid #fca5a5;color:#dc2626;padding:3px 8px;font-size:11px;border-radius:4px;cursor:pointer" title="회수/스캔/비고 초기화">초기화</button></td>
     </tr>`;
   }).join('');
+}
+
+// 셀/입력 이벤트 핸들러 (data-* 속성 기반 — HTML escape 안전)
+function onReceiptCellClick(el) {
+  const d = el?.dataset?.d || '';
+  const c = el?.dataset?.c || '';
+  const f = el?.dataset?.f || '';
+  if(!d || !c || !f) return;
+  toggleReceiptStatus(d, c, f);
+}
+function onReceiptMemoChange(el) {
+  const d = el?.dataset?.d || '';
+  const c = el?.dataset?.c || '';
+  if(!d || !c) return;
+  editReceiptMemo(d, c, el.value);
+}
+function onReceiptResetClick(el) {
+  const d = el?.dataset?.d || '';
+  const c = el?.dataset?.c || '';
+  if(!d || !c) return;
+  resetReceiptCheck(d, c);
 }
 
 // CSV 내보내기 (현재 화면 기준)
