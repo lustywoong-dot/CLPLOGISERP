@@ -14223,8 +14223,9 @@ async function saveDispatch(closeAfter) {
     const driverPay = drv.pay || 0;
     const margin = driverPay > 0 ? total - driverPay : 0;
 
-    // 중복 체크 (서브코드 포함) — 코드+배송일 둘 다 일치할 때만 스킵 (di=0 포함 — 같은 코드 연타 방지)
-    if(dispatchLog.some(r => r.code === recCode && sanitizeDate(r.deliveryDate||r.date||'') === mainDeliveryDate)) return;
+    // 중복 체크 (서브코드 포함) — 코드+배송일 둘 다 일치할 때만 스킵
+    // 자기 자신(selectedRecordId)은 제외해야 update 모드에서 records=[]가 되지 않음
+    if(dispatchLog.some(r => r.id !== selectedRecordId && r.code === recCode && sanitizeDate(r.deliveryDate||r.date||'') === mainDeliveryDate)) return;
 
     records.push({
       id: Date.now() + di,
