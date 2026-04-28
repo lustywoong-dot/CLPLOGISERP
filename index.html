@@ -788,7 +788,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       <div class="form-grid" style="grid-template-columns:130px 1fr 80px 1fr">
         <div class="form-group">
           <label>배차코드 <span style="color:var(--danger);font-weight:700">*필수</span></label>
-          <input type="text" id="dispatchCode" placeholder="P01001" style="border-color:var(--accent);font-weight:600" oninput="checkCodeDuplicate();onCoreFieldChange();autoDetectCenter();validateLiquorCodeCenter()">
+          <input type="text" id="dispatchCode" placeholder="P01001" style="border-color:var(--accent);font-weight:600" oninput="checkCodeDuplicate();onCoreFieldChange();autoDetectCenter();validateLiquorCodeCenter();validateCodeMode()">
           <span id="codeError" style="font-size:11px;color:var(--danger);display:none">⚠ 이미 사용된 코드입니다</span>
           <span id="codeCenterError" style="font-size:11px;color:#dc2626;display:none;font-weight:700;margin-top:2px"></span>
           <div id="hapjimPanel" style="display:none;margin-top:6px;padding:8px;background:#fefce8;border:1px solid #fde047;border-radius:6px">
@@ -6339,6 +6339,8 @@ function setDispatchMode(mode) {
   updateDispatchCodePlaceholder();
   // 센터-코드 검증 상태 갱신 (락앤락 전환 시 에러 지우기)
   validateLiquorCodeCenter();
+  // 모드-코드 일치 검증 (전환 후 코드와 새 모드가 안 맞으면 경고)
+  validateCodeMode();
   // 배차유형 연동 (주류↔일반)
   const typeSelect = document.getElementById('dispatchType');
   const lqOpt = document.getElementById('optDispatchLiquor');
@@ -6455,6 +6457,49 @@ function validateLiquorCodeCenter(showAlert) {
   }
   clearError();
   return true;
+}
+
+// 배차코드 prefix와 현재 모드 일치 검증
+// 락앤락 모드: ECLP/ACLP 입력 차단 / 주류 모드: P 입력 차단
+// showAlert=true면 저장 차단용(경고창까지), false면 인라인 표시만
+function validateCodeMode(showAlert) {
+  const errEl = document.getElementById('codeCenterError');
+  const codeInput = document.getElementById('dispatchCode');
+  if(!codeInput) return true;
+  const rawCode = codeInput.value.trim().toUpperCase();
+  if(!rawCode) return true;
+
+  // 합짐 모드 대응: 첫 코드만 검증
+  const firstCode = rawCode.includes(',') ? rawCode.split(',')[0].trim() : rawCode;
+
+  let msg = '';
+  if(dispatchMode === 'locknlock') {
+    // 락앤락 모드: ECLP/ACLP 차단
+    if(firstCode.startsWith('ECLP')) {
+      msg = '⚠ ECLP는 주류(여주) 코드 — 🍷 주류 모드로 전환하세요';
+    } else if(firstCode.startsWith('ACLP')) {
+      msg = '⚠ ACLP는 주류(덕평) 코드 — 🍷 주류 모드로 전환하세요';
+    }
+  } else if(dispatchMode === 'liquor') {
+    // 주류 모드: P 차단 (ECLP/ACLP는 'E'/'A'로 시작하므로 안전)
+    if(firstCode.startsWith('P')) {
+      msg = '⚠ P는 락앤락 코드 — 🔒 락앤락 모드로 전환하세요';
+    }
+  }
+
+  if(msg) {
+    if(errEl) {
+      errEl.textContent = msg + ' (상차지 주소 오류 방지)';
+      errEl.style.display = 'block';
+    }
+    if(codeInput) codeInput.style.borderColor = '#dc2626';
+    if(showAlert) {
+      alert(msg + '\n\n현재 모드와 배차코드가 일치하지 않습니다.\n잘못된 상차지가 기사에게 전송되는 것을 방지합니다.');
+      if(codeInput) codeInput.focus();
+    }
+    return false;
+  }
+  return true; // 통과 — errEl은 validateLiquorCodeCenter가 처리
 }
 
 function addLiquorStop() {
@@ -13913,6 +13958,10 @@ async function saveDispatch(closeAfter) {
       if(!validateLiquorCodeCenter(true)) {
         return; // 불일치 시 저장 차단
       }
+    }
+    // ─── 모드 ↔ 배차코드 prefix 일치 검증 (락앤락=P / 주류=ECLP·ACLP) ───
+    if(!validateCodeMode(true)) {
+      return; // 불일치 시 저장 차단
     }
     let code = document.getElementById('dispatchCode').value.trim();
   
