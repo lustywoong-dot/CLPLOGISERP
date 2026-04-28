@@ -3753,20 +3753,21 @@ function toggleMyDispatch() {
   renderInlineHistory();
 }
 
-// 배차 저장 후 날짜 범위 자동 확장
+// 배차 저장 후 날짜 범위 자동 확장 — 저장된 건이 필터 범위 밖이면 그 배송일까지만 확장
+// (오늘 날짜로 강제 끌어당기지 않음 → 익일만 검색 중일 때 당일 건이 끼어들지 않음)
 function autoExpandDateRange(deliveryDate) {
+  if(!deliveryDate) return;
   const from = document.getElementById('ilDateFrom').value;
   const to = document.getElementById('ilDateTo').value;
-  const today = getTodayStr();
   let changed = false;
-  
-  // from이 비어있거나 배차일(오늘)보다 뒤면 오늘로
-  if(!from || from > today) {
-    document.getElementById('ilDateFrom').value = today;
+
+  // from이 비어있거나 저장한 배송일보다 뒤면 → 배송일로 확장
+  if(!from || from > deliveryDate) {
+    document.getElementById('ilDateFrom').value = deliveryDate;
     changed = true;
   }
-  // to가 비어있거나 배송일보다 앞이면 배송일로 확장
-  if(deliveryDate && (!to || to < deliveryDate)) {
+  // to가 비어있거나 저장한 배송일보다 앞이면 → 배송일로 확장
+  if(!to || to < deliveryDate) {
     document.getElementById('ilDateTo').value = deliveryDate;
     changed = true;
   }
