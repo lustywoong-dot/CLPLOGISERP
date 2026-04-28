@@ -13854,6 +13854,7 @@ async function _silentSyncOnLoad() {
 }
 const _newRecordIds = new Set(); // 이번 세션에서 방금 저장한 배차 ID (NEW 뱃지용)
 const _NEW_BADGE_TTL = 10 * 60 * 1000; // 10분 후 자동 해제
+let _saveDispatchInProgress = false; // 저장 동시 진행 차단 (같은 코드 빠른 연타 시 중복 저장 방지)
 async function autoSync() {
   const url = getSheetUrl();
   if(!url) return;
@@ -13895,6 +13896,16 @@ async function autoSync() {
 // closeAfter: true면 패널 닫고 목록으로, false면 패널 유지(바로 확인용)
 async function saveDispatch(closeAfter) {
   if(typeof closeAfter === 'undefined') closeAfter = true;
+  // 동시 진행 차단 — 같은 코드 빠른 연타로 중복 저장되는 문제 방지
+  if(_saveDispatchInProgress) {
+    showToast('⏳ 저장 진행 중 — 잠시 후 다시 시도해주세요');
+    ['btnSaveDispatch1','btnSaveDispatch2'].forEach(id => {
+      const b = document.getElementById(id);
+      if(b) { b.disabled = false; b.classList.remove('btn-saving','btn-feedback'); }
+    });
+    return;
+  }
+  _saveDispatchInProgress = true;
   try {
     // ─── 주류 모드: 배차코드 ↔ 상차센터 일치 검증 ───
     if(dispatchMode === 'liquor') {
@@ -14211,8 +14222,8 @@ async function saveDispatch(closeAfter) {
     const driverPay = drv.pay || 0;
     const margin = driverPay > 0 ? total - driverPay : 0;
 
-    // 중복 체크 (서브코드 포함) — 코드+배송일 둘 다 일치할 때만 스킵
-    if(di > 0 && dispatchLog.some(r => r.code === recCode && sanitizeDate(r.deliveryDate||r.date||'') === mainDeliveryDate)) return;
+    // 중복 체크 (서브코드 포함) — 코드+배송일 둘 다 일치할 때만 스킵 (di=0 포함 — 같은 코드 연타 방지)
+    if(dispatchLog.some(r => r.code === recCode && sanitizeDate(r.deliveryDate||r.date||'') === mainDeliveryDate)) return;
 
     records.push({
       id: Date.now() + di,
@@ -14474,6 +14485,8 @@ async function saveDispatch(closeAfter) {
       const _ew = document.getElementById('inlineTableWrap');
       if(_ew) _ew.style.maxHeight = '400px';
     } catch(e2) {}
+  } finally {
+    _saveDispatchInProgress = false;
   }
 }
 
