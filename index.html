@@ -3261,10 +3261,12 @@ function setInlineSortMode(mode) {
 function getDispatchClient(code) {
   if(!code) return '기타';
   const upper = code.toUpperCase();
-  if(/^P[\d_]/i.test(upper)) return '락앤락';
-  if(upper.startsWith('ECLP')) return 'KCTC여주';
-  if(upper.startsWith('ACLP')) return 'KCTC덕평';
-  if(upper.startsWith('CLP')) return '씨엘피';
+  // TEMP_ 접두사가 있으면 그 다음 prefix로 분류 (일괄/단건 임시코드 모드 보존)
+  const checkCode = upper.startsWith('TEMP_') ? upper.substring(5) : upper;
+  if(/^P[\d_]/i.test(checkCode)) return '락앤락';
+  if(checkCode.startsWith('ECLP')) return 'KCTC여주';
+  if(checkCode.startsWith('ACLP')) return 'KCTC덕평';
+  if(checkCode.startsWith('CLP')) return '씨엘피';
   return '기타';
 }
 
@@ -7886,7 +7888,11 @@ async function saveBulkOrders() {
   for(let i = 0; i < bulkParsedOrders.length; i++) {
     const o = bulkParsedOrders[i];
     const orderDeliveryDate = o.deliveryDate || today;
-    let code = o.code || ('TEMP_' + today.replace(/-/g,'') + '_' + String(Date.now()).slice(-4) + '_' + i);
+    // 임시 코드도 현재 모드 prefix 적용 → 거래처 분류 보존 (락앤락/주류)
+    const _tempPrefix = dispatchMode === 'liquor'
+      ? (document.getElementById('lqCenter')?.value === 'yj' ? 'ECLP' : 'ACLP')
+      : 'P';
+    let code = o.code || ('TEMP_' + _tempPrefix + '_' + today.replace(/-/g,'') + '_' + String(Date.now()).slice(-4) + '_' + i);
     
     // 중복 체크 (같은 코드 + 같은 배송일)
     const isDup = dispatchLog.some(r => r.code === code && sanitizeDate(r.deliveryDate||r.date) === orderDeliveryDate);
@@ -14166,10 +14172,13 @@ async function saveDispatch(closeAfter) {
     }
   }
 
-  // 코드 없으면 임시 코드 생성 (나중에 수정 가능)
+  // 코드 없으면 임시 코드 생성 (나중에 수정 가능) — 현재 모드 prefix 적용
   if(!code) {
     const today = getTodayStr().replace(/-/g,'');
-    code = 'TEMP_' + today + '_' + String(Date.now()).slice(-4);
+    const _tempPrefix = dispatchMode === 'liquor'
+      ? (document.getElementById('lqCenter')?.value === 'yj' ? 'ECLP' : 'ACLP')
+      : 'P';
+    code = 'TEMP_' + _tempPrefix + '_' + today + '_' + String(Date.now()).slice(-4);
     document.getElementById('dispatchCode').value = code;
     showToast('ℹ 배차코드 미입력 → 임시코드 생성: ' + code + ' (나중에 수정 가능)');
   }
