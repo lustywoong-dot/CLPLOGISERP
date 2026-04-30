@@ -788,7 +788,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       <div class="form-grid" style="grid-template-columns:130px 1fr 80px 1fr">
         <div class="form-group">
           <label>배차코드 <span style="color:var(--danger);font-weight:700">*필수</span></label>
-          <input type="text" id="dispatchCode" placeholder="P01001" style="border-color:var(--accent);font-weight:600" oninput="checkCodeDuplicate();onCoreFieldChange();autoDetectCenter();validateLiquorCodeCenter();validateCodeMode()">
+          <input type="text" id="dispatchCode" placeholder="P01001" autocomplete="off" style="border-color:var(--accent);font-weight:600" oninput="checkCodeDuplicate();onCoreFieldChange();autoDetectCenter();validateLiquorCodeCenter();validateCodeMode()">
           <span id="codeError" style="font-size:11px;color:var(--danger);display:none">⚠ 이미 사용된 코드입니다</span>
           <span id="codeCenterError" style="font-size:11px;color:#dc2626;display:none;font-weight:700;margin-top:2px"></span>
           <div id="hapjimPanel" style="display:none;margin-top:6px;padding:8px;background:#fefce8;border:1px solid #fde047;border-radius:6px">
