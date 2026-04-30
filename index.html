@@ -6374,12 +6374,21 @@ function autoDetectCenter() {
   if(dispatchMode !== 'liquor') return;
   const rawCode = document.getElementById('dispatchCode').value.trim().toUpperCase();
   const code = rawCode.includes(',') ? rawCode.split(',')[0].trim() : rawCode;
+  const lqCenterEl = document.getElementById('lqCenter');
+  const currentCenter = lqCenterEl.value;
+
   if(code.startsWith('ECLP')) {
-    document.getElementById('lqCenter').value = 'yj';
-    onCenterChange();
+    // ECLP는 무조건 여주
+    if(currentCenter !== 'yj') {
+      lqCenterEl.value = 'yj';
+      onCenterChange();
+    }
   } else if(code.startsWith('ACLP')) {
-    document.getElementById('lqCenter').value = 'dp1';
-    onCenterChange();
+    // ACLP는 덕평1/2 중 사용자가 선택 — 이미 덕평이면 보존 (dp2 덮어쓰기 방지)
+    if(currentCenter !== 'dp1' && currentCenter !== 'dp2') {
+      lqCenterEl.value = 'dp1';
+      onCenterChange();
+    }
   }
 }
 
