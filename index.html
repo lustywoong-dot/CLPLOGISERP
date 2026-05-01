@@ -3941,7 +3941,29 @@ function idbGet(key) {
 }
 
 // 배차 이력 저장 (IndexedDB 메인 + localStorage 90일 캐시)
-function saveDispatchHistory() {
+async function saveDispatchHistory() {
+  // ─── 멀티 창 안전 보호: 추가 머지 (IDB 기준) ───────
+  // 다른 창에서 추가한 배차가 본 창의 stale 메모리로 사라지는 것 방지
+  // (직원들 동시 배차 입력 시 핵심 안전장치)
+  try {
+    const idbStr = await idbGet('dispatchHistory').catch(() => null);
+    if(idbStr) {
+      const stored = JSON.parse(idbStr);
+      if(Array.isArray(stored) && stored.length > 0) {
+        const memIds = new Set(dispatchLog.map(r => r && r.id));
+        let mergedAdds = 0;
+        stored.forEach(s => {
+          if(s && s.id && !memIds.has(s.id)) {
+            dispatchLog.push(s);
+            memIds.add(s.id);
+            mergedAdds++;
+          }
+        });
+        if(mergedAdds > 0) console.log('[멀티창 보호] 배차 다른 창 추가분 ' + mergedAdds + '건 머지');
+      }
+    }
+  } catch(e) { console.warn('배차 머지 실패:', e); }
+
   // IDB에 전체 저장 (async, 백그라운드)
   idbSet('dispatchHistory', JSON.stringify(dispatchLog))
     .catch(e => console.warn('IDB 저장 오류:', e));
@@ -9928,6 +9950,26 @@ async function syncFromSheet() {
 // 정산 데이터 저장 (로컬 + 구글시트 백업)
 function saveSettlementLocal() {
   try {
+    // ─── 멀티 창 안전 보호: 추가 머지 ───────────
+    // 다른 창에서 추가한 정산 항목이 본 창의 stale 메모리로 인해 사라지는 것 방지
+    // 수정 충돌은 storage 이벤트 cross-tab 동기화로 거의 즉시 보정됨
+    let stored = [];
+    try { stored = JSON.parse(localStorage.getItem('clp_settlement_data') || '[]'); } catch(e) {}
+    if(Array.isArray(stored) && stored.length > 0) {
+      const memKeys = new Set(settlementData.map(d =>
+        (d.date||'') + '|' + (d.dispCode||'') + '|' + (d.name||'')
+      ));
+      let mergedAdds = 0;
+      stored.forEach(s => {
+        const k = (s.date||'') + '|' + (s.dispCode||'') + '|' + (s.name||'');
+        if(!memKeys.has(k)) {
+          settlementData.push(s);
+          memKeys.add(k);
+          mergedAdds++;
+        }
+      });
+      if(mergedAdds > 0) console.log('[멀티창 보호] 정산 다른 창 추가분 ' + mergedAdds + '건 머지');
+    }
     localStorage.setItem('clp_settlement_data', JSON.stringify(settlementData));
   } catch(e) {
     if(e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message))) {
@@ -10244,6 +10286,24 @@ let receiptActiveMonth = '';         // 현재 보고 있는 월 'YYYY-MM' (빈 
 try { receiptCheckData = JSON.parse(localStorage.getItem('clp_receipt_check_data') || '[]'); } catch(e) { receiptCheckData = []; console.warn('인수증 체크 파싱 오류:', e.message); }
 function saveReceiptCheckLocal() {
   try {
+    // ─── 멀티 창 안전 보호: 추가 머지 ───
+    let stored = [];
+    try { stored = JSON.parse(localStorage.getItem('clp_receipt_check_data') || '[]'); } catch(e) {}
+    if(Array.isArray(stored) && stored.length > 0) {
+      const memKeys = new Set(receiptCheckData.map(c =>
+        (c.client||'') + '|' + (c.date||'') + '|' + (c.code||'')
+      ));
+      let mergedAdds = 0;
+      stored.forEach(s => {
+        const k = (s.client||'') + '|' + (s.date||'') + '|' + (s.code||'');
+        if(!memKeys.has(k)) {
+          receiptCheckData.push(s);
+          memKeys.add(k);
+          mergedAdds++;
+        }
+      });
+      if(mergedAdds > 0) console.log('[멀티창 보호] 인수증 다른 창 추가분 ' + mergedAdds + '건 머지');
+    }
     localStorage.setItem('clp_receipt_check_data', JSON.stringify(receiptCheckData));
   } catch(e) {
     if(e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message))) {
