@@ -10292,14 +10292,25 @@ function editReceiptMemo(date, code, value) {
   upsertReceiptEntry(date, code, { memo: (value || '').trim() });
 }
 
-// 항목 체크 초기화 (회수/스캔/비고 모두 빈값으로)
+// 항목 체크 초기화 (회수/스캔/비고 모두 빈값으로) — 메인 코드 + sub-code 옛 데이터 함께 정리
 function resetReceiptCheck(date, code) {
-  if(!confirm(`${date} / ${code}\n회수/스캔/비고를 모두 초기화할까요?`)) return;
-  const idx = receiptCheckData.findIndex(x => x.client === receiptActiveClient && x.date === date && x.code === code);
-  if(idx >= 0) receiptCheckData.splice(idx, 1);
+  const targets = receiptCheckData.filter(x =>
+    x.client === receiptActiveClient && x.date === date &&
+    typeof x.code === 'string' && _normalizeReceiptCode(x.code) === code
+  );
+  if(targets.length === 0) {
+    showToast('ℹ 초기화할 체크 데이터가 없습니다 (자동 항목)');
+    return;
+  }
+  const isManualOnly = targets.every(t => t.manual);
+  const msg = isManualOnly
+    ? `${date} / ${code}\n(수동) 항목을 삭제할까요?`
+    : `${date} / ${code}\n회수/스캔/비고를 모두 초기화할까요?`;
+  if(!confirm(msg)) return;
+  receiptCheckData = receiptCheckData.filter(x => !targets.includes(x));
   saveReceiptCheckLocal();
   renderReceiptCheck();
-  showToast('✅ 체크 초기화 완료');
+  showToast(isManualOnly ? '✅ (수동) 항목 삭제 완료' : '✅ 체크 초기화 완료');
 }
 
 // 인수증 체크 — 가로 날짜 컬럼 그리드 (엑셀 스타일) + 집중 모드 하이브리드
@@ -10371,7 +10382,10 @@ function _receiptRowHtml(r, num) {
     <div style="display:grid;grid-template-columns:20px 1fr 32px 32px;gap:3px;align-items:center;padding:4px 3px;border-bottom:1px solid #f3f4f6">
       <span style="font-size:10px;color:#9ca3af;text-align:right">${num}</span>
       <div style="min-width:0">
-        <div style="font-family:monospace;font-size:11px;font-weight:700;color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.code || '-'}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</div>
+        <div style="display:flex;align-items:center;gap:3px;line-height:1.2">
+          <span style="font-family:monospace;font-size:11px;font-weight:700;color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">${r.code || '-'}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</span>
+          <button onclick="onReceiptResetClick(this);event.stopPropagation()" data-d="${dA}" data-c="${cA}" title="${r.manual ? '(수동) 항목 삭제' : '회수/스캔/비고 초기화'}" style="background:transparent;border:none;color:#cbd5e1;cursor:pointer;font-size:11px;padding:0 3px;line-height:1;flex-shrink:0;border-radius:3px" onmouseover="this.style.color='#dc2626';this.style.background='#fef2f2'" onmouseout="this.style.color='#cbd5e1';this.style.background='transparent'">✕</button>
+        </div>
         <input type="text" value="${attrEsc(r.memo)}" data-d="${dA}" data-c="${cA}" onchange="onReceiptMemoChange(this)" placeholder="비고" style="width:100%;padding:1px 4px;border:1px solid transparent;background:transparent;font-size:10px;margin-top:1px" onfocus="this.style.background='#fff';this.style.borderColor='#d1d5db'" onblur="this.style.background='transparent';this.style.borderColor='transparent'">
       </div>
       <div data-d="${dA}" data-c="${cA}" data-f="received" onclick="onReceiptCellClick(this)" style="${cellStyle(r.received)};text-align:center;cursor:pointer;user-select:none;padding:6px 0;border-radius:4px;font-size:13px" title="회수 (클릭: 빈칸→O→X)">${r.received || '·'}</div>
