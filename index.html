@@ -7457,10 +7457,14 @@ function applyOrder() {
   if(parsedOrder._shipperMode && parsedOrder._shipperMode !== dispatchMode) {
     setDispatchMode(parsedOrder._shipperMode);
   }
-  // 주류 센터 자동 설정
+  // 주류 센터 자동 설정 (ACLP는 dp1/dp2 사용자 선택 보존 — dp2 덮어쓰기 방지)
   if(parsedOrder._shipperMode === 'liquor' && parsedOrder._lqCenter) {
-    document.getElementById('lqCenter').value = parsedOrder._lqCenter;
-    onCenterChange();
+    const _curCenter = document.getElementById('lqCenter').value;
+    const _keepDp = parsedOrder._lqCenter === 'dp1' && (_curCenter === 'dp1' || _curCenter === 'dp2');
+    if(!_keepDp) {
+      document.getElementById('lqCenter').value = parsedOrder._lqCenter;
+      onCenterChange();
+    }
   }
   
   if(parsedOrder.dispatchCode) {
