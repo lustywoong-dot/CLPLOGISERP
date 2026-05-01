@@ -3941,28 +3941,32 @@ function idbGet(key) {
 }
 
 // 배차 이력 저장 (IndexedDB 메인 + localStorage 90일 캐시)
-async function saveDispatchHistory() {
+async function saveDispatchHistory(opts) {
+  const skipMerge = !!(opts && opts.skipMerge);
   // ─── 멀티 창 안전 보호: 추가 머지 (IDB 기준) ───────
   // 다른 창에서 추가한 배차가 본 창의 stale 메모리로 사라지는 것 방지
   // (직원들 동시 배차 입력 시 핵심 안전장치)
-  try {
-    const idbStr = await idbGet('dispatchHistory').catch(() => null);
-    if(idbStr) {
-      const stored = JSON.parse(idbStr);
-      if(Array.isArray(stored) && stored.length > 0) {
-        const memIds = new Set(dispatchLog.map(r => r && r.id));
-        let mergedAdds = 0;
-        stored.forEach(s => {
-          if(s && s.id && !memIds.has(s.id)) {
-            dispatchLog.push(s);
-            memIds.add(s.id);
-            mergedAdds++;
-          }
-        });
-        if(mergedAdds > 0) console.log('[멀티창 보호] 배차 다른 창 추가분 ' + mergedAdds + '건 머지');
+  // skipMerge: 명시적 삭제 후 호출 시 true (머지로 인한 부활 방지)
+  if(!skipMerge) {
+    try {
+      const idbStr = await idbGet('dispatchHistory').catch(() => null);
+      if(idbStr) {
+        const stored = JSON.parse(idbStr);
+        if(Array.isArray(stored) && stored.length > 0) {
+          const memIds = new Set(dispatchLog.map(r => r && r.id));
+          let mergedAdds = 0;
+          stored.forEach(s => {
+            if(s && s.id && !memIds.has(s.id)) {
+              dispatchLog.push(s);
+              memIds.add(s.id);
+              mergedAdds++;
+            }
+          });
+          if(mergedAdds > 0) console.log('[멀티창 보호] 배차 다른 창 추가분 ' + mergedAdds + '건 머지');
+        }
       }
-    }
-  } catch(e) { console.warn('배차 머지 실패:', e); }
+    } catch(e) { console.warn('배차 머지 실패:', e); }
+  }
 
   // IDB에 전체 저장 (async, 백그라운드)
   idbSet('dispatchHistory', JSON.stringify(dispatchLog))
@@ -5708,7 +5712,7 @@ function deleteRecord(id) {
   if(!confirm('이 배차를 삭제하시겠습니까?')) return;
   _lastSaveTime = Date.now(); // autoSync 잔상 복원 방지
   dispatchLog = dispatchLog.filter(r => r.id !== id);
-  saveDispatchHistory();
+  saveDispatchHistory({skipMerge: true});
   _lastSyncHash = ''; // 다음 autoSync에서 최신 데이터로 갱신
   renderHistory();
   renderInlineHistory();
@@ -8403,8 +8407,9 @@ function importErpToSettlement(fresh) {
     showToast(skipped > 0 ? `⚠ 전부 중복 (${skipped}건 건너뜀)` : '⚠ 등록할 항목이 없습니다');
     return;
   }
-  
-  saveSettlementLocal();
+
+  // 재import 흐름(8362 filter 거친 경우) 머지 우회 — 옛 항목 부활 방지
+  saveSettlementLocal({skipMerge: true});
   
   // 거래처 필터 '전체'로 + 정산월 자동 맞추기
   if(importedMonth) {
@@ -9948,27 +9953,31 @@ async function syncFromSheet() {
 }
 
 // 정산 데이터 저장 (로컬 + 구글시트 백업)
-function saveSettlementLocal() {
+function saveSettlementLocal(opts) {
+  // skipMerge: 명시적 삭제 후 호출 시 true (머지로 인한 부활 방지)
+  const skipMerge = !!(opts && opts.skipMerge);
   try {
-    // ─── 멀티 창 안전 보호: 추가 머지 ───────────
-    // 다른 창에서 추가한 정산 항목이 본 창의 stale 메모리로 인해 사라지는 것 방지
-    // 수정 충돌은 storage 이벤트 cross-tab 동기화로 거의 즉시 보정됨
-    let stored = [];
-    try { stored = JSON.parse(localStorage.getItem('clp_settlement_data') || '[]'); } catch(e) {}
-    if(Array.isArray(stored) && stored.length > 0) {
-      const memKeys = new Set(settlementData.map(d =>
-        (d.date||'') + '|' + (d.dispCode||'') + '|' + (d.name||'')
-      ));
-      let mergedAdds = 0;
-      stored.forEach(s => {
-        const k = (s.date||'') + '|' + (s.dispCode||'') + '|' + (s.name||'');
-        if(!memKeys.has(k)) {
-          settlementData.push(s);
-          memKeys.add(k);
-          mergedAdds++;
-        }
-      });
-      if(mergedAdds > 0) console.log('[멀티창 보호] 정산 다른 창 추가분 ' + mergedAdds + '건 머지');
+    if(!skipMerge) {
+      // ─── 멀티 창 안전 보호: 추가 머지 ───────────
+      // 다른 창에서 추가한 정산 항목이 본 창의 stale 메모리로 인해 사라지는 것 방지
+      // 수정 충돌은 storage 이벤트 cross-tab 동기화로 거의 즉시 보정됨
+      let stored = [];
+      try { stored = JSON.parse(localStorage.getItem('clp_settlement_data') || '[]'); } catch(e) {}
+      if(Array.isArray(stored) && stored.length > 0) {
+        const memKeys = new Set(settlementData.map(d =>
+          (d.date||'') + '|' + (d.dispCode||'') + '|' + (d.name||'')
+        ));
+        let mergedAdds = 0;
+        stored.forEach(s => {
+          const k = (s.date||'') + '|' + (s.dispCode||'') + '|' + (s.name||'');
+          if(!memKeys.has(k)) {
+            settlementData.push(s);
+            memKeys.add(k);
+            mergedAdds++;
+          }
+        });
+        if(mergedAdds > 0) console.log('[멀티창 보호] 정산 다른 창 추가분 ' + mergedAdds + '건 머지');
+      }
     }
     localStorage.setItem('clp_settlement_data', JSON.stringify(settlementData));
   } catch(e) {
@@ -10284,25 +10293,28 @@ let receiptCheckData = [];
 let receiptActiveClient = 'LNL';     // 현재 보고 있는 거래처 서브탭
 let receiptActiveMonth = '';         // 현재 보고 있는 월 'YYYY-MM' (빈 문자열 = 전체)
 try { receiptCheckData = JSON.parse(localStorage.getItem('clp_receipt_check_data') || '[]'); } catch(e) { receiptCheckData = []; console.warn('인수증 체크 파싱 오류:', e.message); }
-function saveReceiptCheckLocal() {
+function saveReceiptCheckLocal(opts) {
+  const skipMerge = !!(opts && opts.skipMerge);
   try {
-    // ─── 멀티 창 안전 보호: 추가 머지 ───
-    let stored = [];
-    try { stored = JSON.parse(localStorage.getItem('clp_receipt_check_data') || '[]'); } catch(e) {}
-    if(Array.isArray(stored) && stored.length > 0) {
-      const memKeys = new Set(receiptCheckData.map(c =>
-        (c.client||'') + '|' + (c.date||'') + '|' + (c.code||'')
-      ));
-      let mergedAdds = 0;
-      stored.forEach(s => {
-        const k = (s.client||'') + '|' + (s.date||'') + '|' + (s.code||'');
-        if(!memKeys.has(k)) {
-          receiptCheckData.push(s);
-          memKeys.add(k);
-          mergedAdds++;
-        }
-      });
-      if(mergedAdds > 0) console.log('[멀티창 보호] 인수증 다른 창 추가분 ' + mergedAdds + '건 머지');
+    if(!skipMerge) {
+      // ─── 멀티 창 안전 보호: 추가 머지 ───
+      let stored = [];
+      try { stored = JSON.parse(localStorage.getItem('clp_receipt_check_data') || '[]'); } catch(e) {}
+      if(Array.isArray(stored) && stored.length > 0) {
+        const memKeys = new Set(receiptCheckData.map(c =>
+          (c.client||'') + '|' + (c.date||'') + '|' + (c.code||'')
+        ));
+        let mergedAdds = 0;
+        stored.forEach(s => {
+          const k = (s.client||'') + '|' + (s.date||'') + '|' + (s.code||'');
+          if(!memKeys.has(k)) {
+            receiptCheckData.push(s);
+            memKeys.add(k);
+            mergedAdds++;
+          }
+        });
+        if(mergedAdds > 0) console.log('[멀티창 보호] 인수증 다른 창 추가분 ' + mergedAdds + '건 머지');
+      }
     }
     localStorage.setItem('clp_receipt_check_data', JSON.stringify(receiptCheckData));
   } catch(e) {
@@ -10439,7 +10451,7 @@ function resetReceiptCheck(date, code) {
     : `${date} / ${code}\n회수/스캔/비고를 모두 초기화할까요?`;
   if(!confirm(msg)) return;
   receiptCheckData = receiptCheckData.filter(x => !targets.includes(x));
-  saveReceiptCheckLocal();
+  saveReceiptCheckLocal({skipMerge: true});
   renderReceiptCheck();
   showToast(isManualOnly ? '✅ (수동) 항목 삭제 완료' : '✅ 체크 초기화 완료');
 }
@@ -13930,8 +13942,8 @@ function deleteSelectedSettlement() {
       settlementData.splice(idx, 1);
     }
   });
-  
-  saveSettlementLocal();
+
+  saveSettlementLocal({skipMerge: true});
   document.getElementById('stlCheckAll').checked = false;
   updateDriverFilter();
   renderSettlement();
@@ -13947,7 +13959,7 @@ function deleteCurrentMonthSettlement() {
   if(!confirm(`[${month}] 정산 데이터 ${targets.length}건을 삭제합니다.\n\n삭제 후 ERP 엑셀을 다시 불러오기 하세요.\n계속하시겠습니까?`)) return;
   backupSettlementToSheet();
   settlementData = settlementData.filter(d => !(d.date && d.date.startsWith(month)));
-  saveSettlementLocal();
+  saveSettlementLocal({skipMerge: true});
   updateDriverFilter();
   renderSettlement();
   showToast(`✅ ${month} 정산 ${targets.length}건 삭제 완료.`);
@@ -13995,7 +14007,7 @@ function backupAndDeleteMonth() {
   // 현재월 삭제
   backupSettlementToSheet();
   settlementData = settlementData.filter(d => !(d.date && d.date.startsWith(month)));
-  saveSettlementLocal();
+  saveSettlementLocal({skipMerge: true});
   updateDriverFilter();
   renderSettlement();
 
@@ -15013,9 +15025,9 @@ async function deleteSelectedInline() {
   
   // autoSync가 삭제된 데이터를 다시 복원하지 못하도록 차단 (5초만 차단)
   _lastSaveTime = Date.now() - 25000;
-  
+
   dispatchLog = dispatchLog.filter(r => !idsSet.has(r.id));
-  saveDispatchHistory();
+  saveDispatchHistory({skipMerge: true});
   // 삭제 후 해시 리셋 → 다음 autoSync에서 반드시 최신 데이터로 갱신
   _lastSyncHash = '';
   document.getElementById('inlineCheckAll').checked = false;
