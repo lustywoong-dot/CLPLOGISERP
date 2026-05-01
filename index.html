@@ -10406,35 +10406,31 @@ function renderReceiptCheck() {
   dates.forEach(d => rowsMap[d] = []);
   const seen = new Set();
 
-  // 1) dispatchLog 자동
-  if(typeof dispatchLog !== 'undefined' && Array.isArray(dispatchLog)) {
-    dispatchLog.forEach(r => {
-      if(!r || !r.code) return;
-      if(getReceiptClient(r.code) !== receiptActiveClient) return;
-      const date = sanitizeDate(r.deliveryDate || r.date || '');
-      if(!date || !dateSet.has(date)) return;
-      const key = date + '|' + r.code;
-      if(seen.has(key)) return;
-      seen.add(key);
-      rowsMap[date].push({ date, code: r.code, clientName: r.clientName || '', manual: false });
-    });
-  }
+  // 1) 기사정산(settlementData) 자동 — 메인 코드로 통합
+  _iterReceiptFromSettlement(receiptActiveClient, (row) => {
+    if(!dateSet.has(row.date)) return;
+    const key = row.date + '|' + row.code;
+    if(seen.has(key)) return;
+    seen.add(key);
+    rowsMap[row.date].push(row);
+  });
 
-  // 2) 수동 추가
+  // 2) 수동 추가 (정산에 없는 옛 데이터 보존)
   receiptCheckData.forEach(c => {
     if(c.client !== receiptActiveClient) return;
     const date = c.date || '';
     if(!dateSet.has(date)) return;
-    const key = date + '|' + (c.code || '');
+    const mainCode = _normalizeReceiptCode(c.code);
+    const key = date + '|' + mainCode;
     if(seen.has(key)) return;
     seen.add(key);
-    rowsMap[date].push({ date, code: c.code, clientName: '', manual: true });
+    rowsMap[date].push({ date, code: mainCode, clientName: '', manual: true });
   });
 
   // 3) 매칭 + 검색/필터
   Object.keys(rowsMap).forEach(d => {
     rowsMap[d] = rowsMap[d].map(row => {
-      const c = receiptCheckData.find(x => x.client === receiptActiveClient && x.date === row.date && x.code === row.code);
+      const c = _findReceiptCheck(receiptActiveClient, row.date, row.code);
       return { ...row, received: c?.received || '', scanned: c?.scanned || '', memo: c?.memo || '' };
     });
     if(search) {
@@ -10544,31 +10540,27 @@ function renderReceiptFocus() {
   const bodyEl = document.getElementById('receiptFocusBody');
   if(!date || !bodyEl || !titleEl) return;
 
-  // 데이터 모음
+  // 데이터 모음 (기사정산 자동 + 수동 추가)
   const seen = new Set();
   let rows = [];
-  if(typeof dispatchLog !== 'undefined' && Array.isArray(dispatchLog)) {
-    dispatchLog.forEach(r => {
-      if(!r || !r.code) return;
-      if(getReceiptClient(r.code) !== receiptActiveClient) return;
-      const d = sanitizeDate(r.deliveryDate || r.date || '');
-      if(d !== date) return;
-      const key = d + '|' + r.code;
-      if(seen.has(key)) return;
-      seen.add(key);
-      rows.push({ date: d, code: r.code, clientName: r.clientName || '', manual: false });
-    });
-  }
+  _iterReceiptFromSettlement(receiptActiveClient, (row) => {
+    if(row.date !== date) return;
+    const key = row.date + '|' + row.code;
+    if(seen.has(key)) return;
+    seen.add(key);
+    rows.push(row);
+  });
   receiptCheckData.forEach(c => {
     if(c.client !== receiptActiveClient) return;
     if(c.date !== date) return;
-    const key = c.date + '|' + c.code;
+    const mainCode = _normalizeReceiptCode(c.code);
+    const key = c.date + '|' + mainCode;
     if(seen.has(key)) return;
     seen.add(key);
-    rows.push({ date: c.date, code: c.code, clientName: '', manual: true });
+    rows.push({ date: c.date, code: mainCode, clientName: '', manual: true });
   });
   rows = rows.map(row => {
-    const c = receiptCheckData.find(x => x.client === receiptActiveClient && x.date === row.date && x.code === row.code);
+    const c = _findReceiptCheck(receiptActiveClient, row.date, row.code);
     return { ...row, received: c?.received || '', scanned: c?.scanned || '', memo: c?.memo || '' };
   });
   // 검색/필터도 동일 적용
@@ -10650,39 +10642,66 @@ function onReceiptResetClick(el) {
   resetReceiptCheck(d, c);
 }
 
-// 거래처별 인수증 데이터 수집 (자동 + 수동 통합)
-function _collectReceiptRows(client, month) {
+// ─── 인수증 헬퍼 (기사정산 기반) ───────────────────────────
+// 다중차량 sub-code(-1, -2)를 메인 코드로 통합
+function _normalizeReceiptCode(code) {
+  return String(code || '').replace(/-\d+$/, '');
+}
+
+// receiptCheckData lookup — 메인 코드 정확 매치 우선, sub-code fallback (옛 데이터 호환)
+function _findReceiptCheck(client, date, mainCode) {
+  let r = receiptCheckData.find(x => x.client === client && x.date === date && x.code === mainCode);
+  if(r) return r;
+  return receiptCheckData.find(x =>
+    x.client === client && x.date === date &&
+    typeof x.code === 'string' && _normalizeReceiptCode(x.code) === mainCode
+  ) || null;
+}
+
+// 기사정산(settlementData)에서 거래처별 코드 순회 (sub-code → 메인 코드 통합, 중복 제거)
+function _iterReceiptFromSettlement(client, callback) {
+  if(typeof settlementData === 'undefined' || !Array.isArray(settlementData)) return;
   const seen = new Set();
+  settlementData.forEach(s => {
+    if(!s || !s.dispCode) return;
+    const mainCode = _normalizeReceiptCode(s.dispCode);
+    if(!mainCode) return;
+    if(getReceiptClient(mainCode) !== client) return;
+    const date = (typeof sanitizeDate === 'function' ? sanitizeDate(s.date || '') : (s.date || ''));
+    if(!date) return;
+    const key = date + '|' + mainCode;
+    if(seen.has(key)) return;
+    seen.add(key);
+    callback({ date, code: mainCode, clientName: s.client || '', manual: false });
+  });
+}
+
+// 거래처별 인수증 데이터 수집 (기사정산 자동 + 수동 추가 통합)
+function _collectReceiptRows(client, month) {
   const rows = [];
-  if(typeof dispatchLog !== 'undefined' && Array.isArray(dispatchLog)) {
-    dispatchLog.forEach(r => {
-      if(!r || !r.code) return;
-      if(getReceiptClient(r.code) !== client) return;
-      const date = (typeof sanitizeDate === 'function' ? sanitizeDate(r.deliveryDate || r.date || '') : (r.deliveryDate || r.date || ''));
-      if(!date) return;
-      if(month && !date.startsWith(month)) return;
-      const key = date + '|' + r.code;
-      if(seen.has(key)) return;
-      seen.add(key);
-      const c = receiptCheckData.find(x => x.client === client && x.date === date && x.code === r.code);
-      rows.push({
-        date, code: r.code,
-        clientName: r.clientName || '',
-        received: c?.received || '',
-        scanned: c?.scanned || '',
-        memo: c?.memo || '',
-        manual: false
-      });
+  const seen = new Set();
+  // 1) 기사정산 자동
+  _iterReceiptFromSettlement(client, (row) => {
+    if(month && !row.date.startsWith(month)) return;
+    const c = _findReceiptCheck(client, row.date, row.code);
+    rows.push({
+      ...row,
+      received: c?.received || '',
+      scanned: c?.scanned || '',
+      memo: c?.memo || ''
     });
-  }
+    seen.add(row.date + '|' + row.code);
+  });
+  // 2) 수동 추가 (정산에 없는 옛 데이터 보존용)
   receiptCheckData.forEach(c => {
     if(c.client !== client) return;
     if(month && !(c.date || '').startsWith(month)) return;
-    const key = (c.date || '') + '|' + (c.code || '');
+    const mainCode = _normalizeReceiptCode(c.code);
+    const key = (c.date || '') + '|' + mainCode;
     if(seen.has(key)) return;
     seen.add(key);
     rows.push({
-      date: c.date, code: c.code,
+      date: c.date, code: mainCode,
       clientName: '(수동)',
       received: c.received || '', scanned: c.scanned || '', memo: c.memo || '',
       manual: true
@@ -10800,7 +10819,7 @@ function _buildClientSheetA4_LEGACY(rows, client, monthLabel) {
   return ws;
 }
 
-// 엑셀 출력 — ExcelJS 기반 (색상/스타일 + A4 가로 2단 레이아웃)
+// 엑셀 출력 — ExcelJS 기반 (가로 6일 컬럼 + 격식 헤더, 서명란 없음)
 async function exportReceiptCheck() {
   if(typeof ExcelJS === 'undefined') {
     showToast('⚠ ExcelJS 로드 실패 — 새로고침 후 다시 시도');
@@ -10816,7 +10835,7 @@ async function exportReceiptCheck() {
     dataByClient[c] = _collectReceiptRows(c, month);
     grandTotal += dataByClient[c].length;
   });
-  if(grandTotal === 0) { showToast('내보낼 항목이 없습니다 (해당 월 배차 없음)'); return; }
+  if(grandTotal === 0) { showToast('내보낼 항목이 없습니다 (해당 월 정산 데이터 없음)'); return; }
 
   if(typeof preDownloadCheck === 'function') {
     const ok = await preDownloadCheck('인수증체크 ' + monthLabel, grandTotal);
@@ -10924,142 +10943,178 @@ async function exportReceiptCheck() {
   });
   wsSum.getRow(sumTotalRow).height = 28;
 
-  // ─── 2. 거래처별 시트 (A4 가로 2단) ─────────────────
+  // ─── 2. 거래처별 시트 (가로 6일 컬럼 — 보스 엑셀 형식 그대로) ───
+  const PAGE_DAYS = 6;          // 한 페이지에 6일치
+  const COLS_PER_DAY = 5;        // NO/배차코드/회수/스캔/비고
+  const SPACER = 1;              // 컬럼 사이 빈 칸
+  const TOTAL_COLS = PAGE_DAYS * COLS_PER_DAY + (PAGE_DAYS - 1) * SPACER; // = 35
+  const days = ['일','월','화','수','목','금','토'];
+  const clientLabel = { 'LNL': '🔵 LNL (락앤락)', '덕평': '🟣 덕평2', '여주': '🟢 여주' };
+  const sheetTabName = { 'LNL': '🔵 LNL', '덕평': '🟣 덕평', '여주': '🟢 여주' };
+  const dateHdrFont = { bold:true, size:11, name:'맑은 고딕', color:{argb:'FF0F172A'} };
+  const dateHdrSatFont = { bold:true, size:11, name:'맑은 고딕', color:{argb:'FF1D4ED8'} };
+  const dateHdrSunFont = { bold:true, size:11, name:'맑은 고딕', color:{argb:'FFDC2626'} };
+  const wkndFill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFEE2E2'} };
+  const wkdFill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
+
   allClients.forEach(client => {
     const rows = dataByClient[client];
     if(rows.length === 0) return;
-    const ws = wb.addWorksheet(client, {
+    const ws = wb.addWorksheet(sheetTabName[client] || client, {
       pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, horizontalCentered: true },
-      pageMargins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 }
+      pageMargins: { left: 0.3, right: 0.3, top: 0.4, bottom: 0.3, header: 0.2, footer: 0.2 },
+      views: [{ showGridLines: false }]
     });
-    ws.columns = [
-      {width:5},{width:12},{width:18},{width:8},{width:8},{width:24},
-      {width:2},
-      {width:5},{width:12},{width:18},{width:8},{width:8},{width:24}
-    ];
-    const HALF = 25;
-    const PAGE = HALF * 2;
-    const pageCount = Math.max(1, Math.ceil(rows.length / PAGE));
+
+    // 컬럼 너비 (NO 4 / 코드 13 / 회수 5 / 스캔 5 / 비고 16 / spacer 1.5)
+    const colWidths = [];
+    for(let d = 0; d < PAGE_DAYS; d++) {
+      colWidths.push(4, 13, 5, 5, 16);
+      if(d < PAGE_DAYS - 1) colWidths.push(1.5);
+    }
+    ws.columns = colWidths.map(w => ({ width: w }));
+
+    // 날짜별 그룹핑
+    const byDate = {};
+    rows.forEach(r => { (byDate[r.date] = byDate[r.date] || []).push(r); });
+    const sortedDates = Object.keys(byDate).sort();
+    if(sortedDates.length === 0) return;
+    const pageCount = Math.max(1, Math.ceil(sortedDates.length / PAGE_DAYS));
+
     let curRow = 1;
     for(let p = 0; p < pageCount; p++) {
-      // 타이틀
-      ws.mergeCells(curRow, 1, curRow, 13);
+      const pageDates = sortedDates.slice(p * PAGE_DAYS, (p + 1) * PAGE_DAYS);
+
+      // 페이지 타이틀
+      ws.mergeCells(curRow, 1, curRow, TOTAL_COLS);
       const tC = ws.getCell(curRow, 1);
       tC.value = '주식회사 씨엘피 (CLP)  ·  인수증 체크리스트';
       tC.font = titleFont;
       tC.alignment = { horizontal:'center', vertical:'middle' };
-      ws.getRow(curRow).height = 32;
+      ws.getRow(curRow).height = 36;
       curRow++;
       // 밑줄
-      ws.mergeCells(curRow, 1, curRow, 13);
+      ws.mergeCells(curRow, 1, curRow, TOTAL_COLS);
       ws.getCell(curRow, 1).border = { bottom:{ style:'medium', color:{argb:'FF1A365D'}}};
       ws.getRow(curRow).height = 4;
       curRow++;
-      // 거래처/기간/페이지
-      ws.mergeCells(curRow, 1, curRow, 4);
+
+      // 정보바: 거래처 / 기간 / 페이지 (3분할)
+      const third = Math.floor(TOTAL_COLS / 3);
+      ws.mergeCells(curRow, 1, curRow, third);
       const cInfo = ws.getCell(curRow, 1);
-      cInfo.value = `거래처: ${client}`;
+      cInfo.value = `거래처: ${clientLabel[client] || client}`;
       cInfo.font = subFont;
       cInfo.fill = clientThemeFill[client];
       cInfo.alignment = { horizontal:'center', vertical:'middle' };
       cInfo.border = thinBorder;
-      ws.mergeCells(curRow, 5, curRow, 9);
-      const pInfo = ws.getCell(curRow, 5);
-      pInfo.value = `기간: ${monthLabel}`;
+
+      ws.mergeCells(curRow, third + 1, curRow, third * 2);
+      const pInfo = ws.getCell(curRow, third + 1);
+      pInfo.value = `정산 기간: ${monthLabel}    (총 ${rows.length}건  ·  회수 ${rows.filter(r=>r.received==='O').length}  ·  스캔 ${rows.filter(r=>r.scanned==='O').length})`;
       pInfo.font = subFont;
+      pInfo.fill = lightBlue;
       pInfo.alignment = { horizontal:'center', vertical:'middle' };
       pInfo.border = thinBorder;
-      ws.mergeCells(curRow, 10, curRow, 13);
-      const pgInfo = ws.getCell(curRow, 10);
-      pgInfo.value = `페이지 ${p+1} / ${pageCount}`;
+
+      ws.mergeCells(curRow, third * 2 + 1, curRow, TOTAL_COLS);
+      const pgInfo = ws.getCell(curRow, third * 2 + 1);
+      pgInfo.value = `페이지 ${p+1} / ${pageCount}    출력: ${_formatLoginTs(new Date())}`;
       pgInfo.font = subFont;
       pgInfo.alignment = { horizontal:'center', vertical:'middle' };
       pgInfo.border = thinBorder;
-      ws.getRow(curRow).height = 22;
-      curRow++;
-      // 빈 행
-      ws.getRow(curRow).height = 6;
-      curRow++;
-      // 컬럼 헤더
-      const headers = ['NO', '날짜', '배차코드', '회수', '스캔', '비고', '', 'NO', '날짜', '배차코드', '회수', '스캔', '비고'];
-      headers.forEach((h, i) => {
-        if(h === '') return;
-        const c = ws.getCell(curRow, i + 1);
-        c.value = h;
-        c.font = headerFont;
-        c.fill = navyFill;
-        c.alignment = { horizontal:'center', vertical:'middle' };
-        c.border = thinBorder;
-      });
       ws.getRow(curRow).height = 24;
       curRow++;
-      // 데이터 25행
-      for(let i = 0; i < HALF; i++) {
-        const leftIdx = p * PAGE + i;
-        const rightIdx = p * PAGE + HALF + i;
-        const L = rows[leftIdx];
-        const R = rows[rightIdx];
-        const writeSide = (offset, rec, idx) => {
-          const cells = [
-            { c: 1+offset, v: rec ? idx+1 : '', font: dataFont, h:'center' },
-            { c: 2+offset, v: rec?.date || '', font: dateFont, h:'center' },
-            { c: 3+offset, v: rec?.code || '', font: codeFont, h:'center' },
-            { c: 4+offset, v: rec?.received || (rec ? '·' : ''), h:'center', status: rec?.received },
-            { c: 5+offset, v: rec?.scanned || (rec ? '·' : ''), h:'center', status: rec?.scanned },
-            { c: 6+offset, v: rec?.memo || '', font: dataFont, h:'left' }
-          ];
-          cells.forEach(({c, v, font, h, status}) => {
-            const cell = ws.getCell(curRow, c);
-            cell.value = v;
-            cell.alignment = { horizontal: h, vertical:'middle' };
-            cell.border = thinBorder;
-            if(status === 'O') { cell.fill = greenFill; cell.font = greenFont; }
-            else if(status === 'X') { cell.fill = redFill; cell.font = redFont; }
-            else if(status === undefined && font) { cell.font = font; }
-            else { cell.font = grayFont; }
-          });
-        };
-        writeSide(0, L, leftIdx);
-        writeSide(7, R, rightIdx);
-        ws.getCell(curRow, 7).fill = grayFill;
-        ws.getRow(curRow).height = 19;
-        curRow++;
-      }
-      // 페이지 합계 + 확인 서명란
-      const pageStart = p * PAGE;
-      const pageEnd = Math.min(pageStart + PAGE, rows.length);
-      const pageRows = rows.slice(pageStart, pageEnd);
-      const pRecv = pageRows.filter(r => r.received === 'O').length;
-      const pScn = pageRows.filter(r => r.scanned === 'O').length;
-      ws.mergeCells(curRow, 1, curRow, 2);
-      const sumC = ws.getCell(curRow, 1);
-      sumC.value = `페이지 ${p+1} 합계`;
-      sumC.font = boldFont; sumC.fill = lightBlue;
-      sumC.alignment = { horizontal:'center', vertical:'middle' };
-      sumC.border = thinBorder;
-      [
-        { c: 3, v: `${pageRows.length}건` },
-        { c: 4, v: `회수 ${pRecv}` },
-        { c: 5, v: `스캔 ${pScn}` },
-        { c: 6, v: '' }
-      ].forEach(({c, v}) => {
-        const cell = ws.getCell(curRow, c);
-        cell.value = v;
-        cell.fill = lightBlue;
-        cell.font = subFont;
+      // 빈 줄
+      ws.getRow(curRow).height = 8;
+      curRow++;
+
+      // 날짜 헤더 (각 날짜 5칸 merge, 요일 + 일계 표기)
+      pageDates.forEach((d, dIdx) => {
+        const startCol = dIdx * (COLS_PER_DAY + SPACER) + 1;
+        const endCol = startCol + COLS_PER_DAY - 1;
+        ws.mergeCells(curRow, startCol, curRow, endCol);
+        const cell = ws.getCell(curRow, startCol);
+        const dt = new Date(d);
+        const wd = days[dt.getDay()];
+        const dow = dt.getDay();
+        const dCnt = byDate[d].length;
+        const dRecv = byDate[d].filter(r => r.received === 'O').length;
+        const dScn = byDate[d].filter(r => r.scanned === 'O').length;
+        cell.value = `${d.substring(5)} (${wd})    ${dCnt}건 · 회수 ${dRecv} · 스캔 ${dScn}`;
+        cell.font = (dow === 0) ? dateHdrSunFont : (dow === 6 ? dateHdrSatFont : dateHdrFont);
+        cell.fill = (dow === 0 || dow === 6) ? wkndFill : wkdFill;
         cell.alignment = { horizontal:'center', vertical:'middle' };
         cell.border = thinBorder;
       });
-      ws.getCell(curRow, 7).fill = grayFill;
-      ws.mergeCells(curRow, 8, curRow, 13);
-      const cnf = ws.getCell(curRow, 8);
-      cnf.value = '확인:                                                              (서명)';
-      cnf.font = boldFont; cnf.fill = lightBlue;
-      cnf.alignment = { horizontal:'left', vertical:'middle', indent: 2 };
-      cnf.border = thinBorder;
-      ws.getRow(curRow).height = 28;
+      ws.getRow(curRow).height = 26;
       curRow++;
-      // 페이지 사이 + 페이지 나누기
+
+      // 컬럼 서브 헤더 (NO/배차코드/회수/스캔/비고) × 6일
+      const subHdrs = ['NO', '배차코드', '회수', '스캔', '비고'];
+      pageDates.forEach((_d, dIdx) => {
+        const startCol = dIdx * (COLS_PER_DAY + SPACER) + 1;
+        subHdrs.forEach((h, i) => {
+          const c = ws.getCell(curRow, startCol + i);
+          c.value = h;
+          c.font = headerFont;
+          c.fill = navyFill;
+          c.alignment = { horizontal:'center', vertical:'middle' };
+          c.border = thinBorder;
+        });
+      });
+      ws.getRow(curRow).height = 22;
+      curRow++;
+
+      // 데이터 (가장 많은 날 기준 행 수, 짧은 날은 빈칸)
+      const maxRows = Math.max(0, ...pageDates.map(d => byDate[d].length));
+      for(let i = 0; i < maxRows; i++) {
+        pageDates.forEach((d, dIdx) => {
+          const startCol = dIdx * (COLS_PER_DAY + SPACER) + 1;
+          const rec = byDate[d][i];
+          const cells = [
+            { c: 0, v: rec ? i+1 : '', font: dataFont, h:'center' },
+            { c: 1, v: rec?.code || '', font: codeFont, h:'center' },
+            { c: 2, v: rec?.received || (rec ? '·' : ''), h:'center', status: rec?.received, isStatus: true },
+            { c: 3, v: rec?.scanned || (rec ? '·' : ''), h:'center', status: rec?.scanned, isStatus: true },
+            { c: 4, v: rec?.memo || '', font: dataFont, h:'left' }
+          ];
+          cells.forEach(({c, v, font, h, status, isStatus}) => {
+            const cell = ws.getCell(curRow, startCol + c);
+            cell.value = v;
+            cell.alignment = { horizontal: h, vertical:'middle' };
+            cell.border = thinBorder;
+            if(isStatus) {
+              if(status === 'O') { cell.fill = greenFill; cell.font = greenFont; }
+              else if(status === 'X') { cell.fill = redFill; cell.font = redFont; }
+              else { cell.font = grayFont; }
+            } else if(font) {
+              cell.font = font;
+            }
+          });
+        });
+        ws.getRow(curRow).height = 18;
+        curRow++;
+      }
+
+      // 일계 행 (각 날짜 5칸 merge)
+      pageDates.forEach((d, dIdx) => {
+        const startCol = dIdx * (COLS_PER_DAY + SPACER) + 1;
+        ws.mergeCells(curRow, startCol, curRow, startCol + COLS_PER_DAY - 1);
+        const cell = ws.getCell(curRow, startCol);
+        const dCnt = byDate[d].length;
+        const dRecv = byDate[d].filter(r => r.received === 'O').length;
+        const dScn = byDate[d].filter(r => r.scanned === 'O').length;
+        cell.value = `일계: ${dCnt}건  ·  회수 ${dRecv}  ·  스캔 ${dScn}`;
+        cell.font = subFont;
+        cell.fill = lightBlue;
+        cell.alignment = { horizontal:'center', vertical:'middle' };
+        cell.border = { top:{style:'medium',color:{argb:'FF1A365D'}}, bottom:{style:'thin',color:{argb:'FFD1D5DB'}}, left:{style:'thin',color:{argb:'FFD1D5DB'}}, right:{style:'thin',color:{argb:'FFD1D5DB'}}};
+      });
+      ws.getRow(curRow).height = 22;
+      curRow++;
+
+      // 페이지 break
       if(p < pageCount - 1) {
         ws.getRow(curRow).height = 6;
         ws.getRow(curRow).addPageBreak();
@@ -11136,7 +11191,7 @@ async function exportReceiptCheck() {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-  showToast(`📥 엑셀 다운로드 완료! 색상/스타일 적용 (총 ${grandTotal}건)`, 5000);
+  showToast(`📥 엑셀 다운로드 완료! (총 ${grandTotal}건, 가로 6일 컬럼)`, 5000);
 }
 
 // v5 마이그레이션 완료 - 버전 체크 불필요
