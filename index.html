@@ -9599,10 +9599,61 @@ function renderDownloadLogModal(logs) {
   `;
 }
 
-// 다른 탭/창에서 다운로드 발생 시 즉시 뱃지 갱신
+// ─── 멀티 탭/창 데이터 동기화 (race condition 방지) ───────────────────
+// 한 창에서 localStorage 핵심 데이터 변경 시 다른 창에서 자동 갱신
+// → 한쪽 창의 stale 메모리가 다른 창의 입력을 덮어쓰는 사고 차단
+const _crossTabLastSync = {};
+function _crossTabSync(key, applier, label) {
+  const now = Date.now();
+  if(_crossTabLastSync[key] && now - _crossTabLastSync[key] < 500) return; // 0.5초 throttle (연속 저장 시 중복 토스트 방지)
+  _crossTabLastSync[key] = now;
+  try {
+    applier();
+    if(typeof showToast === 'function') showToast(`🔄 다른 창의 ${label} 변경 감지 — 자동 갱신됨`, 3000);
+  } catch(err) { console.warn(label + ' cross-tab 동기화 실패:', err); }
+}
+
 window.addEventListener('storage', function(e) {
+  // 다른 창에서 다운로드 발생 시 뱃지 갱신
   if(e.key === 'clp_download_logs') {
-    updateDownloadAlertBadge();
+    if(typeof updateDownloadAlertBadge === 'function') updateDownloadAlertBadge();
+    return;
+  }
+  // 다른 창의 removeItem은 무시 (사용자가 명시적 삭제 한 경우는 영향 X)
+  if(e.newValue == null) return;
+
+  // 정산 데이터 — 가장 충돌 빈번. 다른 창 입력을 stale 메모리가 덮어쓰는 사고 차단
+  if(e.key === 'clp_settlement_data') {
+    _crossTabSync(e.key, () => {
+      settlementData = JSON.parse(e.newValue);
+      if(typeof renderSettlement === 'function') renderSettlement();
+      if(typeof updateDriverFilter === 'function') updateDriverFilter();
+    }, '정산 데이터');
+  }
+  // 인수증 체크
+  else if(e.key === 'clp_receipt_check_data') {
+    _crossTabSync(e.key, () => {
+      receiptCheckData = JSON.parse(e.newValue);
+      if(typeof renderReceiptCheck === 'function') renderReceiptCheck();
+    }, '인수증 체크');
+  }
+  // 배차 이력 (90일 캐시 기준, 그 이전은 IDB 메인 저장소 유지)
+  else if(e.key === 'dispatchHistory') {
+    _crossTabSync(e.key, () => {
+      const cached = JSON.parse(e.newValue);
+      if(!Array.isArray(cached)) return;
+      // 90일 이전 데이터는 본 창 메모리 유지 (다른 창 캐시에 없을 수 있음)
+      const cut = (function(){
+        const d = new Date(); d.setDate(d.getDate() - 90);
+        return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+      })();
+      const oldRecords = dispatchLog.filter(r => (r.deliveryDate||r.date||'') < cut);
+      const cachedIds = new Set(cached.map(r => r.id));
+      // 90일 이전 + 캐시에 없는 옛 데이터 보존 + 다른 창 캐시 머지
+      dispatchLog = [...cached, ...oldRecords.filter(r => !cachedIds.has(r.id))];
+      if(typeof renderHistory === 'function') renderHistory();
+      if(typeof renderInlineHistory === 'function') renderInlineHistory();
+    }, '배차 데이터');
   }
 });
 
