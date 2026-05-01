@@ -1492,11 +1492,30 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <button class="receipt-client-tab" data-client="여주" onclick="setReceiptClient('여주')" style="flex:1;min-width:80px;padding:8px 12px;border:none;background:transparent;border-radius:4px;cursor:pointer;font-size:13px;color:var(--text-light)">🟢 여주</button>
       </div>
       <!-- 컨트롤 바 -->
-      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:10px">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px">
+        <!-- 시작일 + 페이지 이동 -->
         <div style="display:flex;gap:4px;align-items:center">
-          <label style="font-size:11px;font-weight:600">월 선택</label>
-          <input type="month" id="receiptMonth" onchange="onReceiptMonthChange()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+          <button onclick="shiftReceiptStart(-1)" title="이전 페이지" style="padding:5px 9px;border:1px solid var(--border);background:#fff;border-radius:4px;cursor:pointer;font-size:12px">◀</button>
+          <input type="date" id="receiptStartDate" onchange="onReceiptStartDateChange()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+          <button onclick="shiftReceiptStart(+1)" title="다음 페이지" style="padding:5px 9px;border:1px solid var(--border);background:#fff;border-radius:4px;cursor:pointer;font-size:12px">▶</button>
         </div>
+        <!-- 표시 일수 -->
+        <div style="display:flex;gap:4px;align-items:center">
+          <label style="font-size:11px;font-weight:600">표시</label>
+          <select id="receiptDayCount" onchange="renderReceiptCheck()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+            <option value="3">3일</option>
+            <option value="5">5일</option>
+            <option value="7" selected>7일</option>
+            <option value="14">14일</option>
+          </select>
+        </div>
+        <!-- 빠른 점프 -->
+        <div style="display:flex;gap:4px">
+          <button onclick="receiptJumpToday()" style="padding:5px 10px;border:1px solid var(--border);background:#fff;border-radius:4px;cursor:pointer;font-size:11px">📅 오늘</button>
+          <button onclick="receiptJumpThisWeek()" style="padding:5px 10px;border:1px solid var(--border);background:#fff;border-radius:4px;cursor:pointer;font-size:11px">이번 주</button>
+          <button onclick="receiptJumpThisMonth()" style="padding:5px 10px;border:1px solid var(--border);background:#fff;border-radius:4px;cursor:pointer;font-size:11px">이번 달</button>
+        </div>
+        <!-- 필터 -->
         <div style="display:flex;gap:4px;align-items:center">
           <label style="font-size:11px;font-weight:600">필터</label>
           <select id="receiptFilter" onchange="renderReceiptCheck()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
@@ -1507,7 +1526,12 @@ body.hide-cost-col .col-sensitive { display: none !important; }
             <option value="complete">완료(회수+스캔 모두 O)</option>
           </select>
         </div>
-        <input type="text" id="receiptSearch" placeholder="🔍 코드/비고 검색..." oninput="renderReceiptCheck()" style="padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:180px">
+        <input type="text" id="receiptSearch" placeholder="🔍 코드/비고 검색..." oninput="renderReceiptCheck()" style="padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:160px">
+        <!-- 월 선택 (엑셀 출력용 + 호환) -->
+        <div style="display:flex;gap:4px;align-items:center">
+          <label style="font-size:11px;font-weight:600;color:var(--text-light)" title="엑셀 출력 범위로 사용됨">엑셀월</label>
+          <input type="month" id="receiptMonth" onchange="onReceiptMonthChange()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" title="엑셀 출력 시 적용할 월 (빈칸=전체)">
+        </div>
         <span style="margin-left:auto;display:flex;gap:6px">
           <button class="btn btn-sm btn-primary" onclick="openAddReceiptDialog()" style="padding:6px 12px;font-size:12px" title="배차에 없는 옛 인수증 수동 등록용">+ 수동 추가</button>
           <button class="btn btn-sm" onclick="exportReceiptCheck()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:6px 10px;font-size:11px" title="전체요약 + 거래처별(LNL/덕평/여주) + 미회수 시트로 엑셀 다운로드">📥 엑셀 출력</button>
@@ -1533,22 +1557,20 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <button class="btn btn-sm" onclick="closeAddReceiptDialog()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:6px 12px;font-size:12px">취소</button>
         </div>
       </div>
-      <!-- 표 -->
-      <div style="overflow-x:auto">
-        <table id="receiptTable" style="width:100%;font-size:12px;border-collapse:collapse">
-          <thead style="background:#f9fafb">
-            <tr>
-              <th style="padding:8px;border:1px solid #e5e7eb;text-align:left;width:110px">날짜</th>
-              <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">배차코드</th>
-              <th style="padding:8px;border:1px solid #e5e7eb;width:60px">회수</th>
-              <th style="padding:8px;border:1px solid #e5e7eb;width:60px">스캔</th>
-              <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">비고</th>
-              <th style="padding:8px;border:1px solid #e5e7eb;width:60px">관리</th>
-            </tr>
-          </thead>
-          <tbody id="receiptBody"></tbody>
-        </table>
+      <!-- 가로 날짜 그리드 (엑셀 스타일 메인 뷰) -->
+      <div id="receiptGrid" style="display:flex;gap:8px;overflow-x:auto;padding-bottom:10px;min-height:300px"></div>
+      <!-- 집중 모드 (날짜 헤더 더블클릭 / ESC로 복귀) -->
+      <div id="receiptFocusView" style="display:none">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px">
+          <button onclick="navigateFocus(-1)" style="padding:8px 14px;border:1px solid var(--border);background:#fff;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600" title="이전 날짜 (←)">◀ 이전</button>
+          <div id="receiptFocusTitle" style="flex:1;text-align:center;font-size:18px;font-weight:700;color:#1e293b"></div>
+          <button onclick="navigateFocus(1)" style="padding:8px 14px;border:1px solid var(--border);background:#fff;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600" title="다음 날짜 (→)">다음 ▶</button>
+          <button onclick="exitFocusMode()" style="padding:8px 14px;border:1px solid #fca5a5;background:#fff;color:#dc2626;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600" title="ESC">✕ 닫기</button>
+        </div>
+        <div id="receiptFocusBody" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px"></div>
       </div>
+      <!-- 호환용 (옛 코드가 참조할 수 있어 보존) -->
+      <table id="receiptTable" style="display:none"><tbody id="receiptBody"></tbody></table>
     </div>
   </div>
 
@@ -10280,121 +10302,330 @@ function resetReceiptCheck(date, code) {
   showToast('✅ 체크 초기화 완료');
 }
 
-// 표 렌더 — dispatchLog에서 자동으로 코드 가져옴 + receiptCheckData에서 회수/스캔/비고 매칭
+// 인수증 체크 — 가로 날짜 컬럼 그리드 (엑셀 스타일) + 집중 모드 하이브리드
+let receiptFocusDate = null; // 집중 모드 활성화 날짜 (null이면 그리드 모드)
+
+// 시작일 초기화 헬퍼 (없으면 오늘로)
+function _ensureReceiptStartDate() {
+  const startEl = document.getElementById('receiptStartDate');
+  if(!startEl) return null;
+  if(!startEl.value) {
+    const t = new Date();
+    startEl.value = t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+  }
+  return startEl.value;
+}
+
+// 시작일 변경
+function onReceiptStartDateChange() { renderReceiptCheck(); }
+
+// 페이지 이동 (표시일수만큼 시프트)
+function shiftReceiptStart(dir) {
+  const startEl = document.getElementById('receiptStartDate');
+  if(!startEl) return;
+  _ensureReceiptStartDate();
+  const dayCount = parseInt(document.getElementById('receiptDayCount')?.value) || 7;
+  const d = new Date(startEl.value);
+  d.setDate(d.getDate() + dir * dayCount);
+  startEl.value = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  renderReceiptCheck();
+}
+
+// 빠른 점프
+function receiptJumpToday() {
+  const t = new Date();
+  document.getElementById('receiptStartDate').value =
+    t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+  renderReceiptCheck();
+}
+function receiptJumpThisWeek() {
+  const t = new Date();
+  // 월요일 시작 (일=0 → 월요일까지 6일 뒤로)
+  const dow = t.getDay() === 0 ? 6 : t.getDay() - 1;
+  t.setDate(t.getDate() - dow);
+  document.getElementById('receiptStartDate').value =
+    t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0');
+  document.getElementById('receiptDayCount').value = '7';
+  renderReceiptCheck();
+}
+function receiptJumpThisMonth() {
+  const t = new Date();
+  const first = new Date(t.getFullYear(), t.getMonth(), 1);
+  document.getElementById('receiptStartDate').value =
+    first.getFullYear()+'-'+String(first.getMonth()+1).padStart(2,'0')+'-'+String(first.getDate()).padStart(2,'0');
+  document.getElementById('receiptDayCount').value = '14';
+  renderReceiptCheck();
+}
+
+// 한 행(코드 카드) HTML 생성 (그리드용 — 컴팩트)
+function _receiptRowHtml(r, num) {
+  const cellStyle = (v) => {
+    if(v === 'O') return 'background:#d1fae5;color:#065f46;font-weight:700';
+    if(v === 'X') return 'background:#fee2e2;color:#991b1b;font-weight:700';
+    return 'background:#fff;color:#9ca3af;border:1px dashed #d1d5db';
+  };
+  const attrEsc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+  const dA = attrEsc(r.date);
+  const cA = attrEsc(r.code);
+  return `
+    <div style="display:grid;grid-template-columns:20px 1fr 32px 32px;gap:3px;align-items:center;padding:4px 3px;border-bottom:1px solid #f3f4f6">
+      <span style="font-size:10px;color:#9ca3af;text-align:right">${num}</span>
+      <div style="min-width:0">
+        <div style="font-family:monospace;font-size:11px;font-weight:700;color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.code || '-'}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</div>
+        <input type="text" value="${attrEsc(r.memo)}" data-d="${dA}" data-c="${cA}" onchange="onReceiptMemoChange(this)" placeholder="비고" style="width:100%;padding:1px 4px;border:1px solid transparent;background:transparent;font-size:10px;margin-top:1px" onfocus="this.style.background='#fff';this.style.borderColor='#d1d5db'" onblur="this.style.background='transparent';this.style.borderColor='transparent'">
+      </div>
+      <div data-d="${dA}" data-c="${cA}" data-f="received" onclick="onReceiptCellClick(this)" style="${cellStyle(r.received)};text-align:center;cursor:pointer;user-select:none;padding:6px 0;border-radius:4px;font-size:13px" title="회수 (클릭: 빈칸→O→X)">${r.received || '·'}</div>
+      <div data-d="${dA}" data-c="${cA}" data-f="scanned" onclick="onReceiptCellClick(this)" style="${cellStyle(r.scanned)};text-align:center;cursor:pointer;user-select:none;padding:6px 0;border-radius:4px;font-size:13px" title="스캔 (클릭: 빈칸→O→X)">${r.scanned || '·'}</div>
+    </div>
+  `;
+}
+
+// 메인 렌더 — 가로 날짜 컬럼 그리드 (엑셀 스타일)
 function renderReceiptCheck() {
-  const tbody = document.getElementById('receiptBody');
-  if(!tbody) return;
+  const grid = document.getElementById('receiptGrid');
+  if(!grid) return;
+
+  const startDate = _ensureReceiptStartDate();
+  if(!startDate) return;
+  const dayCount = parseInt(document.getElementById('receiptDayCount')?.value) || 7;
+
+  // 날짜 배열 생성
+  const dates = [];
+  for(let i = 0; i < dayCount; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i);
+    dates.push(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'));
+  }
+  const dateSet = new Set(dates);
+
   const search = (document.getElementById('receiptSearch')?.value || '').trim().toLowerCase();
   const filter = document.getElementById('receiptFilter')?.value || 'all';
 
-  // 1) dispatchLog에서 자동으로 행 가져오기 (거래처 prefix + 월 필터)
-  const seen = new Set(); // 중복 방지 (date|code)
-  const autoRows = [];
+  // 날짜별 row 모음 (date → rows[])
+  const rowsMap = {};
+  dates.forEach(d => rowsMap[d] = []);
+  const seen = new Set();
+
+  // 1) dispatchLog 자동
   if(typeof dispatchLog !== 'undefined' && Array.isArray(dispatchLog)) {
     dispatchLog.forEach(r => {
       if(!r || !r.code) return;
       if(getReceiptClient(r.code) !== receiptActiveClient) return;
-      const date = (typeof sanitizeDate === 'function' ? sanitizeDate(r.deliveryDate || r.date || '') : (r.deliveryDate || r.date || ''));
-      if(!date) return;
-      if(receiptActiveMonth && !date.startsWith(receiptActiveMonth)) return;
+      const date = sanitizeDate(r.deliveryDate || r.date || '');
+      if(!date || !dateSet.has(date)) return;
       const key = date + '|' + r.code;
       if(seen.has(key)) return;
       seen.add(key);
-      autoRows.push({
-        date, code: r.code,
-        clientName: r.clientName || '',
-        memo_dispatch: r.memo || '',
-        manual: false
-      });
+      rowsMap[date].push({ date, code: r.code, clientName: r.clientName || '', manual: false });
     });
   }
 
-  // 2) 수동 추가된 receiptCheckData 항목 중 dispatchLog에 없는 건 합치기
+  // 2) 수동 추가
   receiptCheckData.forEach(c => {
     if(c.client !== receiptActiveClient) return;
-    if(receiptActiveMonth && !(c.date || '').startsWith(receiptActiveMonth)) return;
-    const key = (c.date || '') + '|' + (c.code || '');
+    const date = c.date || '';
+    if(!dateSet.has(date)) return;
+    const key = date + '|' + (c.code || '');
     if(seen.has(key)) return;
     seen.add(key);
-    autoRows.push({
-      date: c.date, code: c.code,
-      clientName: '',
-      memo_dispatch: '',
-      manual: true
+    rowsMap[date].push({ date, code: c.code, clientName: '', manual: true });
+  });
+
+  // 3) 매칭 + 검색/필터
+  Object.keys(rowsMap).forEach(d => {
+    rowsMap[d] = rowsMap[d].map(row => {
+      const c = receiptCheckData.find(x => x.client === receiptActiveClient && x.date === row.date && x.code === row.code);
+      return { ...row, received: c?.received || '', scanned: c?.scanned || '', memo: c?.memo || '' };
     });
+    if(search) {
+      rowsMap[d] = rowsMap[d].filter(r =>
+        (r.code || '').toLowerCase().includes(search) ||
+        (r.memo || '').toLowerCase().includes(search) ||
+        (r.clientName || '').toLowerCase().includes(search)
+      );
+    }
+    if(filter === 'unreceived') rowsMap[d] = rowsMap[d].filter(r => r.received !== 'O');
+    else if(filter === 'unscanned') rowsMap[d] = rowsMap[d].filter(r => r.scanned !== 'O');
+    else if(filter === 'incomplete') rowsMap[d] = rowsMap[d].filter(r => r.received !== 'O' || r.scanned !== 'O');
+    else if(filter === 'complete') rowsMap[d] = rowsMap[d].filter(r => r.received === 'O' && r.scanned === 'O');
+    rowsMap[d].sort((a, b) => (a.code || '').localeCompare(b.code || ''));
   });
 
-  // 3) 각 행에 receiptCheckData 매칭 정보 부착
-  const rows = autoRows.map(row => {
+  // 통계 뱃지
+  const allRows = dates.flatMap(d => rowsMap[d]);
+  const total = allRows.length;
+  const recv = allRows.filter(r => r.received === 'O').length;
+  const scn = allRows.filter(r => r.scanned === 'O').length;
+  const unrecv = allRows.filter(r => r.received !== 'O').length;
+  const badge = document.getElementById('receiptStatBadge');
+  if(badge) {
+    let bh = `<b style="color:#1e293b">${dates[0]} ~ ${dates[dates.length-1]}</b> · 총 <b style="color:#111827">${total}</b>건 · 회수 <b style="color:#059669">${recv}</b> · 스캔 <b style="color:#2563eb">${scn}</b>`;
+    if(unrecv > 0) bh += ` · <span style="color:#dc2626;font-weight:600">미회수 ${unrecv}</span>`;
+    badge.innerHTML = bh;
+  }
+
+  // 그리드 렌더
+  const days = ['일','월','화','수','목','금','토'];
+  grid.innerHTML = dates.map(d => {
+    const rows = rowsMap[d];
+    const dt = new Date(d);
+    const wd = days[dt.getDay()];
+    const isWeekend = (dt.getDay() === 0 || dt.getDay() === 6);
+    const headerBg = isWeekend ? 'linear-gradient(180deg,#fef2f2,#fee2e2)' : 'linear-gradient(180deg,#f8fafc,#f1f5f9)';
+    const dayRecv = rows.filter(r => r.received === 'O').length;
+    const dayScn  = rows.filter(r => r.scanned === 'O').length;
+    const dayTotal = rows.length;
+    const allDone = dayTotal > 0 && dayRecv === dayTotal && dayScn === dayTotal;
+    const headerBorder = allDone ? '2px solid #10b981' : '2px solid #e2e8f0';
+    return `
+      <div class="receipt-day-col" style="min-width:300px;width:300px;flex-shrink:0;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;flex-direction:column;max-height:65vh;box-shadow:0 1px 2px rgba(0,0,0,0.04)">
+        <div ondblclick="enterFocusMode('${d}')" title="더블클릭 → 집중 모드" style="padding:9px 10px;background:${headerBg};border-bottom:${headerBorder};cursor:pointer;border-radius:8px 8px 0 0;flex-shrink:0;user-select:none">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:13px;font-weight:700;color:#1e293b">${d.substring(5)} <span style="color:${isWeekend ? '#dc2626' : '#64748b'};font-weight:600">(${wd})</span></span>
+            ${allDone ? '<span title="모두 완료" style="font-size:14px">✅</span>' : ''}
+          </div>
+          <div style="font-size:10px;color:#64748b;margin-top:2px">${dayTotal === 0 ? '건 없음' : `${dayTotal}건 · 회수 <b style="color:#059669">${dayRecv}</b>/${dayTotal} · 스캔 <b style="color:#2563eb">${dayScn}</b>/${dayTotal}`}</div>
+        </div>
+        <div style="overflow-y:auto;padding:3px;flex:1">
+          ${rows.length === 0 ? '<div style="padding:30px 10px;text-align:center;color:#9ca3af;font-size:11px">건 없음</div>' : rows.map((r, i) => _receiptRowHtml(r, i+1)).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // 집중 모드도 활성 상태면 동기화
+  if(receiptFocusDate) renderReceiptFocus();
+}
+
+// 집중 모드 진입
+function enterFocusMode(date) {
+  receiptFocusDate = date;
+  const grid = document.getElementById('receiptGrid');
+  const focus = document.getElementById('receiptFocusView');
+  if(grid) grid.style.display = 'none';
+  if(focus) focus.style.display = '';
+  renderReceiptFocus();
+  document.addEventListener('keydown', _receiptFocusKeyHandler);
+}
+
+// 집중 모드 종료
+function exitFocusMode() {
+  receiptFocusDate = null;
+  const grid = document.getElementById('receiptGrid');
+  const focus = document.getElementById('receiptFocusView');
+  if(focus) focus.style.display = 'none';
+  if(grid) grid.style.display = '';
+  document.removeEventListener('keydown', _receiptFocusKeyHandler);
+}
+
+// 집중 모드 날짜 이동
+function navigateFocus(dir) {
+  if(!receiptFocusDate) return;
+  const d = new Date(receiptFocusDate);
+  d.setDate(d.getDate() + dir);
+  receiptFocusDate = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  renderReceiptFocus();
+}
+
+// 키보드: ESC 종료 / ← → 이동 (입력 중에는 무시)
+function _receiptFocusKeyHandler(e) {
+  if(!receiptFocusDate) return;
+  const tag = (e.target.tagName || '').toLowerCase();
+  if(tag === 'input' || tag === 'textarea' || tag === 'select') return;
+  if(e.key === 'Escape') { exitFocusMode(); e.preventDefault(); }
+  else if(e.key === 'ArrowLeft') { navigateFocus(-1); e.preventDefault(); }
+  else if(e.key === 'ArrowRight') { navigateFocus(1); e.preventDefault(); }
+}
+
+// 집중 모드 본문 렌더 (큰 카드 그리드)
+function renderReceiptFocus() {
+  const date = receiptFocusDate;
+  const titleEl = document.getElementById('receiptFocusTitle');
+  const bodyEl = document.getElementById('receiptFocusBody');
+  if(!date || !bodyEl || !titleEl) return;
+
+  // 데이터 모음
+  const seen = new Set();
+  let rows = [];
+  if(typeof dispatchLog !== 'undefined' && Array.isArray(dispatchLog)) {
+    dispatchLog.forEach(r => {
+      if(!r || !r.code) return;
+      if(getReceiptClient(r.code) !== receiptActiveClient) return;
+      const d = sanitizeDate(r.deliveryDate || r.date || '');
+      if(d !== date) return;
+      const key = d + '|' + r.code;
+      if(seen.has(key)) return;
+      seen.add(key);
+      rows.push({ date: d, code: r.code, clientName: r.clientName || '', manual: false });
+    });
+  }
+  receiptCheckData.forEach(c => {
+    if(c.client !== receiptActiveClient) return;
+    if(c.date !== date) return;
+    const key = c.date + '|' + c.code;
+    if(seen.has(key)) return;
+    seen.add(key);
+    rows.push({ date: c.date, code: c.code, clientName: '', manual: true });
+  });
+  rows = rows.map(row => {
     const c = receiptCheckData.find(x => x.client === receiptActiveClient && x.date === row.date && x.code === row.code);
-    return {
-      ...row,
-      received: c ? c.received : '',
-      scanned: c ? c.scanned : '',
-      memo: c ? c.memo : ''
-    };
+    return { ...row, received: c?.received || '', scanned: c?.scanned || '', memo: c?.memo || '' };
   });
-
-  // 4) 검색 필터
-  let filtered = rows;
+  // 검색/필터도 동일 적용
+  const search = (document.getElementById('receiptSearch')?.value || '').trim().toLowerCase();
+  const filter = document.getElementById('receiptFilter')?.value || 'all';
   if(search) {
-    filtered = filtered.filter(r =>
+    rows = rows.filter(r =>
       (r.code || '').toLowerCase().includes(search) ||
       (r.memo || '').toLowerCase().includes(search) ||
       (r.clientName || '').toLowerCase().includes(search)
     );
   }
-  // 5) 상태 필터
-  if(filter === 'unreceived') filtered = filtered.filter(r => r.received !== 'O');
-  else if(filter === 'unscanned') filtered = filtered.filter(r => r.scanned !== 'O');
-  else if(filter === 'incomplete') filtered = filtered.filter(r => r.received !== 'O' || r.scanned !== 'O');
-  else if(filter === 'complete') filtered = filtered.filter(r => r.received === 'O' && r.scanned === 'O');
+  if(filter === 'unreceived') rows = rows.filter(r => r.received !== 'O');
+  else if(filter === 'unscanned') rows = rows.filter(r => r.scanned !== 'O');
+  else if(filter === 'incomplete') rows = rows.filter(r => r.received !== 'O' || r.scanned !== 'O');
+  else if(filter === 'complete') rows = rows.filter(r => r.received === 'O' && r.scanned === 'O');
+  rows.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
 
-  // 6) 정렬: 날짜 내림차순, 코드 오름차순
-  filtered.sort((a, b) => {
-    if((b.date || '') !== (a.date || '')) return (b.date || '').localeCompare(a.date || '');
-    return (a.code || '').localeCompare(b.code || '');
-  });
-
-  // 7) 통계 뱃지 (rows 기반 — 필터 무시 전체 통계)
-  const total = rows.length;
+  // 헤더
+  const days = ['일','월','화','수','목','금','토'];
+  const dt = new Date(date);
+  const wd = days[dt.getDay()];
+  const isWeekend = (dt.getDay() === 0 || dt.getDay() === 6);
   const recv = rows.filter(r => r.received === 'O').length;
-  const scn = rows.filter(r => r.scanned === 'O').length;
-  const unrecv = rows.filter(r => r.received !== 'O').length;
-  const badge = document.getElementById('receiptStatBadge');
-  if(badge) {
-    let bh = `총 <b style="color:#111827">${total}</b>건 / 회수 <b style="color:#059669">${recv}</b> / 스캔 <b style="color:#2563eb">${scn}</b>`;
-    if(unrecv > 0) bh += ` <span style="color:#dc2626">미회수 ${unrecv}</span>`;
-    badge.innerHTML = bh;
-  }
+  const scn  = rows.filter(r => r.scanned === 'O').length;
+  titleEl.innerHTML = `${date} <span style="color:${isWeekend ? '#dc2626' : '#64748b'};font-weight:500">(${wd})</span> · ${receiptActiveClient}
+    <div style="font-size:12px;color:#64748b;font-weight:400;margin-top:3px">${rows.length}건 · 회수 <b style="color:#059669">${recv}</b>/${rows.length} · 스캔 <b style="color:#2563eb">${scn}</b>/${rows.length}</div>`;
 
-  if(filtered.length === 0) {
-    const hint = total === 0 ?
-      `${receiptActiveClient} ${receiptActiveMonth ? receiptActiveMonth + ' ' : ''}배차가 없습니다. 배차 등록 후 자동으로 표시됩니다.` :
-      `필터/검색 조건에 맞는 항목이 없습니다.`;
-    tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--text-light)">${hint}</td></tr>`;
+  if(rows.length === 0) {
+    bodyEl.innerHTML = '<div style="grid-column:1/-1;padding:60px 20px;text-align:center;color:#9ca3af;font-size:14px">이 날짜에 등록된 배차가 없습니다</div>';
     return;
   }
 
-  const cellStyle = (v) => {
-    if(v === 'O') return 'background:#d1fae5;color:#065f46;font-weight:700';
-    if(v === 'X') return 'background:#fee2e2;color:#991b1b;font-weight:700';
-    return 'background:#fff;color:#9ca3af';
+  const btnStyle = (v) => {
+    if(v === 'O') return 'background:#d1fae5;color:#065f46;border:2px solid #10b981';
+    if(v === 'X') return 'background:#fee2e2;color:#991b1b;border:2px solid #ef4444';
+    return 'background:#fff;color:#9ca3af;border:2px dashed #d1d5db';
   };
-  // HTML attribute용 escape (큰따옴표 → &quot;)
-  const attrEsc = (s) => String(s == null ? '' : s).replace(/"/g, '&quot;').replace(/&/g, '&amp;');
-  tbody.innerHTML = filtered.map(r => {
+  const attrEsc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+
+  bodyEl.innerHTML = rows.map((r, i) => {
     const dA = attrEsc(r.date);
     const cA = attrEsc(r.code);
     return `
-    <tr style="border-bottom:1px solid #f3f4f6">
-      <td style="padding:6px 8px;border:1px solid #e5e7eb;font-family:monospace;color:#374151">${r.date || '-'}</td>
-      <td style="padding:6px 8px;border:1px solid #e5e7eb;font-family:monospace;font-weight:600">${r.code || '-'}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}${r.clientName ? '<br><small style="color:#6b7280;font-weight:400">' + r.clientName + '</small>' : ''}</td>
-      <td data-d="${dA}" data-c="${cA}" data-f="received" onclick="onReceiptCellClick(this)" style="padding:0;border:1px solid #e5e7eb;text-align:center;font-size:14px;${cellStyle(r.received)}cursor:pointer;user-select:none" title="클릭: 빈칸→O→X">${r.received || '·'}</td>
-      <td data-d="${dA}" data-c="${cA}" data-f="scanned" onclick="onReceiptCellClick(this)" style="padding:0;border:1px solid #e5e7eb;text-align:center;font-size:14px;${cellStyle(r.scanned)}cursor:pointer;user-select:none" title="클릭: 빈칸→O→X">${r.scanned || '·'}</td>
-      <td style="padding:2px 4px;border:1px solid #e5e7eb"><input type="text" value="${attrEsc(r.memo)}" data-d="${dA}" data-c="${cA}" onchange="onReceiptMemoChange(this)" placeholder="비고" style="width:100%;padding:4px 6px;border:1px solid transparent;background:transparent;font-size:12px" onfocus="this.style.background='#fff';this.style.borderColor='#d1d5db'" onblur="this.style.background='transparent';this.style.borderColor='transparent'"></td>
-      <td style="padding:6px 8px;border:1px solid #e5e7eb;text-align:center"><button data-d="${dA}" data-c="${cA}" onclick="onReceiptResetClick(this)" style="background:#fff;border:1px solid #fca5a5;color:#dc2626;padding:3px 8px;font-size:11px;border-radius:4px;cursor:pointer" title="회수/스캔/비고 초기화">초기화</button></td>
-    </tr>`;
+      <div style="border:1px solid #e5e7eb;border-radius:10px;padding:14px;background:#fff;display:flex;flex-direction:column;gap:10px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+        <div>
+          <div style="font-family:monospace;font-size:16px;font-weight:700;color:#1e40af">${i+1}. ${r.code}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</div>
+          ${r.clientName ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">${r.clientName}</div>` : ''}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <button data-d="${dA}" data-c="${cA}" data-f="received" onclick="onReceiptCellClick(this)" style="${btnStyle(r.received)};padding:16px 0;font-size:18px;font-weight:700;border-radius:8px;cursor:pointer">회수 ${r.received || '·'}</button>
+          <button data-d="${dA}" data-c="${cA}" data-f="scanned" onclick="onReceiptCellClick(this)" style="${btnStyle(r.scanned)};padding:16px 0;font-size:18px;font-weight:700;border-radius:8px;cursor:pointer">스캔 ${r.scanned || '·'}</button>
+        </div>
+        <input type="text" value="${attrEsc(r.memo)}" data-d="${dA}" data-c="${cA}" onchange="onReceiptMemoChange(this)" placeholder="비고 입력..." style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
+        <button data-d="${dA}" data-c="${cA}" onclick="onReceiptResetClick(this)" style="background:#fff;border:1px solid #fca5a5;color:#dc2626;padding:6px 10px;font-size:11px;border-radius:6px;cursor:pointer">↺ 초기화</button>
+      </div>
+    `;
   }).join('');
 }
 
