@@ -8054,15 +8054,35 @@ async function parseErpExcel(input) {
   
   try {
     const data = await file.arrayBuffer();
-    const wb = XLSX.read(data, { type: 'array', raw: false });
+    // cellDates: true → 날짜 형식 셀이 JS Date 객체로 변환 (시리얼 숫자 직접 노출 방지)
+    const wb = XLSX.read(data, { type: 'array', raw: false, cellDates: true });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
-    
+
     if(rows.length < 2) { showToast('⚠ 데이터가 없습니다'); return; }
-    
-    // ERP 엑셀 날짜 안전 파싱 (문자열 기반, 다양한 형식 지원)
+
+    // ERP 엑셀 날짜 안전 파싱 (Date 객체 / 엑셀 시리얼 숫자 / 다양한 문자열 형식 지원)
     function parseDateSafe(val) {
-      if(!val) return '';
+      if(val == null || val === '') return '';
+      // Date 객체 (cellDates:true에서 변환됨)
+      if(val instanceof Date && !isNaN(val)) {
+        return val.getFullYear() + '-' + String(val.getMonth()+1).padStart(2,'0') + '-' + String(val.getDate()).padStart(2,'0');
+      }
+      // 엑셀 시리얼 숫자 (예: 46142 = 2026-04-30) — raw:false라도 일반 숫자 포맷이면 숫자로 옴
+      const numVal = (typeof val === 'number') ? val :
+        (typeof val === 'string' && /^\d+(\.\d+)?$/.test(val.trim()) ? parseFloat(val) : null);
+      if(numVal !== null && numVal > 25569 && numVal < 73050) { // 1970-01-01 ~ 2099-12-31 범위
+        // SheetJS SSF로 정확 변환 (1900 leap year 버그 자동 처리)
+        if(typeof XLSX !== 'undefined' && XLSX.SSF && XLSX.SSF.parse_date_code) {
+          const dc = XLSX.SSF.parse_date_code(numVal);
+          if(dc && dc.y) return dc.y + '-' + String(dc.m).padStart(2,'0') + '-' + String(dc.d).padStart(2,'0');
+        }
+        // Fallback: 직접 변환 (Unix epoch 시리얼 25569)
+        const d = new Date(Math.round((numVal - 25569) * 86400 * 1000));
+        if(!isNaN(d)) {
+          return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0');
+        }
+      }
       const s = String(val).trim();
       if(!s || s === 'null' || s === 'undefined') return '';
       // YYYY-MM-DD / YYYY/MM/DD / YYYY.MM.DD
