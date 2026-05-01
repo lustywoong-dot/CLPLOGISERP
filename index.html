@@ -11846,16 +11846,17 @@ function updateManualSettlement() {
   if(drivers.length === 0) { showToast('⚠ 기사명을 입력하세요'); return; }
   
   const d = settlementData[stlEditingIdx];
-  const baseCode = document.getElementById('stlManualCode').value.trim() || d.dispCode;
+  // 첫 행 코드는 사용자가 입력 폼에 둔 그대로 (안 건드리면 d.dispCode 유지) — 보스 요청: "해당 코드는 살려주고"
+  const firstCode = document.getElementById('stlManualCode').value.trim() || d.dispCode;
   const date = document.getElementById('stlManualDate').value || d.date;
   const dest = document.getElementById('stlManualDest').value.trim();
   const area = document.getElementById('stlManualArea').value.trim();
   const kctc = parseInt(document.getElementById('stlManualKctc').value) || 0;
-  
-  // 첫 번째 기사 = 기존 레코드 수정
+
+  // 첫 번째 기사 = 기존 레코드 수정 (dispCode는 firstCode 그대로 — 메인↔sub 강제 변환 X)
   const drv0 = drivers[0];
   d.date = date;
-  d.dispCode = drivers.length > 1 ? baseCode.replace(/-\d+$/, '') + '-1' : baseCode;
+  d.dispCode = firstCode;
   d.dest = dest;
   d.area = area;
   d.kctcAmount = kctc;
@@ -11864,14 +11865,14 @@ function updateManualSettlement() {
   d.vehicle = drv0.vehicle;
   d.payment = drv0.pay;
   d.category = drv0.category;
-  
-  // 추가 기사 = 새 레코드 삽입
-  const cleanBase = baseCode.replace(/-\d+$/, '');
+
+  // 추가 기사 = 메인 코드 기준 -2, -3, ... 부여 (보스 예: ACLP_180_01-2, ACLP_180_01-3)
+  const cleanBase = firstCode.replace(/-\d+$/, '');
   for(let i = 1; i < drivers.length; i++) {
     const drv = drivers[i];
     const newCode = cleanBase + '-' + (i + 1);
-    // 이미 같은 코드가 있는지 확인
-    const existIdx = settlementData.findIndex(s => s.dispCode === newCode && s.date === date);
+    // 이미 같은 코드가 있는지 확인 (자기 자신 제외)
+    const existIdx = settlementData.findIndex((s, si) => si !== stlEditingIdx && s.dispCode === newCode && s.date === date);
     if(existIdx >= 0) {
       // 기존 레코드 수정
       const ex = settlementData[existIdx];
