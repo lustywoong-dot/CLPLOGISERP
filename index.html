@@ -1592,6 +1592,40 @@ body.hide-cost-col .col-sensitive { display: none !important; }
     </div>
   </div>
 
+  <!-- 인수증 비고 이미지 관리 모달 (여러 사진 추가/삭제) -->
+  <div id="receiptImgModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10001;align-items:center;justify-content:center;padding:30px" onclick="closeReceiptImgManager(event)">
+    <div style="background:white;max-width:900px;width:100%;max-height:90vh;border-radius:10px;display:flex;flex-direction:column;overflow:hidden" onclick="event.stopPropagation()">
+      <div style="padding:14px 18px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-shrink:0">
+        <div style="min-width:0">
+          <div id="receiptImgManagerTitle" style="font-size:14px;font-weight:700;color:#1e293b">📎 미인식 인수증 사진</div>
+          <div id="receiptImgManagerSub" style="font-size:11px;color:#64748b;margin-top:2px"></div>
+        </div>
+        <div style="display:flex;gap:8px;flex-shrink:0">
+          <label style="background:#10b981;color:white;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">
+            + 사진 추가
+            <input type="file" id="receiptImgInput" accept="image/*" multiple onchange="addReceiptImagesFromInput(this)" style="display:none">
+          </label>
+          <button onclick="closeReceiptImgManager()" style="background:#fff;color:#374151;border:1px solid #d1d5db;padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">✕ 닫기</button>
+        </div>
+      </div>
+      <div id="receiptImgList" style="padding:14px;overflow-y:auto;flex:1;background:#f9fafb"></div>
+      <div style="padding:8px 18px;border-top:1px solid #e5e7eb;font-size:10px;color:#64748b;flex-shrink:0;background:white">💡 모달 안에서 Ctrl+V 붙여넣기로도 사진 추가 가능</div>
+    </div>
+  </div>
+
+  <!-- 인수증 사진 큰 보기 -->
+  <div id="receiptImgViewer" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.92);z-index:10002;align-items:center;justify-content:center;padding:20px" onclick="closeReceiptImgViewer(event)">
+    <div style="position:relative;max-width:95%;max-height:95%;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span id="receiptImgViewerTitle" style="color:white;font-size:14px;font-weight:600"></span>
+        <button onclick="closeReceiptImgViewer()" style="background:#fff;color:#374151;border:none;padding:6px 14px;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600">✕ 닫기 (ESC)</button>
+      </div>
+      <img id="receiptImgViewerFull" style="max-width:100%;max-height:85vh;object-fit:contain;border-radius:8px;background:white">
+    </div>
+  </div>
+    </div>
+  </div>
+
   <!-- ============================================ -->
   <!-- 통계 패널 -->
   <!-- ============================================ -->
@@ -10304,6 +10338,101 @@ async function pushAllToSheet() {
   showToast(`✅ 업로드 완료! 성공 ${okCount}건` + (failCount > 0 ? ` / 실패 ${failCount}건` : ''));
 }
 
+// ─── 인수증 체크 시트 동기화 (다른 PC와 실시간 공유) ───────
+// 정산 시트와 분리된 별도 시트('인수증체크')에 저장 → 정산 자료 영향 0
+let _receiptPushTimer = null;
+let _receiptLastPushHash = '';
+let _receiptLastPullHash = '';
+
+function _calcReceiptHash(data) {
+  if(!Array.isArray(data) || data.length === 0) return '0';
+  // 키별 (received|scanned|memo)로 변경 감지
+  return data.length + '|' + data.map(c =>
+    (c.client||'') + '|' + (c.date||'') + '|' + (c.code||'') + '|' +
+    (c.received||'') + '|' + (c.scanned||'') + '|' + (c.memo||'')
+  ).sort().join(',').slice(0, 200);
+}
+
+async function pushReceiptCheckToSheet() {
+  if(typeof isConnected !== 'function' || !isConnected()) return;
+  const url = getSheetUrl();
+  if(!url) return;
+  // 변경 없으면 스킵
+  const hash = _calcReceiptHash(receiptCheckData);
+  if(hash === _receiptLastPushHash) return;
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'saveReceiptCheck', records: receiptCheckData })
+    });
+    const text = await res.text();
+    let result; try { result = JSON.parse(text); } catch(e) { return; }
+    if(result && result.success) {
+      _receiptLastPushHash = hash;
+      _receiptLastPullHash = hash; // 직후 pull 시 자기 푸시 무시
+    }
+  } catch(e) { /* 시트 측 코드 없거나 네트워크 오류 — silent fail */ }
+}
+
+// debounce: 연속 클릭 시 마지막 변경 후 3초 대기 후 push
+function _debouncedPushReceiptCheck() {
+  if(_receiptPushTimer) clearTimeout(_receiptPushTimer);
+  _receiptPushTimer = setTimeout(pushReceiptCheckToSheet, 3000);
+}
+
+async function pullReceiptCheckFromSheet() {
+  if(typeof isConnected !== 'function' || !isConnected()) return false;
+  const url = getSheetUrl();
+  if(!url) return false;
+  try {
+    const res = await fetch(url + '?action=getReceiptCheck');
+    const text = await res.text();
+    let data; try { data = JSON.parse(text); } catch(e) { return false; }
+    if(!data || !data.success || !Array.isArray(data.records)) return false;
+
+    // 변경 없으면 스킵
+    const hash = _calcReceiptHash(data.records);
+    if(hash === _receiptLastPullHash) return false;
+    _receiptLastPullHash = hash;
+
+    // 머지: 시트의 데이터 + 본 PC의 미push분 (updatedAt 기준 최신 우선)
+    const localMap = new Map();
+    receiptCheckData.forEach(c => {
+      localMap.set((c.client||'') + '|' + (c.date||'') + '|' + (c.code||''), c);
+    });
+    let changed = false;
+    data.records.forEach(r => {
+      const key = (r.client||'') + '|' + (r.date||'') + '|' + (r.code||'');
+      const local = localMap.get(key);
+      if(!local) {
+        receiptCheckData.push(r);
+        localMap.set(key, r);
+        changed = true;
+      } else {
+        // updatedAt 기반 충돌 해소 (큰 게 더 최신)
+        const remoteTs = String(r.updatedAt || '');
+        const localTs = String(local.updatedAt || '');
+        if(remoteTs && remoteTs > localTs) {
+          local.received = r.received;
+          local.scanned = r.scanned;
+          local.memo = r.memo;
+          local.manual = !!r.manual;
+          local.updatedBy = r.updatedBy;
+          local.updatedAt = r.updatedAt;
+          changed = true;
+        }
+      }
+    });
+    if(changed) {
+      // skipMerge + skipPush로 무한 루프 방지
+      saveReceiptCheckLocal({ skipMerge: true, skipPush: true });
+      if(typeof renderReceiptCheck === 'function') renderReceiptCheck();
+    }
+    return changed;
+  } catch(e) { return false; }
+}
+
 // 시트에서 가져온 레코드 정규화
 function normalizeSheetRecord(r) {
   // 날짜 정리 (UTC→KST 변환 포함)
@@ -10437,6 +10566,7 @@ let receiptActiveMonth = '';         // 현재 보고 있는 월 'YYYY-MM' (빈 
 try { receiptCheckData = JSON.parse(localStorage.getItem('clp_receipt_check_data') || '[]'); } catch(e) { receiptCheckData = []; console.warn('인수증 체크 파싱 오류:', e.message); }
 function saveReceiptCheckLocal(opts) {
   const skipMerge = !!(opts && opts.skipMerge);
+  const skipPush = !!(opts && opts.skipPush);
   try {
     if(!skipMerge) {
       // ─── 멀티 창 안전 보호: 추가 머지 ───
@@ -10466,6 +10596,10 @@ function saveReceiptCheckLocal(opts) {
     } else {
       console.warn('인수증 체크 저장 실패:', e.message);
     }
+  }
+  // 시트 동기화 (다른 PC와 실시간 공유) — autoSync에서 받은 데이터 저장 시는 skip
+  if(!skipPush && typeof _debouncedPushReceiptCheck === 'function') {
+    _debouncedPushReceiptCheck();
   }
 }
 
@@ -10596,6 +10730,181 @@ function resetReceiptCheck(date, code) {
   saveReceiptCheckLocal({skipMerge: true});
   renderReceiptCheck();
   showToast(isManualOnly ? '✅ (수동) 항목 삭제 완료' : '✅ 체크 초기화 완료');
+}
+
+// ─── 인수증 비고 이미지 첨부 (IDB, 코드별) ─────────
+let _receiptImgCounts = {};       // key('client|date|code') → count
+let _currentReceiptImgCtx = null; // {client, date, code}
+let _currentReceiptImgs = [];     // 모달 표시 중인 이미지 array
+let _receiptImgViewerIdx = -1;
+
+function _buildReceiptImgKey(client, date, code) {
+  return (client||'') + '|' + (date||'') + '|' + (code||'');
+}
+
+async function _loadReceiptImgs(key) {
+  try {
+    const data = await idbGet('receiptImgs');
+    const all = data ? JSON.parse(data) : {};
+    return Array.isArray(all[key]) ? all[key] : [];
+  } catch(e) { return []; }
+}
+
+async function _saveReceiptImgs(key, imgs) {
+  try {
+    const existing = await idbGet('receiptImgs');
+    const all = existing ? JSON.parse(existing) : {};
+    if(imgs && imgs.length > 0) all[key] = imgs;
+    else delete all[key];
+    await idbSet('receiptImgs', JSON.stringify(all));
+    _receiptImgCounts[key] = imgs ? imgs.length : 0;
+  } catch(e) { console.warn('인수증 이미지 저장 실패:', e); }
+}
+
+async function _refreshReceiptImgCounts() {
+  try {
+    const data = await idbGet('receiptImgs');
+    const all = data ? JSON.parse(data) : {};
+    const counts = {};
+    Object.keys(all).forEach(k => {
+      counts[k] = Array.isArray(all[k]) ? all[k].length : 0;
+    });
+    _receiptImgCounts = counts;
+  } catch(e) { _receiptImgCounts = {}; }
+}
+
+function getReceiptImgCount(client, date, code) {
+  return _receiptImgCounts[_buildReceiptImgKey(client, date, code)] || 0;
+}
+
+async function openReceiptImgManager(client, date, code) {
+  _currentReceiptImgCtx = { client, date, code };
+  const key = _buildReceiptImgKey(client, date, code);
+  _currentReceiptImgs = await _loadReceiptImgs(key);
+  document.getElementById('receiptImgManagerTitle').textContent =
+    `📎 미인식 인수증 사진 (${_currentReceiptImgs.length}장)`;
+  document.getElementById('receiptImgManagerSub').textContent = `${client} · ${date} · ${code}`;
+  document.getElementById('receiptImgModal').style.display = 'flex';
+  _renderReceiptImgList();
+  document.addEventListener('paste', _receiptImgPasteHandler);
+}
+
+function closeReceiptImgManager(ev) {
+  if(ev && ev.target && ev.target.id !== 'receiptImgModal') return;
+  document.getElementById('receiptImgModal').style.display = 'none';
+  _currentReceiptImgCtx = null;
+  _currentReceiptImgs = [];
+  document.removeEventListener('paste', _receiptImgPasteHandler);
+  // 그리드 갱신 (📎 카운트 변경 반영)
+  if(typeof renderReceiptCheck === 'function') renderReceiptCheck();
+}
+
+function _renderReceiptImgList() {
+  const list = document.getElementById('receiptImgList');
+  if(!list) return;
+  if(_currentReceiptImgs.length === 0) {
+    list.innerHTML = '<div style="text-align:center;color:#9ca3af;padding:40px;font-size:13px">첨부된 사진 없음<br><small style="font-size:11px;color:#cbd5e1">[+ 사진 추가] 또는 Ctrl+V 로 붙여넣기</small></div>';
+    return;
+  }
+  list.innerHTML = '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px">' +
+    _currentReceiptImgs.map((img, i) =>
+      `<div style="position:relative">
+        <img src="${img}" onclick="viewReceiptImg(${i})" style="width:100%;aspect-ratio:1;object-fit:cover;border:1px solid #d1d5db;border-radius:6px;cursor:pointer;background:white">
+        <button onclick="event.stopPropagation();deleteReceiptImg(${i})" title="삭제" style="position:absolute;top:-6px;right:-6px;background:#dc2626;color:white;border:none;width:24px;height:24px;border-radius:50%;cursor:pointer;font-size:12px;font-weight:700;line-height:1;box-shadow:0 1px 3px rgba(0,0,0,0.3)">✕</button>
+      </div>`
+    ).join('') + '</div>';
+}
+
+async function addReceiptImagesFromInput(input) {
+  if(!input.files || input.files.length === 0) return;
+  if(!_currentReceiptImgCtx) return;
+  const key = _buildReceiptImgKey(_currentReceiptImgCtx.client, _currentReceiptImgCtx.date, _currentReceiptImgCtx.code);
+  let added = 0;
+  for(const file of Array.from(input.files)) {
+    if(!file.type || !file.type.startsWith('image/')) continue;
+    await new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = (ev) => { _currentReceiptImgs.push(ev.target.result); added++; resolve(); };
+      reader.onerror = () => resolve();
+      reader.readAsDataURL(file);
+    });
+  }
+  if(added > 0) {
+    await _saveReceiptImgs(key, _currentReceiptImgs);
+    _renderReceiptImgList();
+    document.getElementById('receiptImgManagerTitle').textContent =
+      `📎 미인식 인수증 사진 (${_currentReceiptImgs.length}장)`;
+    if(typeof showToast === 'function') showToast(`📎 사진 ${added}장 추가됨`);
+  }
+  input.value = '';
+}
+
+function _receiptImgPasteHandler(e) {
+  if(!_currentReceiptImgCtx) return;
+  const items = (e.clipboardData || window.clipboardData)?.items;
+  if(!items) return;
+  for(let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if(it.kind === 'file' && it.type && it.type.startsWith('image/')) {
+      const file = it.getAsFile();
+      if(!file) continue;
+      e.preventDefault();
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        _currentReceiptImgs.push(ev.target.result);
+        const key = _buildReceiptImgKey(_currentReceiptImgCtx.client, _currentReceiptImgCtx.date, _currentReceiptImgCtx.code);
+        await _saveReceiptImgs(key, _currentReceiptImgs);
+        _renderReceiptImgList();
+        document.getElementById('receiptImgManagerTitle').textContent =
+          `📎 미인식 인수증 사진 (${_currentReceiptImgs.length}장)`;
+        if(typeof showToast === 'function') showToast('📎 사진 추가됨');
+      };
+      reader.readAsDataURL(file);
+      break;
+    }
+  }
+}
+
+async function deleteReceiptImg(idx) {
+  if(idx < 0 || idx >= _currentReceiptImgs.length) return;
+  if(!confirm('이 사진을 삭제할까요?')) return;
+  _currentReceiptImgs.splice(idx, 1);
+  if(_currentReceiptImgCtx) {
+    const key = _buildReceiptImgKey(_currentReceiptImgCtx.client, _currentReceiptImgCtx.date, _currentReceiptImgCtx.code);
+    await _saveReceiptImgs(key, _currentReceiptImgs);
+  }
+  _renderReceiptImgList();
+  document.getElementById('receiptImgManagerTitle').textContent =
+    `📎 미인식 인수증 사진 (${_currentReceiptImgs.length}장)`;
+}
+
+function viewReceiptImg(idx) {
+  if(idx < 0 || idx >= _currentReceiptImgs.length) return;
+  _receiptImgViewerIdx = idx;
+  document.getElementById('receiptImgViewerFull').src = _currentReceiptImgs[idx];
+  document.getElementById('receiptImgViewerTitle').textContent =
+    `사진 ${idx+1} / ${_currentReceiptImgs.length}`;
+  document.getElementById('receiptImgViewer').style.display = 'flex';
+  document.addEventListener('keydown', _receiptImgViewerKey);
+}
+function closeReceiptImgViewer(ev) {
+  if(ev && ev.target && ev.target.id !== 'receiptImgViewer') return;
+  document.getElementById('receiptImgViewer').style.display = 'none';
+  document.removeEventListener('keydown', _receiptImgViewerKey);
+}
+function _receiptImgViewerKey(e) {
+  if(e.key === 'Escape') closeReceiptImgViewer();
+  else if(e.key === 'ArrowLeft' && _receiptImgViewerIdx > 0) viewReceiptImg(_receiptImgViewerIdx - 1);
+  else if(e.key === 'ArrowRight' && _receiptImgViewerIdx < _currentReceiptImgs.length - 1) viewReceiptImg(_receiptImgViewerIdx + 1);
+}
+
+// 페이지 로드 시 카운트 캐시 초기화
+if(typeof window !== 'undefined') {
+  if(document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', _refreshReceiptImgCounts);
+  } else {
+    _refreshReceiptImgCounts();
+  }
 }
 
 // 인수증 체크 — 가로 날짜 컬럼 그리드 (엑셀 스타일) + 집중 모드 하이브리드
@@ -10751,12 +11060,14 @@ function _receiptRowHtml(r, num) {
   const attrEsc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
   const dA = attrEsc(r.date);
   const cA = attrEsc(r.code);
+  const imgCount = (typeof getReceiptImgCount === 'function') ? getReceiptImgCount(receiptActiveClient, r.date, r.code) : 0;
   return `
     <div style="display:grid;grid-template-columns:20px 1fr 32px 32px;gap:3px;align-items:center;padding:4px 3px;border-bottom:1px solid #f3f4f6">
       <span style="font-size:10px;color:#9ca3af;text-align:right">${num}</span>
       <div style="min-width:0">
         <div style="display:flex;align-items:center;gap:3px;line-height:1.2">
           <span style="font-family:monospace;font-size:11px;font-weight:700;color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">${r.code || '-'}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</span>
+          <button onclick="event.stopPropagation();openReceiptImgManager('${attrEsc(receiptActiveClient)}','${dA}','${cA}')" title="📎 사진 첨부 / 보기" style="background:${imgCount > 0 ? '#dbeafe' : 'transparent'};border:none;color:${imgCount > 0 ? '#1e40af' : '#cbd5e1'};cursor:pointer;font-size:11px;padding:0 3px;line-height:1;flex-shrink:0;border-radius:3px;font-weight:700" onmouseover="this.style.color='#1e40af';this.style.background='#dbeafe'" onmouseout="this.style.color='${imgCount > 0 ? '#1e40af' : '#cbd5e1'}';this.style.background='${imgCount > 0 ? '#dbeafe' : 'transparent'}'">📎${imgCount > 0 ? imgCount : ''}</button>
           <button onclick="onReceiptResetClick(this);event.stopPropagation()" data-d="${dA}" data-c="${cA}" title="${r.manual ? '(수동) 항목 삭제' : '회수/스캔/비고 초기화'}" style="background:transparent;border:none;color:#cbd5e1;cursor:pointer;font-size:11px;padding:0 3px;line-height:1;flex-shrink:0;border-radius:3px" onmouseover="this.style.color='#dc2626';this.style.background='#fef2f2'" onmouseout="this.style.color='#cbd5e1';this.style.background='transparent'">✕</button>
         </div>
         <input type="text" value="${attrEsc(r.memo)}" data-d="${dA}" data-c="${cA}" onchange="onReceiptMemoChange(this)" placeholder="비고" style="width:100%;padding:1px 4px;border:1px solid transparent;background:transparent;font-size:10px;margin-top:1px" onfocus="this.style.background='#fff';this.style.borderColor='#d1d5db'" onblur="this.style.background='transparent';this.style.borderColor='transparent'">
@@ -10771,6 +11082,8 @@ function _receiptRowHtml(r, num) {
 function renderReceiptCheck() {
   const grid = document.getElementById('receiptGrid');
   if(!grid) return;
+  // 이미지 카운트 캐시 백그라운드 갱신 (await 없음 — 즉시 렌더, 다음 호출 시 반영)
+  if(typeof _refreshReceiptImgCounts === 'function') _refreshReceiptImgCounts();
 
   const startDate = _ensureReceiptStartDate();
   if(!startDate) return;
@@ -11018,6 +11331,7 @@ function renderReceiptFocus() {
   bodyEl.innerHTML = rows.map((r, i) => {
     const dA = attrEsc(r.date);
     const cA = attrEsc(r.code);
+    const imgCount = (typeof getReceiptImgCount === 'function') ? getReceiptImgCount(receiptActiveClient, r.date, r.code) : 0;
     return `
       <div style="border:1px solid #e5e7eb;border-radius:10px;padding:14px;background:#fff;display:flex;flex-direction:column;gap:10px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
         <div>
@@ -11029,7 +11343,10 @@ function renderReceiptFocus() {
           <button data-d="${dA}" data-c="${cA}" data-f="scanned" onclick="onReceiptCellClick(this)" style="${btnStyle(r.scanned)};padding:16px 0;font-size:18px;font-weight:700;border-radius:8px;cursor:pointer">스캔 ${r.scanned || '·'}</button>
         </div>
         <input type="text" value="${attrEsc(r.memo)}" data-d="${dA}" data-c="${cA}" onchange="onReceiptMemoChange(this)" placeholder="비고 입력..." style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
-        <button data-d="${dA}" data-c="${cA}" onclick="onReceiptResetClick(this)" style="background:#fff;border:1px solid #fca5a5;color:#dc2626;padding:6px 10px;font-size:11px;border-radius:6px;cursor:pointer">↺ 초기화</button>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+          <button onclick="openReceiptImgManager('${attrEsc(receiptActiveClient)}','${dA}','${cA}')" style="${imgCount > 0 ? 'background:#dbeafe;color:#1e40af;border:1px solid #93c5fd' : 'background:#fff;color:#475569;border:1px solid #d1d5db'};padding:6px 10px;font-size:12px;border-radius:6px;cursor:pointer;font-weight:600">📎 사진 ${imgCount > 0 ? `(${imgCount})` : '추가'}</button>
+          <button data-d="${dA}" data-c="${cA}" onclick="onReceiptResetClick(this)" style="background:#fff;border:1px solid #fca5a5;color:#dc2626;padding:6px 10px;font-size:11px;border-radius:6px;cursor:pointer">↺ 초기화</button>
+        </div>
       </div>
     `;
   }).join('');
@@ -14783,6 +15100,10 @@ async function autoSync() {
     document.getElementById('lastSyncTime').textContent = '동기화: ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
     // 관리자 다운로드 로그 폴링
     pollDownloadLogs();
+    // 인수증 체크 시트 pull (다른 PC 변경 감지)
+    if(typeof pullReceiptCheckFromSheet === 'function') {
+      try { await pullReceiptCheckFromSheet(); } catch(re) { /* silent */ }
+    }
   } catch(e) { /* 조용히 실패 */ }
 }
 
