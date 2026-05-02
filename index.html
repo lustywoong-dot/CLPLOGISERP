@@ -759,7 +759,23 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <span>📝 메모장</span>
           <span id="memoLinkedCode" style="font-size:10px;color:var(--text-light)"></span>
         </div>
-        <textarea id="stickyMemo" placeholder="배차 건별 메모..." style="width:100%;height:150px;font-family:'Noto Sans KR',sans-serif;font-size:11px;line-height:1.5;padding:6px;border:1px solid #e5e2c8;border-radius:4px;resize:none;background:#fffef5;overflow-y:auto" oninput="onMemoInput()"></textarea>
+        <textarea id="stickyMemo" placeholder="배차 건별 메모..." style="width:100%;height:150px;font-family:'Noto Sans KR',sans-serif;font-size:11px;line-height:1.5;padding:6px;border:1px solid #e5e2c8;border-radius:4px;resize:none;background:#fffef5;overflow-y:auto" oninput="onMemoInput()" onpaste="handleMemoPaste(event)"></textarea>
+        <div id="memoImgArea" style="margin-top:4px;display:none;flex-wrap:wrap;gap:3px"></div>
+        <div style="font-size:9px;color:var(--text-light);margin-top:3px;text-align:center">📎 이미지: 메모장 안에서 Ctrl+V</div>
+      </div>
+    </div>
+
+    <!-- 메모 이미지 팝업 모달 -->
+    <div id="memoImgModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10000;align-items:center;justify-content:center;padding:30px" onclick="closeMemoImgModal(event)">
+      <div style="position:relative;max-width:95%;max-height:95%;display:flex;flex-direction:column" onclick="event.stopPropagation()">
+        <div style="display:flex;gap:10px;justify-content:space-between;align-items:center;margin-bottom:10px">
+          <span id="memoImgModalTitle" style="color:white;font-size:14px;font-weight:600"></span>
+          <div style="display:flex;gap:8px">
+            <button onclick="deleteCurrentMemoImg()" style="background:#dc2626;color:white;border:none;padding:8px 16px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">🗑 삭제</button>
+            <button onclick="closeMemoImgModal()" style="background:#fff;color:#374151;border:none;padding:8px 16px;border-radius:6px;font-size:13px;cursor:pointer;font-weight:600">✕ 닫기 (ESC)</button>
+          </div>
+        </div>
+        <img id="memoImgFull" style="max-width:100%;max-height:85vh;object-fit:contain;border-radius:8px;background:white">
       </div>
     </div>
           <!-- 배차 입력 폼 -->
@@ -6046,6 +6062,124 @@ function loadMemoForCode(code) {
     memoArea.style.width = '140px';
     memoArea.style.marginLeft = '0px';
   }
+  // 첨부 이미지 영역 갱신
+  if(typeof refreshMemoImgArea === 'function') refreshMemoImgArea();
+}
+
+// ─── 메모장 이미지 첨부 (Ctrl+V 붙여넣기) ─────────────────
+let _currentMemoImgs = [];
+let _currentMemoImgKey = '';
+let _currentMemoImgViewIdx = -1;
+
+function _buildMemoImgKey(code) {
+  if(!code) return '';
+  const date = document.getElementById('deliveryDate')?.value || document.getElementById('dispatchDate')?.value || '';
+  return date ? date + '|' + code : code;
+}
+
+async function loadMemoImagesForKey(key) {
+  if(!key) return [];
+  try {
+    const data = await idbGet('memoImgs');
+    const all = data ? JSON.parse(data) : {};
+    return Array.isArray(all[key]) ? all[key] : [];
+  } catch(e) { return []; }
+}
+
+async function saveMemoImagesForKey(key, imgs) {
+  if(!key) return;
+  try {
+    const existing = await idbGet('memoImgs');
+    const all = existing ? JSON.parse(existing) : {};
+    if(imgs && imgs.length > 0) all[key] = imgs;
+    else delete all[key];
+    await idbSet('memoImgs', JSON.stringify(all));
+  } catch(e) { console.warn('이미지 저장 실패:', e); }
+}
+
+async function refreshMemoImgArea() {
+  _currentMemoImgKey = _buildMemoImgKey(currentMemoCode);
+  _currentMemoImgs = _currentMemoImgKey ? await loadMemoImagesForKey(_currentMemoImgKey) : [];
+  const area = document.getElementById('memoImgArea');
+  if(!area) return;
+  if(_currentMemoImgs.length === 0) {
+    area.style.display = 'none';
+    area.innerHTML = '';
+    return;
+  }
+  area.style.display = 'flex';
+  area.innerHTML = _currentMemoImgs.map((img, i) =>
+    `<img src="${img}" onclick="openMemoImgModal(${i})" style="width:42px;height:42px;object-fit:cover;border:1px solid #d1d5db;border-radius:4px;cursor:pointer" title="클릭: 크게 보기 (${i+1}/${_currentMemoImgs.length})">`
+  ).join('');
+}
+
+// 메모장 paste 핸들러 — 이미지면 가로채기, 텍스트면 그대로
+function handleMemoPaste(e) {
+  const items = (e.clipboardData || window.clipboardData)?.items;
+  if(!items || items.length === 0) return;
+  let imgFile = null;
+  for(let i = 0; i < items.length; i++) {
+    const it = items[i];
+    if(it.kind === 'file' && it.type && it.type.startsWith('image/')) {
+      imgFile = it.getAsFile();
+      break;
+    }
+  }
+  if(!imgFile) return; // 이미지 아니면 텍스트 paste 통과
+  e.preventDefault();
+
+  if(!currentMemoCode) {
+    if(typeof showToast === 'function') showToast('⚠ 배차코드 입력 후 이미지 붙여넣기 가능');
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = async (ev) => {
+    const dataUrl = ev.target.result;
+    const key = _buildMemoImgKey(currentMemoCode);
+    if(!key) return;
+    const imgs = await loadMemoImagesForKey(key);
+    imgs.push(dataUrl);
+    await saveMemoImagesForKey(key, imgs);
+    await refreshMemoImgArea();
+    if(typeof showToast === 'function') showToast(`📎 이미지 첨부 (총 ${imgs.length}장)`);
+  };
+  reader.onerror = () => {
+    if(typeof showToast === 'function') showToast('❌ 이미지 읽기 실패');
+  };
+  reader.readAsDataURL(imgFile);
+}
+
+// 모달 — 큰 이미지 보기
+function openMemoImgModal(idx) {
+  if(idx < 0 || idx >= _currentMemoImgs.length) return;
+  _currentMemoImgViewIdx = idx;
+  document.getElementById('memoImgFull').src = _currentMemoImgs[idx];
+  document.getElementById('memoImgModalTitle').textContent =
+    `📎 ${currentMemoCode || ''} - 이미지 ${idx+1}/${_currentMemoImgs.length}`;
+  document.getElementById('memoImgModal').style.display = 'flex';
+  document.addEventListener('keydown', _memoImgKeyHandler);
+}
+function closeMemoImgModal(ev) {
+  // 배경 클릭만 닫기 (이미지/버튼 클릭은 무시)
+  if(ev && ev.target && ev.target.id !== 'memoImgModal') return;
+  document.getElementById('memoImgModal').style.display = 'none';
+  _currentMemoImgViewIdx = -1;
+  document.removeEventListener('keydown', _memoImgKeyHandler);
+}
+function _memoImgKeyHandler(e) {
+  if(e.key === 'Escape') closeMemoImgModal();
+  else if(e.key === 'ArrowLeft' && _currentMemoImgViewIdx > 0) openMemoImgModal(_currentMemoImgViewIdx - 1);
+  else if(e.key === 'ArrowRight' && _currentMemoImgViewIdx < _currentMemoImgs.length - 1) openMemoImgModal(_currentMemoImgViewIdx + 1);
+}
+async function deleteCurrentMemoImg() {
+  if(_currentMemoImgViewIdx < 0) return;
+  if(!confirm('이 이미지를 삭제할까요?')) return;
+  _currentMemoImgs.splice(_currentMemoImgViewIdx, 1);
+  await saveMemoImagesForKey(_currentMemoImgKey, _currentMemoImgs);
+  await refreshMemoImgArea();
+  closeMemoImgModal();
+  if(typeof showToast === 'function') showToast('🗑 이미지 삭제됨');
 }
 
 function clearMemoDisplay() {
@@ -6055,6 +6189,11 @@ function clearMemoDisplay() {
   const memoArea = document.getElementById('memoArea');
   memoArea.style.width = '140px';
   memoArea.style.marginLeft = '0px';
+  // 첨부 이미지 영역도 비움
+  const imgArea = document.getElementById('memoImgArea');
+  if(imgArea) { imgArea.style.display = 'none'; imgArea.innerHTML = ''; }
+  _currentMemoImgs = [];
+  _currentMemoImgKey = '';
 }
 
 function resetForm() {
