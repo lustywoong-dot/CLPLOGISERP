@@ -1534,6 +1534,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <input type="month" id="receiptMonth" onchange="onReceiptMonthChange()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" title="엑셀 출력 시 적용할 월 (빈칸=전체)">
         </div>
         <span style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn btn-sm" onclick="cleanupManualReceipts()" title="현재 거래처 + 표시 기간의 (수동) 항목을 한 번에 정리" style="background:#fff7ed;border:1px solid #fdba74;color:#9a3412;padding:6px 10px;font-size:11px;cursor:pointer">🧹 (수동) 정리</button>
           <button class="btn btn-sm btn-primary" onclick="openAddReceiptDialog()" style="padding:6px 12px;font-size:12px" title="배차에 없는 옛 인수증 수동 등록용">+ 수동 추가</button>
           <button class="btn btn-sm" onclick="exportReceiptCheck()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:6px 10px;font-size:11px" title="전체요약 + 거래처별(LNL/덕평/여주) + 미회수 시트로 엑셀 다운로드">📥 엑셀 출력</button>
         </span>
@@ -10492,6 +10493,56 @@ function _ensureReceiptStartDate() {
     }
   }
   return startEl.value;
+}
+
+// (수동) 항목 일괄 정리 — 현재 거래처 + 현재 표시 기간 한정
+function cleanupManualReceipts() {
+  const startDate = _ensureReceiptStartDate();
+  if(!startDate) return;
+  const dayCount = parseInt(document.getElementById('receiptDayCount')?.value) || 7;
+  const dateSet = new Set();
+  for(let i = 0; i < dayCount; i++) {
+    const d = new Date(startDate);
+    d.setDate(d.getDate() + i);
+    dateSet.add(d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'));
+  }
+
+  // 정산 데이터의 (date, mainCode) 키 set — 이 키와 매칭되면 자동 표시(수동 X)
+  const settlementKeys = new Set();
+  if(typeof settlementData !== 'undefined' && Array.isArray(settlementData)) {
+    settlementData.forEach(s => {
+      if(!s || !s.dispCode) return;
+      const mainCode = _normalizeReceiptCode(s.dispCode);
+      if(getReceiptClient(mainCode) !== receiptActiveClient) return;
+      const date = sanitizeDate(s.date || '');
+      if(!date) return;
+      settlementKeys.add(date + '|' + mainCode);
+    });
+  }
+
+  // (수동) = receiptCheckData에는 있고 정산에는 없는 항목 (현재 거래처 + 표시 기간)
+  const targets = receiptCheckData.filter(c => {
+    if(c.client !== receiptActiveClient) return false;
+    if(!dateSet.has(c.date)) return false;
+    const mainCode = _normalizeReceiptCode(c.code);
+    return !settlementKeys.has(c.date + '|' + mainCode);
+  });
+
+  if(targets.length === 0) {
+    if(typeof showToast === 'function') showToast(`✨ ${receiptActiveClient} 표시 기간에 정리할 (수동) 항목 없음`);
+    return;
+  }
+
+  // 미리보기 (최대 15건)
+  const preview = targets.slice(0, 15).map(t => `· ${t.date} ${t.code}`).join('\n');
+  const more = targets.length > 15 ? `\n... 외 ${targets.length - 15}건` : '';
+  const period = `${[...dateSet].sort()[0]} ~ ${[...dateSet].sort().pop()}`;
+  if(!confirm(`🧹 ${receiptActiveClient} (수동) 항목 일괄 삭제\n기간: ${period}\n총 ${targets.length}건\n\n${preview}${more}\n\n삭제할까요?`)) return;
+
+  receiptCheckData = receiptCheckData.filter(c => !targets.includes(c));
+  saveReceiptCheckLocal({skipMerge: true});
+  renderReceiptCheck();
+  if(typeof showToast === 'function') showToast(`✅ (수동) 항목 ${targets.length}건 정리 완료`);
 }
 
 // 빠른 점프: 현재 거래처 정산 최근 데이터 날짜로
