@@ -1550,6 +1550,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <input type="month" id="receiptMonth" onchange="onReceiptMonthChange()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" title="엑셀 출력 시 적용할 월 (빈칸=전체)">
         </div>
         <span style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn btn-sm" onclick="manualSyncReceiptCheck()" title="다른 PC에서 입력한 데이터를 가져와서 통합 + 시트에 다시 저장 (양방향 강제 동기화)" style="background:#dbeafe;border:1px solid #60a5fa;color:#1e40af;padding:6px 10px;font-size:11px;cursor:pointer;font-weight:600">🔄 다른 PC 동기화</button>
           <button class="btn btn-sm" onclick="cleanupManualReceipts()" title="현재 거래처 + 표시 기간의 (수동) 항목을 한 번에 정리" style="background:#fff7ed;border:1px solid #fdba74;color:#9a3412;padding:6px 10px;font-size:11px;cursor:pointer">🧹 (수동) 정리</button>
           <button class="btn btn-sm btn-primary" onclick="openAddReceiptDialog()" style="padding:6px 12px;font-size:12px" title="배차에 없는 옛 인수증 수동 등록용">+ 수동 추가</button>
           <button class="btn btn-sm" onclick="exportReceiptCheck()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:6px 10px;font-size:11px" title="전체요약 + 거래처별(LNL/덕평/여주) + 미회수 시트로 엑셀 다운로드">📥 엑셀 출력</button>
@@ -10381,6 +10382,49 @@ function _debouncedPushReceiptCheck() {
   _receiptPushTimer = setTimeout(pushReceiptCheckToSheet, 3000);
 }
 
+// 자동 백업 (기사정산과 동일 패턴) — 별도 백업 시트에 백업 시간 기록
+let _receiptBackupTimer = null;
+async function backupReceiptCheckToSheet() {
+  if(typeof isConnected !== 'function' || !isConnected()) return;
+  const url = getSheetUrl();
+  if(!url) return;
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'saveReceiptCheckBackup', records: receiptCheckData })
+    });
+  } catch(e) { /* silent fail (시트 측 코드 없거나 네트워크 오류) */ }
+}
+function _debouncedBackupReceiptCheck() {
+  if(_receiptBackupTimer) clearTimeout(_receiptBackupTimer);
+  _receiptBackupTimer = setTimeout(backupReceiptCheckToSheet, 5000);
+}
+
+// 수동 강제 동기화 — 다른 PC의 데이터를 가져와서 통합 후 시트로 다시 올림
+async function manualSyncReceiptCheck() {
+  if(typeof isConnected !== 'function' || !isConnected()) {
+    if(typeof showToast === 'function') showToast('⚠ 시트 연결 필요 (설정 탭 확인)');
+    return;
+  }
+  if(typeof showToast === 'function') showToast('🔄 다른 PC 데이터 동기화 중...');
+  const before = receiptCheckData.length;
+  // 1) 시트에서 가져와 머지
+  _receiptLastPullHash = ''; // 강제 pull
+  await pullReceiptCheckFromSheet();
+  const afterPull = receiptCheckData.length;
+  // 2) 머지된 결과를 시트로 push (debounce 무시)
+  _receiptLastPushHash = '';
+  await pushReceiptCheckToSheet();
+  // 3) 백업도 즉시
+  await backupReceiptCheckToSheet();
+  const added = afterPull - before;
+  if(typeof showToast === 'function') {
+    showToast(`✅ 동기화 완료 ${added > 0 ? `(+${added}건 추가) ` : ''}총 ${receiptCheckData.length}건`, 4000);
+  }
+  if(typeof renderReceiptCheck === 'function') renderReceiptCheck();
+}
+
 async function pullReceiptCheckFromSheet() {
   if(typeof isConnected !== 'function' || !isConnected()) return false;
   const url = getSheetUrl();
@@ -10600,6 +10644,10 @@ function saveReceiptCheckLocal(opts) {
   // 시트 동기화 (다른 PC와 실시간 공유) — autoSync에서 받은 데이터 저장 시는 skip
   if(!skipPush && typeof _debouncedPushReceiptCheck === 'function') {
     _debouncedPushReceiptCheck();
+  }
+  // 자동 백업 (기사정산과 동일 패턴, 인수증체크백업 시트에 시간 기록)
+  if(!skipPush && typeof _debouncedBackupReceiptCheck === 'function') {
+    _debouncedBackupReceiptCheck();
   }
 }
 
