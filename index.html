@@ -10666,6 +10666,14 @@ function renderReceiptCheck() {
     badge.innerHTML = bh;
   }
 
+  // ─── 렌더 직전 스크롤 위치 저장 (셀 클릭 후 위로 점프 방지) ───
+  const _prevScrollLeft = grid.scrollLeft;
+  const _prevColScroll = {};
+  grid.querySelectorAll('.receipt-day-col[data-date]').forEach(col => {
+    const inner = col.querySelector('.receipt-col-body');
+    if(inner) _prevColScroll[col.dataset.date] = inner.scrollTop;
+  });
+
   // 그리드 렌더
   const days = ['일','월','화','수','목','금','토'];
   grid.innerHTML = dates.map(d => {
@@ -10680,7 +10688,7 @@ function renderReceiptCheck() {
     const allDone = dayTotal > 0 && dayRecv === dayTotal && dayScn === dayTotal;
     const headerBorder = allDone ? '2px solid #10b981' : '2px solid #e2e8f0';
     return `
-      <div class="receipt-day-col" style="min-width:300px;width:300px;flex-shrink:0;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;flex-direction:column;max-height:65vh;box-shadow:0 1px 2px rgba(0,0,0,0.04)">
+      <div class="receipt-day-col" data-date="${d}" style="min-width:300px;width:300px;flex-shrink:0;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;flex-direction:column;max-height:65vh;box-shadow:0 1px 2px rgba(0,0,0,0.04)">
         <div ondblclick="enterFocusMode('${d}')" title="더블클릭 → 집중 모드" style="padding:9px 10px;background:${headerBg};border-bottom:${headerBorder};cursor:pointer;border-radius:8px 8px 0 0;flex-shrink:0;user-select:none">
           <div style="display:flex;align-items:center;justify-content:space-between">
             <span style="font-size:13px;font-weight:700;color:#1e293b">${d.substring(5)} <span style="color:${isWeekend ? '#dc2626' : '#64748b'};font-weight:600">(${wd})</span></span>
@@ -10688,12 +10696,22 @@ function renderReceiptCheck() {
           </div>
           <div style="font-size:10px;color:#64748b;margin-top:2px">${dayTotal === 0 ? '건 없음' : `${dayTotal}건 · 회수 <b style="color:#059669">${dayRecv}</b>/${dayTotal} · 스캔 <b style="color:#2563eb">${dayScn}</b>/${dayTotal}`}</div>
         </div>
-        <div style="overflow-y:auto;padding:3px;flex:1">
+        <div class="receipt-col-body" style="overflow-y:auto;padding:3px;flex:1">
           ${rows.length === 0 ? '<div style="padding:30px 10px;text-align:center;color:#9ca3af;font-size:11px">건 없음</div>' : rows.map((r, i) => _receiptRowHtml(r, i+1)).join('')}
         </div>
       </div>
     `;
   }).join('');
+
+  // ─── 렌더 직후 스크롤 위치 복원 (셀 클릭 후 위로 점프 방지) ───
+  grid.scrollLeft = _prevScrollLeft;
+  grid.querySelectorAll('.receipt-day-col[data-date]').forEach(col => {
+    const saved = _prevColScroll[col.dataset.date];
+    if(saved != null) {
+      const inner = col.querySelector('.receipt-col-body');
+      if(inner) inner.scrollTop = saved;
+    }
+  });
 
   // 집중 모드도 활성 상태면 동기화
   if(receiptFocusDate) renderReceiptFocus();
