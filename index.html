@@ -6333,22 +6333,11 @@ function calculateTotal() {
   calculate();
 }
 
-// 다중 차량 그룹에서 KCTC를 첫 번째만 합산하는 헬퍼
+// KCTC 합산 — 모든 row 단순 합 (사용자 row별 직접 계산과 100% 일치)
+// updateStlFooter의 단순 합산과 통일하여 화면 숫자 불일치 차단
+// 정상 다중 차량(sub-code KCTC=0)은 결과 동일, sub-code에 KCTC가 있는 경우는 row별 합산
 function calcEffectiveKctcSum(arr) {
-  const groups = {};
-  arr.forEach(d => {
-    const base = (d.dispCode||'').replace(/-\d+$/, '');
-    const key = (d.date||'') + '|' + base;
-    if(!groups[key]) groups[key] = [];
-    groups[key].push(d);
-  });
-  let sum = 0;
-  Object.values(groups).forEach(g => {
-    // 그룹 내 가장 큰 kctcAmount (첫 번째 차량 값)
-    const maxKctc = Math.max(...g.map(d => parseInt(d.kctcAmount)||0));
-    sum += maxKctc;
-  });
-  return sum;
+  return arr.reduce((s, d) => s + (parseInt(d.kctcAmount)||0), 0);
 }
 
 // 날짜 정리 (ISO 타임스탬프 → YYYY-MM-DD)
@@ -13710,7 +13699,7 @@ function renderSettlement() {
     if(dailySumEl) dailySumEl.style.display = 'none';
   }
   
-  // 월별 합계 (항상 전체 filtered 기준) - 다중 차량 KCTC 중복 방지
+  // 월별 합계 (항상 전체 filtered 기준) - row별 단순 합 (footer와 통일)
   const monthPay = filtered.reduce((s,d) => s + (parseInt(d.payment)||0), 0);
   const monthKctc = calcEffectiveKctcSum(filtered);
   const monthMargin = monthKctc - monthPay;
