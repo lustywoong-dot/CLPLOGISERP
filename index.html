@@ -10121,7 +10121,9 @@ async function syncFromSheet() {
 // 정산 데이터 저장 (로컬 + 구글시트 백업)
 function saveSettlementLocal(opts) {
   // skipMerge: 명시적 삭제 후 호출 시 true (머지로 인한 부활 방지)
+  // skipPush: autoSync에서 받은 데이터 저장 시 true (시트 push 무한 루프 방지)
   const skipMerge = !!(opts && opts.skipMerge);
+  const skipPush = !!(opts && opts.skipPush);
   try {
     if(!skipMerge) {
       // ─── 멀티 창 안전 보호: 추가 머지 ───────────
@@ -10155,7 +10157,8 @@ function saveSettlementLocal(opts) {
       console.warn('정산 저장 실패:', e.message);
     }
   }
-  backupSettlementToSheet();
+  // 시트 push (skipPush=true면 자동 pull로 받은 데이터 → 무한 루프 방지)
+  if(!skipPush) backupSettlementToSheet();
 }
 
 // ─────────────────────────────────────────────
@@ -15141,7 +15144,61 @@ async function autoSync() {
     if(typeof pullReceiptCheckFromSheet === 'function') {
       try { await pullReceiptCheckFromSheet(); } catch(re) { /* silent */ }
     }
+    // 정산 시트 pull (다른 PC 변경 감지) — race condition 보호
+    if(typeof pullSettlementFromSheet === 'function') {
+      try { await pullSettlementFromSheet(); } catch(se) { /* silent */ }
+    }
   } catch(e) { /* 조용히 실패 */ }
+}
+
+// ─── 정산 시트 자동 pull (다른 PC 변경 자동 감지) ─────────
+let _settlementLastPullHash = '';
+function _calcSettlementHash(arr) {
+  if(!Array.isArray(arr) || arr.length === 0) return '0';
+  return arr.length + '|' + arr.slice(0, 30).map(d =>
+    (d.date||'') + '|' + (d.dispCode||'') + '|' + (d.payment||0) + '|' + (d.kctcAmount||0)
+  ).join(',').slice(0, 200);
+}
+
+async function pullSettlementFromSheet() {
+  if(typeof isConnected !== 'function' || !isConnected()) return false;
+  const url = getSheetUrl();
+  if(!url) return false;
+  // 본 PC가 직전에 push한 후라면 짧게 차단 (자기 push 메아리 방지)
+  if(Date.now() - (_lastSaveTime||0) < 5000) return false;
+  try {
+    const res = await fetch(url + '?action=getSettlement');
+    const text = await res.text();
+    let data; try { data = JSON.parse(text); } catch(pe) { return false; }
+    if(!data || !data.success || !Array.isArray(data.data)) return false;
+
+    const remoteHash = _calcSettlementHash(data.data);
+    if(remoteHash === _settlementLastPullHash) return false;
+    _settlementLastPullHash = remoteHash;
+
+    // 머지: 시트의 데이터 + 본 PC 추가분 통합 (key: date|dispCode|name)
+    const localKeys = new Set(settlementData.map(s =>
+      (s.date||'') + '|' + (s.dispCode||'') + '|' + (s.name||'')
+    ));
+    let added = 0;
+    data.data.forEach(r => {
+      const key = (r.date||'') + '|' + (r.dispCode||'') + '|' + (r.name||'');
+      if(!localKeys.has(key)) {
+        settlementData.push(r);
+        localKeys.add(key);
+        added++;
+      }
+    });
+    if(added > 0) {
+      // skipPush로 무한 push 방지
+      try { saveSettlementLocal({ skipMerge: true, skipPush: true }); }
+      catch(e) { saveSettlementLocal(); }
+      if(typeof renderSettlement === 'function') renderSettlement();
+      if(typeof updateDriverFilter === 'function') updateDriverFilter();
+      if(typeof showToast === 'function') showToast(`🔄 다른 PC 정산 ${added}건 자동 동기화`);
+    }
+    return added > 0;
+  } catch(e) { return false; }
 }
 
 // saveDispatch 정의 (구글 시트 저장 포함)
