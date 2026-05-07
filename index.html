@@ -13502,7 +13502,7 @@ function renderCalDetail(filtered, dateStr) {
           <td style="text-align:right;font-weight:600;${marginColor}">${pay > 0 ? margin.toLocaleString() : '-'}</td>
           <td style="text-align:center;font-size:10px;${marginColor}">${pay > 0 ? marginRate : '-'}</td>
           <td style="text-align:center">${receiptIcon}</td>
-          <td><input type="text" value="${(d.note||'').replace(/"/g,'&quot;')}" placeholder="-" oninput="updateStlFieldQuiet(${globalIdx},'note',this.value,this)" style="width:90px;font-size:10px;padding:2px 4px;border:1px solid #e2e8f0;border-radius:3px"></td>
+          <td><input type="text" value="${String(d.note||'').replace(/"/g,'&quot;')}" placeholder="-" oninput="updateStlFieldQuiet(${globalIdx},'note',this.value,this)" style="width:90px;font-size:10px;padding:2px 4px;border:1px solid #e2e8f0;border-radius:3px"></td>
         </tr>`;
       });
       
@@ -14047,7 +14047,7 @@ function renderSettlementList(data) {
       <td style="font-size:11px;cursor:pointer" onclick="copyCell(this,event)" title="클릭하여 복사">${d.vehicle||''}</td>
       <td style="font-weight:600;cursor:pointer" onclick="copyCell(this,event)" title="클릭하여 복사">${d.name||'-'}</td>
       <td style="font-size:11px;cursor:pointer" onclick="copyCell(this,event)" title="클릭하여 복사">${d.phone||''}</td>
-      <td style="font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis" title="${(d.dest||'').replace(/"/g,'&quot;')}">${destDisplay}</td>
+      <td style="font-size:10px;max-width:100px;overflow:hidden;text-overflow:ellipsis" title="${String(d.dest||'').replace(/"/g,'&quot;')}">${destDisplay}</td>
       <td style="cursor:pointer" onclick="copyCell(this,event)" title="클릭하여 복사">${d.area||''}</td>
       <td style="text-align:right"><input type="text" value="${pay ? pay.toLocaleString() : ''}" placeholder="-" onfocus="this.value=this.value.replace(/,/g,'')" onblur="this.value=this.value?parseInt(this.value).toLocaleString():''" onchange="updateStlFieldInline(this,${globalIdx},'payment')" onkeydown="stlKeyNav(event,this)" style="width:75px;text-align:right;font-size:11px;font-weight:700;padding:2px 4px;border:1px solid #e2e8f0;border-radius:3px;color:var(--accent)"></td>
       <td style="text-align:right"><input type="text" value="${isFirstInGroup ? (kctc ? kctc.toLocaleString() : '') : ''}" placeholder="${isMulti && !isFirstInGroup ? '-' : '-'}" onfocus="this.value=this.value.replace(/,/g,'')" onblur="this.value=this.value?parseInt(this.value).toLocaleString():''" onchange="updateStlFieldInline(this,${globalIdx},'kctcAmount')" onkeydown="stlKeyNav(event,this)" style="width:75px;text-align:right;font-size:11px;font-weight:600;padding:2px 4px;border:1px solid #e2e8f0;border-radius:3px;${isMulti && !isFirstInGroup ? 'background:#f3f4f6;' : ''}" ${isMulti && !isFirstInGroup ? 'readonly' : ''}></td>
@@ -14057,9 +14057,9 @@ function renderSettlementList(data) {
         <option value="" ${!d.receipt?'selected':''}>-</option>
         <option value="완료" ${d.receipt==='완료'?'selected':''}>완료</option>
         <option value="미완료" ${d.receipt==='미완료'?'selected':''}>미완료</option>
-      </select>${d.receipt==='미완료'?`<input type="text" value="${(d.receiptReason||'').replace(/"/g,'&quot;')}" placeholder="사유" oninput="updateStlFieldQuiet(${globalIdx},'receiptReason',this.value,this)" style="width:70px;font-size:9px;padding:1px 3px;border:1px solid #fca5a5;border-radius:3px;margin-top:2px;display:block;color:#dc2626" list="receiptReasonList">`:''}</td>
+      </select>${d.receipt==='미완료'?`<input type="text" value="${String(d.receiptReason||'').replace(/"/g,'&quot;')}" placeholder="사유" oninput="updateStlFieldQuiet(${globalIdx},'receiptReason',this.value,this)" style="width:70px;font-size:9px;padding:1px 3px;border:1px solid #fca5a5;border-radius:3px;margin-top:2px;display:block;color:#dc2626" list="receiptReasonList">`:''}</td>
       <td><input type="text" value="${d.category||''}" placeholder="-" list="stlCategoryList" oninput="updateStlFieldQuiet(${globalIdx},'category',this.value,this);this.style.cssText='width:65px;font-size:10px;font-weight:700;padding:2px 4px;border:1px solid;border-radius:3px;'+getStlCategoryStyle(this.value)" onkeydown="stlKeyNav(event,this)" style="width:65px;font-size:10px;font-weight:700;padding:2px 4px;border:1px solid;border-radius:3px;${getStlCategoryStyle(d.category||'')}"></td>
-      <td><input type="text" value="${(d.note||'').replace(/"/g,'&quot;')}" placeholder="비고 입력" oninput="updateStlFieldQuiet(${globalIdx},'note',this.value,this)" onkeydown="stlKeyNav(event,this)" style="width:120px;font-size:10px;padding:2px 4px;border:1px solid #e2e8f0;border-radius:3px"></td>
+      <td><input type="text" value="${String(d.note||'').replace(/"/g,'&quot;')}" placeholder="비고 입력" oninput="updateStlFieldQuiet(${globalIdx},'note',this.value,this)" onkeydown="stlKeyNav(event,this)" style="width:120px;font-size:10px;padding:2px 4px;border:1px solid #e2e8f0;border-radius:3px"></td>
     </tr>`;
   });
   
@@ -15998,7 +15998,7 @@ function showRateRefDetail(area, vehicle) {
       return `<tr>
         <td style="font-size:11px">${d.date || '-'}</td>
         <td style="font-size:11px">${d.dispCode || '-'}</td>
-        <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${(d.dest||'').replace(/"/g,'&quot;')}">${d.dest || '-'}</td>
+        <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${String(d.dest||'').replace(/"/g,'&quot;')}">${d.dest || '-'}</td>
         <td style="font-size:11px">${d.name || '-'}</td>
         <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${d.vehicle || '-'}</td>
         <td style="font-size:11px">${d.phone || '-'}</td>
