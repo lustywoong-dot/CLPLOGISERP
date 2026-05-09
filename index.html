@@ -507,6 +507,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
   <div class="tab" data-tab="rateRef" onclick="switchTab('rateRef')">📊 단가 참고</div>
   <div class="tab" data-tab="drivers" onclick="switchTab('drivers')">차량 등록</div>
   <div class="tab" data-tab="settlement" onclick="switchTab('settlement')">📑 기사 정산</div>
+  <div class="tab" data-tab="fixedReport" onclick="switchTab('fixedReport')">💼 고정기사 실적</div>
   <div class="tab" data-tab="receipt" onclick="switchTab('receipt')">📋 인수증 체크</div>
   <div class="tab" data-tab="stats" onclick="switchTab('stats')">📈 통계</div>
   <div class="tab" data-tab="attendance" onclick="switchTab('attendance')">📋 출퇴근부</div>
@@ -1625,6 +1626,84 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       <img id="receiptImgViewerFull" style="max-width:100%;max-height:85vh;object-fit:contain;border-radius:8px;background:white">
     </div>
   </div>
+    </div>
+  </div>
+
+  <!-- ============================================ -->
+  <!-- 고정/반고정 기사 실적 패널 (정산 데이터 read-only 조회) -->
+  <!-- ============================================ -->
+  <div id="panel-fixedReport" class="panel">
+    <div class="card">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <span><span class="icon">💼</span> 고정·반고정 기사 진행 금액</span>
+        <span id="fixedReportFooter" style="font-size:12px;color:var(--text-light);font-weight:500"></span>
+      </div>
+      <div class="info-banner" style="margin-bottom:10px;font-size:11px">
+        📌 정산 데이터에서 <b>구분이 '고정' 또는 '반고정'</b>인 기사만 자동 표시 (정산 데이터 read-only — 수정 불가)
+      </div>
+      <!-- 컨트롤 바 -->
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px">
+        <div style="display:flex;gap:4px;align-items:center">
+          <label style="font-size:11px;font-weight:600">월</label>
+          <input type="month" id="fixedReportMonth" onchange="renderFixedReport()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+        </div>
+        <div style="display:flex;gap:4px;align-items:center">
+          <label style="font-size:11px;font-weight:600">거래처</label>
+          <select id="fixedReportClient" onchange="renderFixedReport()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px;min-width:120px">
+            <option value="전체">전체</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:4px;align-items:center">
+          <label style="font-size:11px;font-weight:600">구분</label>
+          <select id="fixedReportCategory" onchange="renderFixedReport()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+            <option value="all">고정+반고정</option>
+            <option value="고정">고정만</option>
+            <option value="반고정">반고정만</option>
+          </select>
+        </div>
+        <input type="text" id="fixedReportSearch" placeholder="🔍 기사명 검색..." oninput="renderFixedReport()" style="padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:160px">
+        <button class="btn btn-sm" onclick="exportFixedReport()" style="margin-left:auto;background:#fff;border:1px solid var(--border);color:#374151;padding:6px 10px;font-size:11px;cursor:pointer">📥 엑셀 다운로드</button>
+      </div>
+      <!-- 기사 요약 표 -->
+      <div style="overflow-x:auto">
+        <table style="width:100%;font-size:12px;border-collapse:collapse">
+          <thead style="background:#f9fafb">
+            <tr>
+              <th style="padding:8px;border:1px solid #e5e7eb;width:40px">NO</th>
+              <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">기사명</th>
+              <th style="padding:8px;border:1px solid #e5e7eb;text-align:left">차량번호</th>
+              <th style="padding:8px;border:1px solid #e5e7eb;width:80px">구분</th>
+              <th style="padding:8px;border:1px solid #e5e7eb;width:80px;text-align:right">건수</th>
+              <th style="padding:8px;border:1px solid #e5e7eb;text-align:right">지불 합계</th>
+              <th style="padding:8px;border:1px solid #e5e7eb;text-align:right">건당 평균</th>
+              <th style="padding:8px;border:1px solid #e5e7eb;width:90px">상세</th>
+            </tr>
+          </thead>
+          <tbody id="fixedReportBody"></tbody>
+        </table>
+      </div>
+      <!-- 상세 모달 -->
+      <div id="fixedReportDetail" style="display:none;margin-top:14px;border:1px solid #e5e7eb;border-radius:8px;padding:14px;background:#f8fafc">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <span id="fixedReportDetailTitle" style="font-size:14px;font-weight:700;color:#1e293b"></span>
+          <button onclick="document.getElementById('fixedReportDetail').style.display='none'" style="background:#fff;color:#374151;border:1px solid #d1d5db;padding:4px 12px;border-radius:6px;cursor:pointer;font-size:11px">✕ 닫기</button>
+        </div>
+        <div style="overflow-x:auto;max-height:400px;overflow-y:auto">
+          <table style="width:100%;font-size:11px;border-collapse:collapse">
+            <thead style="background:#f1f5f9;position:sticky;top:0">
+              <tr>
+                <th style="padding:6px;border:1px solid #e5e7eb">날짜</th>
+                <th style="padding:6px;border:1px solid #e5e7eb">배차코드</th>
+                <th style="padding:6px;border:1px solid #e5e7eb">배송처</th>
+                <th style="padding:6px;border:1px solid #e5e7eb">지역</th>
+                <th style="padding:6px;border:1px solid #e5e7eb;text-align:right">지불</th>
+                <th style="padding:6px;border:1px solid #e5e7eb">비고</th>
+              </tr>
+            </thead>
+            <tbody id="fixedReportDetailBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -4068,9 +4147,9 @@ async function loadDispatchHistory() {
 // ============================================
 const ROLE_LABELS = { admin: '관리자', dispatcher: '배차 담당', settlement: '정산 담당', viewer: '조회' };
 const ROLE_TABS = {
-  admin: ['dispatch','history','rate','clpFixed','rateRef','drivers','settlement','receipt','stats','attendance','settings'],
-  dispatcher: ['dispatch','history','rate','clpFixed','rateRef','drivers','receipt'],
-  settlement: ['settlement','clpFixed','receipt'],
+  admin: ['dispatch','history','rate','clpFixed','rateRef','drivers','settlement','fixedReport','receipt','stats','attendance','settings'],
+  dispatcher: ['dispatch','history','rate','clpFixed','rateRef','drivers','fixedReport','receipt'],
+  settlement: ['settlement','clpFixed','fixedReport','receipt'],
   viewer: ['history','rate','clpFixed','rateRef','receipt']
 };
 
@@ -4610,6 +4689,7 @@ function switchTab(name) {
   if(name === 'rateRef') initRateRef();
   if(name === 'clpFixed') { try { renderClpFixedRates(); } catch(e) {} }
   if(name === 'receipt') { try { renderReceiptCheck(); } catch(e) {} }
+  if(name === 'fixedReport') { try { initFixedReport(); } catch(e) {} }
   if(name === 'drivers') {
     // 로컬이 비어있으면 시트에서 자동 가져오기 (정산탭과 동일 패턴)
     if(getRegisteredDrivers().length === 0 && typeof isConnected === 'function' && isConnected()) {
@@ -10925,6 +11005,190 @@ if(typeof window !== 'undefined') {
       _validateReceiptCheckData();
     }, 3000);
   }
+}
+
+// ─── 고정/반고정 기사 실적 탭 (read-only, settlementData 안 건드림) ─────────
+let _fixedReportDetailKey = null;
+
+function initFixedReport() {
+  // 1) 월 select 초기값 = 현재 월
+  const monthEl = document.getElementById('fixedReportMonth');
+  if(monthEl && !monthEl.value) {
+    const t = new Date();
+    monthEl.value = t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2,'0');
+  }
+  // 2) 거래처 select 옵션 (정산 데이터에서 자동 추출)
+  const clientEl = document.getElementById('fixedReportClient');
+  if(clientEl) {
+    const prev = clientEl.value || '전체';
+    const clients = new Set();
+    if(typeof settlementData !== 'undefined' && Array.isArray(settlementData)) {
+      settlementData.forEach(d => {
+        if((d.category === '고정' || d.category === '반고정') && d.client) clients.add(d.client);
+      });
+    }
+    const sorted = [...clients].sort((a,b) => a.localeCompare(b, 'ko'));
+    clientEl.innerHTML = '<option value="전체">전체</option>' +
+      sorted.map(c => `<option value="${c.replace(/"/g,'&quot;')}"${c===prev?' selected':''}>${c}</option>`).join('');
+  }
+  renderFixedReport();
+}
+
+function renderFixedReport() {
+  const tbody = document.getElementById('fixedReportBody');
+  if(!tbody) return;
+  if(typeof settlementData === 'undefined' || !Array.isArray(settlementData)) {
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--text-light)">정산 데이터 로딩 중...</td></tr>';
+    return;
+  }
+
+  const month = document.getElementById('fixedReportMonth')?.value || '';
+  const client = document.getElementById('fixedReportClient')?.value || '전체';
+  const catFilter = document.getElementById('fixedReportCategory')?.value || 'all';
+  const search = (document.getElementById('fixedReportSearch')?.value || '').trim().toLowerCase();
+
+  // 1) 고정/반고정만 필터 (read-only)
+  let filtered = settlementData.filter(d => d && (d.category === '고정' || d.category === '반고정'));
+  if(catFilter !== 'all') filtered = filtered.filter(d => d.category === catFilter);
+  if(month) filtered = filtered.filter(d => d.date && String(d.date).startsWith(month));
+  if(client !== '전체') filtered = filtered.filter(d => d.client === client);
+
+  // 2) 기사명 + 차량번호 + 구분으로 그룹핑
+  const byDriver = {};
+  filtered.forEach(d => {
+    const name = d.name || '미지정';
+    const vehicle = d.vehicle || '';
+    const cat = d.category || '';
+    const key = name + '|' + vehicle + '|' + cat;
+    if(!byDriver[key]) {
+      byDriver[key] = { name, vehicle, category: cat, count: 0, totalPay: 0, records: [], lastDate: '' };
+    }
+    byDriver[key].count++;
+    byDriver[key].totalPay += parseInt(d.payment) || 0;
+    byDriver[key].records.push(d);
+    if(d.date && d.date > byDriver[key].lastDate) byDriver[key].lastDate = d.date;
+  });
+
+  // 3) 검색 필터 (기사명)
+  let sorted = Object.values(byDriver);
+  if(search) {
+    sorted = sorted.filter(r =>
+      String(r.name).toLowerCase().includes(search) ||
+      String(r.vehicle).toLowerCase().includes(search)
+    );
+  }
+
+  // 4) 정렬 (지불 합계 내림차순)
+  sorted.sort((a, b) => b.totalPay - a.totalPay);
+
+  // 5) 합계
+  const totalPersons = sorted.length;
+  const totalCount = sorted.reduce((s, r) => s + r.count, 0);
+  const grandTotal = sorted.reduce((s, r) => s + r.totalPay, 0);
+  const footerEl = document.getElementById('fixedReportFooter');
+  if(footerEl) {
+    footerEl.innerHTML = `📊 ${totalPersons}명 / ${totalCount}건 / 지불 합계 <b style="color:#1e40af">${grandTotal.toLocaleString()}</b>원`;
+  }
+
+  // 6) 렌더
+  if(sorted.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="padding:30px;text-align:center;color:#9ca3af">조건에 맞는 고정·반고정 기사 데이터 없음</td></tr>';
+    return;
+  }
+  tbody.innerHTML = sorted.map((r, i) => {
+    const avg = r.count > 0 ? Math.round(r.totalPay / r.count) : 0;
+    const catColor = r.category === '고정'
+      ? 'background:#dcfce7;color:#166534'
+      : 'background:#fef3c7;color:#92400e';
+    const detailKey = String(r.name) + '|' + String(r.vehicle) + '|' + String(r.category);
+    const detailKeyEsc = detailKey.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+    return `<tr style="border-bottom:1px solid #f3f4f6">
+      <td style="padding:6px;border:1px solid #e5e7eb;text-align:center;color:#6b7280">${i+1}</td>
+      <td style="padding:6px 8px;border:1px solid #e5e7eb;font-weight:700">${String(r.name).replace(/</g,'&lt;')}</td>
+      <td style="padding:6px 8px;border:1px solid #e5e7eb;font-family:Consolas,monospace;font-size:11px">${String(r.vehicle).replace(/</g,'&lt;')}</td>
+      <td style="padding:6px 8px;border:1px solid #e5e7eb;text-align:center"><span style="padding:2px 8px;border-radius:4px;font-size:10px;font-weight:700;${catColor}">${r.category}</span></td>
+      <td style="padding:6px 8px;border:1px solid #e5e7eb;text-align:right">${r.count}건</td>
+      <td style="padding:6px 8px;border:1px solid #e5e7eb;text-align:right;font-weight:700;color:#1e40af">${r.totalPay.toLocaleString()}원</td>
+      <td style="padding:6px 8px;border:1px solid #e5e7eb;text-align:right;color:#64748b">${avg.toLocaleString()}원</td>
+      <td style="padding:6px;border:1px solid #e5e7eb;text-align:center"><button onclick="showFixedReportDetail('${detailKeyEsc}')" style="background:#dbeafe;border:1px solid #93c5fd;color:#1e40af;padding:3px 10px;font-size:10px;border-radius:4px;cursor:pointer;font-weight:600">📋 상세</button></td>
+    </tr>`;
+  }).join('');
+}
+
+function showFixedReportDetail(key) {
+  if(!key) return;
+  _fixedReportDetailKey = key;
+  const parts = key.split('|');
+  const name = parts[0] || '';
+  const vehicle = parts[1] || '';
+  const cat = parts[2] || '';
+
+  // 다시 필터해서 detail rows 가져오기
+  const month = document.getElementById('fixedReportMonth')?.value || '';
+  const client = document.getElementById('fixedReportClient')?.value || '전체';
+  let rows = (settlementData||[]).filter(d => d && (d.name||'미지정') === name && (d.vehicle||'') === vehicle && (d.category||'') === cat);
+  if(month) rows = rows.filter(d => d.date && String(d.date).startsWith(month));
+  if(client !== '전체') rows = rows.filter(d => d.client === client);
+  rows.sort((a, b) => (b.date||'').localeCompare(a.date||''));
+
+  const total = rows.reduce((s, r) => s + (parseInt(r.payment)||0), 0);
+  document.getElementById('fixedReportDetailTitle').innerHTML =
+    `📋 ${name} <small style="color:#64748b;font-weight:400">/ ${vehicle} / ${cat}</small> · ${rows.length}건 · 지불 <b style="color:#1e40af">${total.toLocaleString()}</b>원`;
+
+  const body = document.getElementById('fixedReportDetailBody');
+  if(rows.length === 0) {
+    body.innerHTML = '<tr><td colspan="6" style="padding:20px;text-align:center;color:#9ca3af">상세 내역 없음</td></tr>';
+  } else {
+    body.innerHTML = rows.map(r => `<tr>
+      <td style="padding:5px 7px;border:1px solid #e5e7eb;font-family:Consolas,monospace">${r.date||'-'}</td>
+      <td style="padding:5px 7px;border:1px solid #e5e7eb;font-family:Consolas,monospace;font-weight:700;color:#1e40af">${String(r.dispCode||'').replace(/</g,'&lt;')}</td>
+      <td style="padding:5px 7px;border:1px solid #e5e7eb">${String(r.dest||'-').replace(/</g,'&lt;')}</td>
+      <td style="padding:5px 7px;border:1px solid #e5e7eb">${String(r.area||'-').replace(/</g,'&lt;')}</td>
+      <td style="padding:5px 7px;border:1px solid #e5e7eb;text-align:right;font-weight:600">${(parseInt(r.payment)||0).toLocaleString()}</td>
+      <td style="padding:5px 7px;border:1px solid #e5e7eb;font-size:10px;color:#64748b">${String(r.note||'').replace(/</g,'&lt;')}</td>
+    </tr>`).join('');
+  }
+  document.getElementById('fixedReportDetail').style.display = 'block';
+  document.getElementById('fixedReportDetail').scrollIntoView({behavior:'smooth', block:'start'});
+}
+
+// 엑셀 다운로드 (단순 CSV — 의존성 X)
+function exportFixedReport() {
+  if(typeof settlementData === 'undefined' || !Array.isArray(settlementData)) {
+    if(typeof showToast === 'function') showToast('⚠ 정산 데이터 없음');
+    return;
+  }
+  const month = document.getElementById('fixedReportMonth')?.value || '';
+  const client = document.getElementById('fixedReportClient')?.value || '전체';
+  const catFilter = document.getElementById('fixedReportCategory')?.value || 'all';
+
+  let rows = settlementData.filter(d => d && (d.category === '고정' || d.category === '반고정'));
+  if(catFilter !== 'all') rows = rows.filter(d => d.category === catFilter);
+  if(month) rows = rows.filter(d => d.date && String(d.date).startsWith(month));
+  if(client !== '전체') rows = rows.filter(d => d.client === client);
+
+  if(rows.length === 0) {
+    if(typeof showToast === 'function') showToast('⚠ 다운로드할 데이터 없음');
+    return;
+  }
+  rows.sort((a, b) =>
+    String(a.name||'').localeCompare(String(b.name||''), 'ko') ||
+    String(a.date||'').localeCompare(String(b.date||''))
+  );
+
+  let csv = '﻿' + 'NO,거래처,날짜,기사명,차량번호,구분,배차코드,배송처,지역,지불(매입),비고\n';
+  rows.forEach((r, i) => {
+    const esc = v => '"' + String(v||'').replace(/"/g, '""') + '"';
+    csv += `${i+1},${esc(r.client)},${esc(r.date)},${esc(r.name)},${esc(r.vehicle)},${esc(r.category)},${esc(r.dispCode)},${esc(r.dest)},${esc(r.area)},${parseInt(r.payment)||0},${esc(r.note)}\n`;
+  });
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `고정기사실적_${month||'전체'}_${client === '전체' ? '전체' : client}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  if(typeof showToast === 'function') showToast(`📥 ${rows.length}건 CSV 다운로드 완료`);
 }
 
 // ─── 인수증 비고 이미지 첨부 (IDB, 코드별) ─────────
