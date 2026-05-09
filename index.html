@@ -1668,7 +1668,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
             <option value="반고정">반고정만</option>
           </select>
         </div>
-        <input type="text" id="fixedReportSearch" list="fixedReportDriverList" placeholder="🔍 기사명 입력..." oninput="renderFixedReport()" style="padding:5px 10px;border:1px solid #2563eb;border-radius:4px;font-size:12px;width:200px;font-weight:600">
+        <input type="text" id="fixedReportSearch" list="fixedReportDriverList" placeholder="🔍 기사명 / 차량번호 / 지역 / 배송처..." oninput="renderFixedReport()" style="padding:5px 10px;border:1px solid #2563eb;border-radius:4px;font-size:12px;width:280px;font-weight:600">
         <datalist id="fixedReportDriverList"></datalist>
         <button class="btn btn-sm" onclick="exportFixedReport()" style="margin-left:auto;background:#fff;border:1px solid var(--border);color:#374151;padding:6px 10px;font-size:11px;cursor:pointer">📥 CSV 다운로드</button>
       </div>
@@ -11051,9 +11051,9 @@ function renderFixedReport() {
   const catFilter = document.getElementById('fixedReportCategory')?.value || 'all';
   const search = (document.getElementById('fixedReportSearch')?.value || '').trim().toLowerCase();
 
-  // 기사명 검색 안 하면 안내만 (정보 노출 최소화)
+  // 검색어 안 입력하면 안내만 (정보 노출 최소화)
   if(!search) {
-    tbody.innerHTML = '<tr><td colspan="6" style="padding:40px;text-align:center;color:#9ca3af;font-size:13px">🔍 위에 <b style="color:#2563eb">기사명을 입력</b>하면 해당 기사의 운행 내역이 표시됩니다.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="padding:40px;text-align:center;color:#9ca3af;font-size:13px">🔍 위에 <b style="color:#2563eb">기사명 / 차량번호 / 지역 / 배송처</b>를 입력하면 운행 내역이 표시됩니다.</td></tr>';
     return;
   }
 
@@ -11063,10 +11063,12 @@ function renderFixedReport() {
   if(fromDate) rows = rows.filter(d => d.date && String(d.date) >= fromDate);
   if(toDate)   rows = rows.filter(d => d.date && String(d.date) <= toDate);
   if(client !== '전체') rows = rows.filter(d => d.client === client);
-  // 기사명 검색 (이름 또는 차량번호 부분 일치)
+  // 검색 (기사명 / 차량번호 / 지역 / 배송처 부분 일치)
   rows = rows.filter(d =>
     String(d.name||'').toLowerCase().includes(search) ||
-    String(d.vehicle||'').toLowerCase().includes(search)
+    String(d.vehicle||'').toLowerCase().includes(search) ||
+    String(d.area||'').toLowerCase().includes(search) ||
+    String(d.dest||'').toLowerCase().includes(search)
   );
 
   // 날짜 내림차순 정렬 (최근 운행 먼저)
@@ -11116,7 +11118,9 @@ function exportFixedReport() {
   if(client !== '전체') rows = rows.filter(d => d.client === client);
   rows = rows.filter(d =>
     String(d.name||'').toLowerCase().includes(search) ||
-    String(d.vehicle||'').toLowerCase().includes(search)
+    String(d.vehicle||'').toLowerCase().includes(search) ||
+    String(d.area||'').toLowerCase().includes(search) ||
+    String(d.dest||'').toLowerCase().includes(search)
   );
   if(rows.length === 0) {
     if(typeof showToast === 'function') showToast('⚠ 다운로드할 데이터 없음');
