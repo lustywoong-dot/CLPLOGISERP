@@ -1644,8 +1644,15 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       <!-- 컨트롤 바 -->
       <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px">
         <div style="display:flex;gap:4px;align-items:center">
-          <label style="font-size:11px;font-weight:600">월</label>
-          <input type="month" id="fixedReportMonth" onchange="renderFixedReport()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px">
+          <label style="font-size:11px;font-weight:600">기간</label>
+          <input type="date" id="fixedReportFrom" onchange="renderFixedReport()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" title="시작일 (비우면 전체)">
+          <span style="color:#9ca3af">~</span>
+          <input type="date" id="fixedReportTo" onchange="renderFixedReport()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" title="종료일 (비우면 전체)">
+        </div>
+        <div style="display:flex;gap:4px">
+          <button onclick="fixedReportJumpThisMonth()" style="padding:5px 10px;border:1px solid var(--border);background:#fff;border-radius:4px;cursor:pointer;font-size:11px">이번 달</button>
+          <button onclick="fixedReportJumpLastMonth()" style="padding:5px 10px;border:1px solid var(--border);background:#fff;border-radius:4px;cursor:pointer;font-size:11px">지난 달</button>
+          <button onclick="fixedReportClearPeriod()" style="padding:5px 10px;border:1px solid var(--border);background:#fff;border-radius:4px;cursor:pointer;font-size:11px">전체</button>
         </div>
         <div style="display:flex;gap:4px;align-items:center">
           <label style="font-size:11px;font-weight:600">거래처</label>
@@ -10991,11 +10998,15 @@ if(typeof window !== 'undefined') {
 //   - settlementData read-only — 절대 수정/충돌 X
 
 function initFixedReport() {
-  // 1) 월 select 초기값 = 현재 월
-  const monthEl = document.getElementById('fixedReportMonth');
-  if(monthEl && !monthEl.value) {
+  // 1) 기간 초기값 = 이번 달 1일 ~ 오늘
+  const fromEl = document.getElementById('fixedReportFrom');
+  const toEl = document.getElementById('fixedReportTo');
+  if(fromEl && !fromEl.value && toEl && !toEl.value) {
     const t = new Date();
-    monthEl.value = t.getFullYear() + '-' + String(t.getMonth()+1).padStart(2,'0');
+    const first = new Date(t.getFullYear(), t.getMonth(), 1);
+    const _fmt = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    fromEl.value = _fmt(first);
+    toEl.value = _fmt(t);
   }
   // 2) 거래처 select 옵션 (정산 데이터에서 read-only로 자동 추출)
   const clientEl = document.getElementById('fixedReportClient');
@@ -11034,7 +11045,8 @@ function renderFixedReport() {
     return;
   }
 
-  const month = document.getElementById('fixedReportMonth')?.value || '';
+  const fromDate = document.getElementById('fixedReportFrom')?.value || '';
+  const toDate = document.getElementById('fixedReportTo')?.value || '';
   const client = document.getElementById('fixedReportClient')?.value || '전체';
   const catFilter = document.getElementById('fixedReportCategory')?.value || 'all';
   const search = (document.getElementById('fixedReportSearch')?.value || '').trim().toLowerCase();
@@ -11048,7 +11060,8 @@ function renderFixedReport() {
   // 고정/반고정만 + 필터 (read-only — settlementData 절대 수정 X)
   let rows = settlementData.filter(d => d && (d.category === '고정' || d.category === '반고정'));
   if(catFilter !== 'all') rows = rows.filter(d => d.category === catFilter);
-  if(month) rows = rows.filter(d => d.date && String(d.date).startsWith(month));
+  if(fromDate) rows = rows.filter(d => d.date && String(d.date) >= fromDate);
+  if(toDate)   rows = rows.filter(d => d.date && String(d.date) <= toDate);
   if(client !== '전체') rows = rows.filter(d => d.client === client);
   // 기사명 검색 (이름 또는 차량번호 부분 일치)
   rows = rows.filter(d =>
@@ -11085,7 +11098,8 @@ function exportFixedReport() {
     if(typeof showToast === 'function') showToast('⚠ 정산 데이터 없음');
     return;
   }
-  const month = document.getElementById('fixedReportMonth')?.value || '';
+  const fromDate = document.getElementById('fixedReportFrom')?.value || '';
+  const toDate = document.getElementById('fixedReportTo')?.value || '';
   const client = document.getElementById('fixedReportClient')?.value || '전체';
   const catFilter = document.getElementById('fixedReportCategory')?.value || 'all';
   const search = (document.getElementById('fixedReportSearch')?.value || '').trim().toLowerCase();
@@ -11097,7 +11111,8 @@ function exportFixedReport() {
 
   let rows = settlementData.filter(d => d && (d.category === '고정' || d.category === '반고정'));
   if(catFilter !== 'all') rows = rows.filter(d => d.category === catFilter);
-  if(month) rows = rows.filter(d => d.date && String(d.date).startsWith(month));
+  if(fromDate) rows = rows.filter(d => d.date && String(d.date) >= fromDate);
+  if(toDate)   rows = rows.filter(d => d.date && String(d.date) <= toDate);
   if(client !== '전체') rows = rows.filter(d => d.client === client);
   rows = rows.filter(d =>
     String(d.name||'').toLowerCase().includes(search) ||
@@ -11118,10 +11133,35 @@ function exportFixedReport() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `고정기사실적_${search}_${month||'전체'}.csv`;
+  const periodLabel = (fromDate || toDate) ? `${fromDate||'처음'}~${toDate||'끝'}` : '전체';
+  a.download = `고정기사실적_${search}_${periodLabel}.csv`;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   URL.revokeObjectURL(url);
   if(typeof showToast === 'function') showToast(`📥 ${rows.length}건 CSV 다운로드 완료`);
+}
+
+// 빠른 점프 헬퍼
+function fixedReportJumpThisMonth() {
+  const t = new Date();
+  const first = new Date(t.getFullYear(), t.getMonth(), 1);
+  const _fmt = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  document.getElementById('fixedReportFrom').value = _fmt(first);
+  document.getElementById('fixedReportTo').value = _fmt(t);
+  renderFixedReport();
+}
+function fixedReportJumpLastMonth() {
+  const t = new Date();
+  const first = new Date(t.getFullYear(), t.getMonth()-1, 1);
+  const last = new Date(t.getFullYear(), t.getMonth(), 0);
+  const _fmt = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  document.getElementById('fixedReportFrom').value = _fmt(first);
+  document.getElementById('fixedReportTo').value = _fmt(last);
+  renderFixedReport();
+}
+function fixedReportClearPeriod() {
+  document.getElementById('fixedReportFrom').value = '';
+  document.getElementById('fixedReportTo').value = '';
+  renderFixedReport();
 }
 
 // ─── 인수증 비고 이미지 첨부 (IDB, 코드별) ─────────
