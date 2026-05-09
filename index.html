@@ -13987,7 +13987,7 @@ function renderSettlementList(data) {
   // 다중 차량 그룹 감지 (같은 날짜 + 같은 베이스코드)
   const codeGroupCounts = {};
   filtered.forEach(d => {
-    const base = (d.dispCode||'').replace(/-\d+$/, '');
+    const base = String(d.dispCode||'').replace(/-\d+$/, '');
     const key = (d.date||'') + '|' + base;
     codeGroupCounts[key] = (codeGroupCounts[key] || 0) + 1;
   });
@@ -14019,7 +14019,7 @@ function renderSettlementList(data) {
     const kctc = parseInt(d.kctcAmount) || 0;
     
     // 다중 차량 감지
-    const baseCode = (d.dispCode||'').replace(/-\d+$/, '');
+    const baseCode = String(d.dispCode||'').replace(/-\d+$/, '');
     const groupKey = (d.date||'') + '|' + baseCode;
     const groupSize = codeGroupCounts[groupKey] || 1;
     const isMulti = groupSize > 1;
