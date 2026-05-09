@@ -12875,15 +12875,41 @@ function updateManualSettlement() {
   d.payment = drv0.pay;
   d.category = drv0.category;
 
-  // 추가 기사 = 메인 코드 기준 -2, -3, ... 부여 (보스 예: ACLP_180_01-2, ACLP_180_01-3)
-  const cleanBase = firstCode.replace(/-\d+$/, '');
+  // 추가 기사 = 메인 코드 기준 빈 sub-code 번호 자동 부여 (-2부터 시작, 충돌 시 다음 번호로 증가)
+  const cleanBase = String(firstCode).replace(/-\d+$/, '');
+  // 그룹 내 이미 사용 중인 sub-code 번호 수집 (자기 자신/첫 행도 포함)
+  const escBase = cleanBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const subRe = new RegExp('^' + escBase + '-(\\d+)$');
+  const usedNumbers = new Set();
+  // 메인 코드(=cleanBase)는 1번으로 간주
+  // 첫 행 (firstCode)도 사용 처리
+  if(firstCode === cleanBase) usedNumbers.add(1);
+  const fm = String(firstCode).match(/-(\d+)$/);
+  if(fm) usedNumbers.add(parseInt(fm[1]));
+  // 그룹 내 모든 row의 sub 번호 수집 (자기 자신은 위에서 이미 추가)
+  settlementData.forEach((s, si) => {
+    if(s.date !== date) return;
+    if(si === stlEditingIdx) return;
+    const code = String(s.dispCode||'');
+    if(code === cleanBase) usedNumbers.add(1);
+    const m = code.match(subRe);
+    if(m) usedNumbers.add(parseInt(m[1]));
+  });
+  // 다음 빈 번호 찾기 헬퍼
+  function _nextSubNum() {
+    let n = 2;
+    while(usedNumbers.has(n)) n++;
+    usedNumbers.add(n);
+    return n;
+  }
   for(let i = 1; i < drivers.length; i++) {
     const drv = drivers[i];
-    const newCode = cleanBase + '-' + (i + 1);
-    // 이미 같은 코드가 있는지 확인 (자기 자신 제외)
+    const num = _nextSubNum();
+    const newCode = cleanBase + '-' + num;
+    // 이미 같은 코드가 있는지 한 번 더 확인 (자기 자신 제외) — 안전장치
     const existIdx = settlementData.findIndex((s, si) => si !== stlEditingIdx && s.dispCode === newCode && s.date === date);
     if(existIdx >= 0) {
-      // 기존 레코드 수정
+      // 기존 레코드 수정 (이론상 발생 안 함, 안전장치)
       const ex = settlementData[existIdx];
       ex.name = drv.name; ex.phone = drv.phone; ex.vehicle = drv.vehicle;
       ex.payment = drv.pay; ex.category = drv.category;
