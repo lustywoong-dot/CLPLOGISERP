@@ -1550,6 +1550,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <input type="month" id="receiptMonth" onchange="onReceiptMonthChange()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" title="엑셀 출력 시 적용할 월 (빈칸=전체)">
         </div>
         <span style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn btn-sm" onclick="showReceiptSnapshotList()" title="시점별 자동 스냅샷에서 복원 (최근 7일 보관)" style="background:#fef3c7;border:1px solid #fbbf24;color:#92400e;padding:6px 10px;font-size:11px;cursor:pointer;font-weight:600">🔙 시점 복원</button>
           <button class="btn btn-sm" onclick="manualSyncReceiptCheck()" title="다른 PC에서 입력한 데이터를 가져와서 통합 + 시트에 다시 저장 (양방향 강제 동기화)" style="background:#dbeafe;border:1px solid #60a5fa;color:#1e40af;padding:6px 10px;font-size:11px;cursor:pointer;font-weight:600">🔄 다른 PC 동기화</button>
           <button class="btn btn-sm" onclick="cleanupManualReceipts()" title="현재 거래처 + 표시 기간의 (수동) 항목을 한 번에 정리" style="background:#fff7ed;border:1px solid #fdba74;color:#9a3412;padding:6px 10px;font-size:11px;cursor:pointer">🧹 (수동) 정리</button>
           <button class="btn btn-sm btn-primary" onclick="openAddReceiptDialog()" style="padding:6px 12px;font-size:12px" title="배차에 없는 옛 인수증 수동 등록용">+ 수동 추가</button>
@@ -10770,6 +10771,160 @@ function resetReceiptCheck(date, code) {
   saveReceiptCheckLocal({skipMerge: true});
   renderReceiptCheck();
   showToast(isManualOnly ? '✅ (수동) 항목 삭제 완료' : '✅ 체크 초기화 완료');
+}
+
+// ─── 인수증 시점별 자동 스냅샷 (원청 증빙 데이터 보호) ─────────
+// 정산 스냅샷과 동일 패턴, 최대 7개 시점 보관 (1주일치)
+const MAX_RECEIPT_SNAPSHOTS = 7;
+
+function _takeReceiptSnapshot(label) {
+  if(!receiptCheckData || receiptCheckData.length === 0) return;
+  try {
+    const snapshots = JSON.parse(localStorage.getItem('clp_receipt_snapshots') || '[]');
+    const now = new Date();
+    const timeStr = now.getFullYear() + '-' +
+      String(now.getMonth()+1).padStart(2,'0') + '-' +
+      String(now.getDate()).padStart(2,'0') + ' ' +
+      String(now.getHours()).padStart(2,'0') + ':' +
+      String(now.getMinutes()).padStart(2,'0') + ':' +
+      String(now.getSeconds()).padStart(2,'0');
+
+    // 핵심 필드만 저장 (용량 절약)
+    const slim = receiptCheckData.map(c => ({
+      client: c.client || '',
+      date: c.date || '',
+      code: c.code || '',
+      received: c.received || '',
+      scanned: c.scanned || '',
+      memo: c.memo || '',
+      manual: !!c.manual,
+      updatedBy: c.updatedBy || '',
+      updatedAt: c.updatedAt || ''
+    }));
+
+    snapshots.unshift({ label: label || '자동', time: timeStr, count: receiptCheckData.length, data: slim });
+    if(snapshots.length > MAX_RECEIPT_SNAPSHOTS) snapshots.splice(MAX_RECEIPT_SNAPSHOTS);
+
+    try {
+      localStorage.setItem('clp_receipt_snapshots', JSON.stringify(snapshots));
+    } catch(quotaErr) {
+      // 용량 초과 시 오래된 것부터 제거 후 재시도
+      snapshots.splice(Math.max(1, snapshots.length - 2));
+      try { localStorage.setItem('clp_receipt_snapshots', JSON.stringify(snapshots)); }
+      catch(e2) { try { localStorage.setItem('clp_receipt_snapshots', JSON.stringify([snapshots[0]])); } catch(e3) {} }
+    }
+  } catch(e) { console.warn('인수증 스냅샷 실패:', e); }
+}
+
+// 매일 첫 진입 시 자동 스냅샷 (마지막 스냅샷이 어제거나 그 이전이면)
+function _autoSnapshotReceiptIfNeeded() {
+  if(!receiptCheckData || receiptCheckData.length === 0) return;
+  try {
+    const snapshots = JSON.parse(localStorage.getItem('clp_receipt_snapshots') || '[]');
+    const today = new Date();
+    const todayStr = today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+    // 오늘 자동 스냅샷이 이미 있으면 스킵
+    const todaySnap = snapshots.find(s => s.label === '자동' && s.time && s.time.startsWith(todayStr));
+    if(todaySnap) return;
+    _takeReceiptSnapshot('자동');
+  } catch(e) {}
+}
+
+// 스냅샷 목록 + 복원 다이얼로그 (정산과 동일 패턴)
+function showReceiptSnapshotList() {
+  try {
+    const snapshots = JSON.parse(localStorage.getItem('clp_receipt_snapshots') || '[]');
+    if(snapshots.length === 0) {
+      if(typeof showToast === 'function') showToast('⚠ 저장된 인수증 스냅샷이 없습니다');
+      return;
+    }
+    let msg = '🔙 인수증 스냅샷 목록 (번호 입력으로 복원)\n\n';
+    snapshots.forEach((s, i) => {
+      msg += `${i+1}. [${s.label}] ${s.time} - ${s.count}건\n`;
+    });
+    msg += '\n복원할 번호 입력 (취소: 닫기)';
+    const idx = parseInt(prompt(msg)) - 1;
+    if(isNaN(idx) || idx < 0 || idx >= snapshots.length) return;
+
+    const snap = snapshots[idx];
+    if(!confirm(`[${snap.time}] ${snap.label} - ${snap.count}건\n\n이 시점의 인수증 체크 데이터(회수/스캔/비고)로 복원합니다.\n계속하시겠습니까?\n\n※ 현재 데이터는 자동 백업되며, 시트도 함께 갱신됩니다.`)) return;
+
+    // 복원 직전 현재 상태도 자동 스냅샷 (안전망)
+    _takeReceiptSnapshot('복원전 자동');
+
+    // 스냅샷 데이터로 receiptCheckData 머지 (snapshot의 키만)
+    // (client+date+code) 기준으로 snapshot 값으로 덮어씀, snapshot에 없는 본 데이터는 유지
+    const snapMap = {};
+    snap.data.forEach(s => {
+      const k = (s.client||'') + '|' + (s.date||'') + '|' + (s.code||'');
+      snapMap[k] = s;
+    });
+    let restored = 0;
+    receiptCheckData.forEach(c => {
+      const k = (c.client||'') + '|' + (c.date||'') + '|' + (c.code||'');
+      const s = snapMap[k];
+      if(s) {
+        c.received = s.received;
+        c.scanned = s.scanned;
+        c.memo = s.memo;
+        if(s.updatedBy) c.updatedBy = s.updatedBy;
+        if(s.updatedAt) c.updatedAt = s.updatedAt;
+        restored++;
+      }
+    });
+    // snapshot에만 있는 항목 추가
+    const localKeys = new Set(receiptCheckData.map(c => (c.client||'') + '|' + (c.date||'') + '|' + (c.code||'')));
+    let added = 0;
+    snap.data.forEach(s => {
+      const k = (s.client||'') + '|' + (s.date||'') + '|' + (s.code||'');
+      if(!localKeys.has(k)) {
+        receiptCheckData.push({...s});
+        added++;
+      }
+    });
+    saveReceiptCheckLocal({skipMerge: true}); // 시트로도 push 됨
+    if(typeof renderReceiptCheck === 'function') renderReceiptCheck();
+    if(typeof showToast === 'function') showToast(`✅ 복원 완료 (변경 ${restored}건${added > 0 ? ', 추가 ' + added + '건' : ''})`);
+  } catch(e) {
+    console.error('인수증 스냅샷 복원 실패:', e);
+    if(typeof showToast === 'function') showToast('❌ 복원 실패: ' + e.message);
+  }
+}
+
+// 무결성 검증 (페이지 로드 시) — 비정상 row 감지
+function _validateReceiptCheckData() {
+  if(!Array.isArray(receiptCheckData) || receiptCheckData.length === 0) return;
+  let issues = 0;
+  let issueDetails = [];
+  receiptCheckData.forEach((c, i) => {
+    if(!c) { issues++; issueDetails.push(`[${i}] null/undefined row`); return; }
+    if(!c.client) { issues++; issueDetails.push(`[${i}] client 비어있음 - code=${c.code}`); }
+    if(!c.date) { issues++; issueDetails.push(`[${i}] date 비어있음 - code=${c.code}`); }
+    if(!c.code) { issues++; issueDetails.push(`[${i}] code 비어있음 - date=${c.date}`); }
+  });
+  if(issues > 0) {
+    console.warn('⚠ 인수증 무결성 경고: ' + issues + '건의 비정상 row 감지');
+    issueDetails.slice(0, 10).forEach(d => console.warn('  ' + d));
+    if(issueDetails.length > 10) console.warn('  ... 외 ' + (issueDetails.length - 10) + '건');
+    // 보스 화면엔 토스트 안 띄움 (잡음 방지) — 콘솔에만 기록
+  }
+}
+
+// 페이지 로드 시 자동 실행 (스냅샷 + 무결성)
+if(typeof window !== 'undefined') {
+  if(document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      setTimeout(() => {
+        _autoSnapshotReceiptIfNeeded();
+        _validateReceiptCheckData();
+      }, 3000); // 페이지 안정화 후 3초 뒤
+    });
+  } else {
+    setTimeout(() => {
+      _autoSnapshotReceiptIfNeeded();
+      _validateReceiptCheckData();
+    }, 3000);
+  }
 }
 
 // ─── 인수증 비고 이미지 첨부 (IDB, 코드별) ─────────
