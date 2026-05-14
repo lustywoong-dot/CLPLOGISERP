@@ -2179,6 +2179,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <div style="margin-left:auto;display:flex;gap:6px">
           <button class="btn btn-outline" id="btnClearStlData" onclick="clearSettlementData()" style="font-size:11px;padding:6px 10px;display:none">🗑 데이터 초기화</button>
           <button class="btn" onclick="saveSettlementBackupToSheet()" style="font-size:11px;padding:6px 10px;background:#1a365d;color:white;font-weight:700" title="현재 정산 데이터를 구글시트 [정산백업] 탭에 저장 (덮어쓰기)">📸 백업 저장</button>
+          <button class="btn btn-outline" onclick="diagnoseAndDedupSettlement()" style="font-size:11px;padding:6px 10px;color:#dc2626;border-color:#dc2626;font-weight:700" title="같은 (날짜+배차코드) 중복 row 진단 + 정보 많은 1건만 안전하게 유지">🔍 중복 정밀 제거</button>
           <button class="btn btn-outline" onclick="repairSettlementDates()" style="font-size:11px;padding:6px 10px;color:#d97706;border-color:#d97706" title="수작업 데이터 유지하면서 잘못된 날짜만 교정">🔧 날짜 교정</button>
           <button class="btn btn-outline" onclick="backupAndDeleteMonth()" style="font-size:11px;padding:6px 10px;color:#7c3aed;border-color:#7c3aed" title="수작업 데이터 보존 후 현재월 삭제 → ERP 재등록 → 수작업 복원">🔄 수작업보존 재등록</button>
           <button class="btn" id="btnRestoreManual" onclick="restoreManualData()" style="font-size:11px;padding:6px 10px;background:#059669;color:white;display:none">↩ 수작업 복원</button>
@@ -10192,24 +10193,39 @@ function saveSettlementLocal(opts) {
   try {
     if(!skipMerge) {
       // ─── 멀티 창 안전 보호: 추가 머지 ───────────
-      // 다른 창에서 추가한 정산 항목이 본 창의 stale 메모리로 인해 사라지는 것 방지
-      // 수정 충돌은 storage 이벤트 cross-tab 동기화로 거의 즉시 보정됨
+      // 키: date|dispCode (sub-code 포함 → unique). 이름은 후입력될 수 있으므로 키에서 제외
+      // 이름 빈값 row가 이름 있는 row와 중복으로 들어오던 12월 사고 재발 방지
       let stored = [];
       try { stored = JSON.parse(localStorage.getItem('clp_settlement_data') || '[]'); } catch(e) {}
       if(Array.isArray(stored) && stored.length > 0) {
-        const memKeys = new Set(settlementData.map(d =>
-          (d.date||'') + '|' + (d.dispCode||'') + '|' + (d.name||'')
-        ));
-        let mergedAdds = 0;
+        const memIdx = new Map();
+        settlementData.forEach((d, i) => {
+          const k = (d.date||'') + '|' + (d.dispCode||'');
+          if(k !== '|') memIdx.set(k, i);
+        });
+        let mergedAdds = 0, mergedFills = 0;
         stored.forEach(s => {
-          const k = (s.date||'') + '|' + (s.dispCode||'') + '|' + (s.name||'');
-          if(!memKeys.has(k)) {
+          const k = (s.date||'') + '|' + (s.dispCode||'');
+          if(k === '|') return;
+          if(!memIdx.has(k)) {
             settlementData.push(s);
-            memKeys.add(k);
+            memIdx.set(k, settlementData.length - 1);
             mergedAdds++;
+          } else {
+            // 같은 키 → 빈 필드만 보충 (덮어쓰기 없음). 이름/금액 등 한 쪽에만 있으면 채움
+            const cur = settlementData[memIdx.get(k)];
+            let filled = false;
+            ['name','phone','vehicle','dest','area','category','note','receipt','receiptReason'].forEach(f => {
+              if(!cur[f] && s[f]) { cur[f] = s[f]; filled = true; }
+            });
+            ['payment','kctcAmount'].forEach(f => {
+              const cv = parseInt(cur[f])||0, sv = parseInt(s[f])||0;
+              if(!cv && sv) { cur[f] = sv; filled = true; }
+            });
+            if(filled) mergedFills++;
           }
         });
-        if(mergedAdds > 0) console.log('[멀티창 보호] 정산 다른 창 추가분 ' + mergedAdds + '건 머지');
+        if(mergedAdds > 0 || mergedFills > 0) console.log('[멀티창 보호] 정산 머지 — 추가 ' + mergedAdds + '건 / 보충 ' + mergedFills + '건');
       }
     }
     localStorage.setItem('clp_settlement_data', JSON.stringify(settlementData));
@@ -10224,6 +10240,134 @@ function saveSettlementLocal(opts) {
   }
   // 시트 push (skipPush=true면 자동 pull로 받은 데이터 → 무한 루프 방지)
   if(!skipPush) backupSettlementToSheet();
+}
+
+// ─────────────────────────────────────────────
+// 정산 중복 진단 + 안전 제거 (월별 또는 전체)
+// 키: date|dispCode (sub-code 포함 → unique)
+// 정책: 그룹 내 가장 정보 많은 row 1개만 유지 (이름/금액/비고 우선순위)
+// ─────────────────────────────────────────────
+function _rowScore(d) {
+  let s = 0;
+  if(d.name) s += 10;
+  if((parseInt(d.payment)||0) > 0) s += 8;
+  if((parseInt(d.kctcAmount)||0) > 0) s += 5;
+  if(d.note) s += 3;
+  if(d.phone) s += 2;
+  if(d.vehicle) s += 2;
+  if(d.dest) s += 1;
+  if(d.area) s += 1;
+  if(d.category) s += 1;
+  if(d.receipt) s += 1;
+  return s;
+}
+
+function _pickBestRow(arr) {
+  // 점수 최대 → 유지. 부족한 필드는 다른 row에서 보충 (값 충돌 시 점수 큰 쪽)
+  let best = arr[0], bestScore = _rowScore(best);
+  arr.forEach(d => { const sc = _rowScore(d); if(sc > bestScore) { best = d; bestScore = sc; } });
+  // 보충: best에 빈 필드만 채움
+  const merged = Object.assign({}, best);
+  arr.forEach(d => {
+    if(d === best) return;
+    ['name','phone','vehicle','dest','area','category','note','receipt','receiptReason'].forEach(f => {
+      if(!merged[f] && d[f]) merged[f] = d[f];
+    });
+    ['payment','kctcAmount'].forEach(f => {
+      if(!(parseInt(merged[f])||0) && (parseInt(d[f])||0)) merged[f] = d[f];
+    });
+  });
+  return merged;
+}
+
+function diagnoseSettlementDups(opts) {
+  opts = opts || {};
+  const monthFilter = opts.month || null; // 'YYYY-MM' or null=전체
+  const groups = new Map(); // key → row[]
+  settlementData.forEach(d => {
+    const dt = String(d.date||'');
+    if(monthFilter && !dt.startsWith(monthFilter)) return;
+    const k = dt + '|' + (d.dispCode||'');
+    if(k === '|') return;
+    if(!groups.has(k)) groups.set(k, []);
+    groups.get(k).push(d);
+  });
+  const dups = [];
+  groups.forEach((arr, k) => { if(arr.length > 1) dups.push({ key: k, rows: arr }); });
+  return { totalGroups: groups.size, dupGroups: dups.length, dupRows: dups.reduce((s,g) => s + g.rows.length, 0), dups: dups };
+}
+
+async function diagnoseAndDedupSettlement() {
+  const m = (document.getElementById('settlementMonth') || {}).value || '';
+  const scopeChoice = confirm('🔍 중복 정밀 진단/제거\n\n[확인] 현재 선택월(' + (m||'?') + ') 만 진단\n[취소] 전체 정산 데이터 진단');
+  const monthFilter = scopeChoice ? m : null;
+  const report = diagnoseSettlementDups({ month: monthFilter });
+  if(report.dupGroups === 0) {
+    alert('✅ 중복 없음\n\n진단 범위: ' + (monthFilter || '전체') + '\n총 그룹: ' + report.totalGroups + '개');
+    return;
+  }
+  // 미리보기 샘플
+  const sample = report.dups.slice(0, 10).map(g => {
+    const sc = g.rows.map(r => _rowScore(r));
+    return `· ${g.key} — ${g.rows.length}건 (점수 ${sc.join('/')})`;
+  }).join('\n');
+  const removeCount = report.dupRows - report.dupGroups; // 그룹당 1개만 남김
+  const msg =
+    '⚠️ 중복 진단 결과\n\n' +
+    `진단 범위: ${monthFilter || '전체'}\n` +
+    `중복 그룹: ${report.dupGroups}개\n` +
+    `중복 row: ${report.dupRows}건\n` +
+    `→ 제거 예정: ${removeCount}건 (그룹당 정보 많은 row 1개만 유지)\n\n` +
+    '샘플 (상위 10):\n' + sample +
+    '\n\n계속하시려면 [확인], 취소하려면 [취소]';
+  if(!confirm(msg)) return;
+
+  // 스냅샷 (안전망)
+  try { _takeSettlementSnapshot('dedup_' + (monthFilter || 'all')); } catch(e) {}
+
+  // 시트 백업 (전체 덮어쓰기 — 시트 측에도 중복이 있을 수 있으므로)
+  try {
+    if(typeof saveSettlementBackupToSheet === 'function') {
+      showToast('📸 백업 저장 중...');
+      await saveSettlementBackupToSheet();
+    }
+  } catch(e) { /* silent */ }
+
+  // 실제 제거: 그룹별로 best row만 남김
+  const keepIds = new Set(); // 보존할 settlementData 인덱스
+  const replaceMap = new Map(); // 인덱스 → 머지된 row
+  // 1) 우선 모든 그룹 키 수집
+  const dupKeys = new Set(report.dups.map(g => g.key));
+  // 2) settlementData 전체 순회 — 그룹에 속하면 best로 대체 표시
+  const handled = new Set();
+  const newData = [];
+  settlementData.forEach((d, i) => {
+    const dt = String(d.date||'');
+    const k = dt + '|' + (d.dispCode||'');
+    if(monthFilter && !dt.startsWith(monthFilter)) {
+      newData.push(d); // 범위 외 → 그대로
+      return;
+    }
+    if(!dupKeys.has(k)) {
+      newData.push(d); // 중복 그룹 아님 → 그대로
+      return;
+    }
+    if(handled.has(k)) return; // 이미 처리한 그룹
+    handled.add(k);
+    const grp = report.dups.find(g => g.key === k);
+    if(grp) newData.push(_pickBestRow(grp.rows));
+    else newData.push(d);
+  });
+
+  const before = settlementData.length;
+  settlementData = newData;
+  const after = settlementData.length;
+
+  // 저장 + 시트 push (전체 덮어쓰기로 시트 측 중복도 해결)
+  saveSettlementLocal({ skipMerge: true });
+  if(typeof renderSettlement === 'function') renderSettlement();
+  if(typeof updateDriverFilter === 'function') updateDriverFilter();
+  alert(`✅ 중복 제거 완료\n\n${before}건 → ${after}건 (${before-after}건 제거)\n\n시트에도 동기화 push 진행 중...\n\n문제 시 [🔄 스냅샷 복원]에서 원복 가능합니다.`);
 }
 
 // ─────────────────────────────────────────────
@@ -15598,28 +15742,48 @@ async function pullSettlementFromSheet() {
     if(remoteHash === _settlementLastPullHash) return false;
     _settlementLastPullHash = remoteHash;
 
-    // 머지: 시트의 데이터 + 본 PC 추가분 통합 (key: date|dispCode|name)
-    const localKeys = new Set(settlementData.map(s =>
-      (s.date||'') + '|' + (s.dispCode||'') + '|' + (s.name||'')
-    ));
-    let added = 0;
+    // 머지: 키 = date|dispCode (sub-code 포함 unique). 이름은 후입력 가능하므로 키 제외
+    // 같은 키면 본 PC 데이터 유지(이름 등) + 빈 필드만 시트값으로 보충
+    const localIdx = new Map();
+    settlementData.forEach((s, i) => {
+      const k = (s.date||'') + '|' + (s.dispCode||'');
+      if(k !== '|') localIdx.set(k, i);
+    });
+    let added = 0, filled = 0;
     data.data.forEach(r => {
-      const key = (r.date||'') + '|' + (r.dispCode||'') + '|' + (r.name||'');
-      if(!localKeys.has(key)) {
+      const key = (r.date||'') + '|' + (r.dispCode||'');
+      if(key === '|') return;
+      if(!localIdx.has(key)) {
         settlementData.push(r);
-        localKeys.add(key);
+        localIdx.set(key, settlementData.length - 1);
         added++;
+      } else {
+        const cur = settlementData[localIdx.get(key)];
+        let f = false;
+        ['name','phone','vehicle','dest','area','category','note','receipt','receiptReason'].forEach(fld => {
+          if(!cur[fld] && r[fld]) { cur[fld] = r[fld]; f = true; }
+        });
+        ['payment','kctcAmount'].forEach(fld => {
+          const cv = parseInt(cur[fld])||0, rv = parseInt(r[fld])||0;
+          if(!cv && rv) { cur[fld] = rv; f = true; }
+        });
+        if(f) filled++;
       }
     });
-    if(added > 0) {
+    if(added > 0 || filled > 0) {
       // skipPush로 무한 push 방지
       try { saveSettlementLocal({ skipMerge: true, skipPush: true }); }
       catch(e) { saveSettlementLocal(); }
       if(typeof renderSettlement === 'function') renderSettlement();
       if(typeof updateDriverFilter === 'function') updateDriverFilter();
-      if(typeof showToast === 'function') showToast(`🔄 다른 PC 정산 ${added}건 자동 동기화`);
+      if(typeof showToast === 'function') {
+        let m = '🔄 다른 PC 정산 동기화';
+        if(added > 0) m += ` — 추가 ${added}건`;
+        if(filled > 0) m += ` / 보충 ${filled}건`;
+        showToast(m);
+      }
     }
-    return added > 0;
+    return added > 0 || filled > 0;
   } catch(e) { return false; }
 }
 
