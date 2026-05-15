@@ -12623,17 +12623,27 @@ async function exportReceiptCheck() {
   });
   wsSum.getRow(sumTotalRow).height = 28;
 
-  // ─── 2. 거래처별 시트 (가로 6일 컬럼 — 보스 엑셀 형식 그대로) ───
-  const PAGE_DAYS = 6;          // 한 페이지에 6일치
+  // ─── 2. 거래처별 시트 (가로 3일 컬럼 — 가독성 우선, 폰트 확대) ───
+  // 이전 6일 컬럼은 fitToWidth로 자동 축소되어 원청에서 알아보기 힘들다는 의견 → 3일로 줄임
+  const PAGE_DAYS = 3;          // 한 페이지에 3일치 (이전 6일)
   const COLS_PER_DAY = 5;        // NO/배차코드/회수/스캔/비고
   const SPACER = 1;              // 컬럼 사이 빈 칸
-  const TOTAL_COLS = PAGE_DAYS * COLS_PER_DAY + (PAGE_DAYS - 1) * SPACER; // = 35
+  const TOTAL_COLS = PAGE_DAYS * COLS_PER_DAY + (PAGE_DAYS - 1) * SPACER; // = 17
   const days = ['일','월','화','수','목','금','토'];
   const clientLabel = { 'LNL': '🔵 LNL (락앤락)', '덕평': '🟣 덕평2', '여주': '🟢 여주' };
   const sheetTabName = { 'LNL': '🔵 LNL', '덕평': '🟣 덕평', '여주': '🟢 여주' };
-  const dateHdrFont = { bold:true, size:11, name:'맑은 고딕', color:{argb:'FF0F172A'} };
-  const dateHdrSatFont = { bold:true, size:11, name:'맑은 고딕', color:{argb:'FF1D4ED8'} };
-  const dateHdrSunFont = { bold:true, size:11, name:'맑은 고딕', color:{argb:'FFDC2626'} };
+  // 거래처별 시트 전용 폰트 (가독성 확대 — 전체요약/미회수 시트는 그대로 유지)
+  const rcTitleFont = { bold:true, size:22, name:'맑은 고딕', color:{argb:'FF1A365D'} };
+  const rcSubFont = { bold:true, size:14, name:'맑은 고딕', color:{argb:'FF1A365D'} };
+  const rcHeaderFont = { bold:true, color:{argb:'FFFFFFFF'}, size:14, name:'맑은 고딕' };
+  const rcDataFont = { size:13, name:'맑은 고딕' };
+  const rcCodeFont = { bold:true, size:14, name:'Consolas', color:{argb:'FF111827'} };
+  const rcGreenFont = { bold:true, size:16, name:'맑은 고딕', color:{argb:'FF065F46'} };
+  const rcRedFont = { bold:true, size:16, name:'맑은 고딕', color:{argb:'FF991B1B'} };
+  const rcGrayFont = { size:13, name:'맑은 고딕', color:{argb:'FFD1D5DB'} };
+  const dateHdrFont = { bold:true, size:15, name:'맑은 고딕', color:{argb:'FF0F172A'} };
+  const dateHdrSatFont = { bold:true, size:15, name:'맑은 고딕', color:{argb:'FF1D4ED8'} };
+  const dateHdrSunFont = { bold:true, size:15, name:'맑은 고딕', color:{argb:'FFDC2626'} };
   const wkndFill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFFEE2E2'} };
   const wkdFill = { type:'pattern', pattern:'solid', fgColor:{argb:'FFEEF2FF'} };
 
@@ -12646,11 +12656,12 @@ async function exportReceiptCheck() {
       views: [{ showGridLines: false }]
     });
 
-    // 컬럼 너비 (NO 4 / 코드 13 / 회수 5 / 스캔 5 / 비고 16 / spacer 1.5)
+    // 컬럼 너비 (NO 6 / 코드 18 / 회수 8 / 스캔 8 / 비고 26 / spacer 2)
+    // 3일 형식: (6+18+8+8+26)*3 + 2*2 = 198 + 4 = 202칸 → A4 가로에 적절히 fit (이전 6일 265칸 대비 자연스러움)
     const colWidths = [];
     for(let d = 0; d < PAGE_DAYS; d++) {
-      colWidths.push(4, 13, 5, 5, 16);
-      if(d < PAGE_DAYS - 1) colWidths.push(1.5);
+      colWidths.push(6, 18, 8, 8, 26);
+      if(d < PAGE_DAYS - 1) colWidths.push(2);
     }
     ws.columns = colWidths.map(w => ({ width: w }));
 
@@ -12669,9 +12680,9 @@ async function exportReceiptCheck() {
       ws.mergeCells(curRow, 1, curRow, TOTAL_COLS);
       const tC = ws.getCell(curRow, 1);
       tC.value = '주식회사 씨엘피 (CLP)  ·  인수증 체크리스트';
-      tC.font = titleFont;
+      tC.font = rcTitleFont;
       tC.alignment = { horizontal:'center', vertical:'middle' };
-      ws.getRow(curRow).height = 36;
+      ws.getRow(curRow).height = 44;
       curRow++;
       // 밑줄
       ws.mergeCells(curRow, 1, curRow, TOTAL_COLS);
@@ -12684,7 +12695,7 @@ async function exportReceiptCheck() {
       ws.mergeCells(curRow, 1, curRow, third);
       const cInfo = ws.getCell(curRow, 1);
       cInfo.value = `거래처: ${clientLabel[client] || client}`;
-      cInfo.font = subFont;
+      cInfo.font = rcSubFont;
       cInfo.fill = clientThemeFill[client];
       cInfo.alignment = { horizontal:'center', vertical:'middle' };
       cInfo.border = thinBorder;
@@ -12692,7 +12703,7 @@ async function exportReceiptCheck() {
       ws.mergeCells(curRow, third + 1, curRow, third * 2);
       const pInfo = ws.getCell(curRow, third + 1);
       pInfo.value = `정산 기간: ${monthLabel}    (총 ${rows.length}건  ·  회수 ${rows.filter(r=>r.received==='O').length}  ·  스캔 ${rows.filter(r=>r.scanned==='O').length})`;
-      pInfo.font = subFont;
+      pInfo.font = rcSubFont;
       pInfo.fill = lightBlue;
       pInfo.alignment = { horizontal:'center', vertical:'middle' };
       pInfo.border = thinBorder;
@@ -12700,10 +12711,10 @@ async function exportReceiptCheck() {
       ws.mergeCells(curRow, third * 2 + 1, curRow, TOTAL_COLS);
       const pgInfo = ws.getCell(curRow, third * 2 + 1);
       pgInfo.value = `페이지 ${p+1} / ${pageCount}    출력: ${_formatLoginTs(new Date())}`;
-      pgInfo.font = subFont;
+      pgInfo.font = rcSubFont;
       pgInfo.alignment = { horizontal:'center', vertical:'middle' };
       pgInfo.border = thinBorder;
-      ws.getRow(curRow).height = 24;
+      ws.getRow(curRow).height = 30;
       curRow++;
       // 빈 줄
       ws.getRow(curRow).height = 8;
@@ -12727,23 +12738,23 @@ async function exportReceiptCheck() {
         cell.alignment = { horizontal:'center', vertical:'middle' };
         cell.border = thinBorder;
       });
-      ws.getRow(curRow).height = 26;
+      ws.getRow(curRow).height = 32;
       curRow++;
 
-      // 컬럼 서브 헤더 (NO/배차코드/회수/스캔/비고) × 6일
+      // 컬럼 서브 헤더 (NO/배차코드/회수/스캔/비고) × 3일
       const subHdrs = ['NO', '배차코드', '회수', '스캔', '비고'];
       pageDates.forEach((_d, dIdx) => {
         const startCol = dIdx * (COLS_PER_DAY + SPACER) + 1;
         subHdrs.forEach((h, i) => {
           const c = ws.getCell(curRow, startCol + i);
           c.value = h;
-          c.font = headerFont;
+          c.font = rcHeaderFont;
           c.fill = navyFill;
           c.alignment = { horizontal:'center', vertical:'middle' };
           c.border = thinBorder;
         });
       });
-      ws.getRow(curRow).height = 22;
+      ws.getRow(curRow).height = 28;
       curRow++;
 
       // 데이터 (가장 많은 날 기준 행 수, 짧은 날은 빈칸)
@@ -12753,11 +12764,11 @@ async function exportReceiptCheck() {
           const startCol = dIdx * (COLS_PER_DAY + SPACER) + 1;
           const rec = byDate[d][i];
           const cells = [
-            { c: 0, v: rec ? i+1 : '', font: dataFont, h:'center' },
-            { c: 1, v: rec?.code || '', font: codeFont, h:'center' },
+            { c: 0, v: rec ? i+1 : '', font: rcDataFont, h:'center' },
+            { c: 1, v: rec?.code || '', font: rcCodeFont, h:'center' },
             { c: 2, v: rec?.received || (rec ? '·' : ''), h:'center', status: rec?.received, isStatus: true },
             { c: 3, v: rec?.scanned || (rec ? '·' : ''), h:'center', status: rec?.scanned, isStatus: true },
-            { c: 4, v: rec?.memo || '', font: dataFont, h:'left' }
+            { c: 4, v: rec?.memo || '', font: rcDataFont, h:'left' }
           ];
           cells.forEach(({c, v, font, h, status, isStatus}) => {
             const cell = ws.getCell(curRow, startCol + c);
@@ -12765,15 +12776,15 @@ async function exportReceiptCheck() {
             cell.alignment = { horizontal: h, vertical:'middle' };
             cell.border = thinBorder;
             if(isStatus) {
-              if(status === 'O') { cell.fill = greenFill; cell.font = greenFont; }
-              else if(status === 'X') { cell.fill = redFill; cell.font = redFont; }
-              else { cell.font = grayFont; }
+              if(status === 'O') { cell.fill = greenFill; cell.font = rcGreenFont; }
+              else if(status === 'X') { cell.fill = redFill; cell.font = rcRedFont; }
+              else { cell.font = rcGrayFont; }
             } else if(font) {
               cell.font = font;
             }
           });
         });
-        ws.getRow(curRow).height = 18;
+        ws.getRow(curRow).height = 26;
         curRow++;
       }
 
@@ -12786,12 +12797,12 @@ async function exportReceiptCheck() {
         const dRecv = byDate[d].filter(r => r.received === 'O').length;
         const dScn = byDate[d].filter(r => r.scanned === 'O').length;
         cell.value = `일계: ${dCnt}건  ·  회수 ${dRecv}  ·  스캔 ${dScn}`;
-        cell.font = subFont;
+        cell.font = rcSubFont;
         cell.fill = lightBlue;
         cell.alignment = { horizontal:'center', vertical:'middle' };
         cell.border = { top:{style:'medium',color:{argb:'FF1A365D'}}, bottom:{style:'thin',color:{argb:'FFD1D5DB'}}, left:{style:'thin',color:{argb:'FFD1D5DB'}}, right:{style:'thin',color:{argb:'FFD1D5DB'}}};
       });
-      ws.getRow(curRow).height = 22;
+      ws.getRow(curRow).height = 28;
       curRow++;
 
       // 페이지 break
