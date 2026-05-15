@@ -10567,9 +10567,10 @@ function saveSettlementLocal(opts) {
             mergedAdds++;
           } else {
             // 같은 키 → 빈 필드만 보충 (덮어쓰기 없음). 이름/금액 등 한 쪽에만 있으면 채움
+            // ※ note(비고)는 사용자 자유 메모 필드 → 보스가 의도적으로 비운 값 부활 방지를 위해 머지 제외
             const cur = settlementData[memIdx.get(k)];
             let filled = false;
-            ['name','phone','vehicle','dest','area','category','note','receipt','receiptReason'].forEach(f => {
+            ['name','phone','vehicle','dest','area','category','receipt','receiptReason'].forEach(f => {
               if(!cur[f] && s[f]) { cur[f] = s[f]; filled = true; }
             });
             ['payment','kctcAmount'].forEach(f => {
@@ -10623,10 +10624,11 @@ function _pickBestRow(arr) {
   let best = arr[0], bestScore = _rowScore(best);
   arr.forEach(d => { const sc = _rowScore(d); if(sc > bestScore) { best = d; bestScore = sc; } });
   // 보충: best에 빈 필드만 채움
+  // ※ note(비고)는 사용자 자유 메모 필드 → 보스가 의도적으로 비운 값 부활 방지를 위해 머지 제외
   const merged = Object.assign({}, best);
   arr.forEach(d => {
     if(d === best) return;
-    ['name','phone','vehicle','dest','area','category','note','receipt','receiptReason'].forEach(f => {
+    ['name','phone','vehicle','dest','area','category','receipt','receiptReason'].forEach(f => {
       if(!merged[f] && d[f]) merged[f] = d[f];
     });
     ['payment','kctcAmount'].forEach(f => {
@@ -13885,7 +13887,8 @@ function updateStlFieldQuiet(idx, field, value, inputEl) {
   // 디바운스: 타이핑 중 과도한 저장 방지 (300ms)
   clearTimeout(_stlSaveTimer);
   _stlSaveTimer = setTimeout(() => {
-    saveSettlementLocal();
+    // skipMerge: 사용자가 의도적으로 비운 필드(비고 등)가 머지 로직으로 부활하는 부작용 차단
+    saveSettlementLocal({ skipMerge: true });
     showSaveFlash(inputEl);
   }, 300);
 }
@@ -13907,7 +13910,8 @@ function updateStlField(idx, field, value) {
   } else {
     settlementData[idx][field] = value;
   }
-  saveSettlementLocal();
+  // skipMerge: 사용자가 의도적으로 비운 필드가 머지 로직으로 부활하는 부작용 차단
+  saveSettlementLocal({ skipMerge: true });
   // 금액 변경 시 해당 행의 손익분만 업데이트 (리렌더 안 함 → 포커스 유지)
   if(field === 'kctcAmount' || field === 'payment') {
     // footer 합계만 업데이트
@@ -16116,9 +16120,10 @@ async function pullSettlementFromSheet() {
         localIdx.set(key, settlementData.length - 1);
         added++;
       } else {
+        // ※ note(비고)는 사용자 자유 메모 필드 → 보스가 의도적으로 비운 값 부활 방지를 위해 머지 제외
         const cur = settlementData[localIdx.get(key)];
         let f = false;
-        ['name','phone','vehicle','dest','area','category','note','receipt','receiptReason'].forEach(fld => {
+        ['name','phone','vehicle','dest','area','category','receipt','receiptReason'].forEach(fld => {
           if(!cur[fld] && r[fld]) { cur[fld] = r[fld]; f = true; }
         });
         ['payment','kctcAmount'].forEach(fld => {
