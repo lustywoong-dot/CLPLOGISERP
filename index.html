@@ -2156,6 +2156,35 @@ body.hide-cost-col .col-sensitive { display: none !important; }
   <!-- 기사 정산 패널 -->
   <!-- ============================================ -->
   <div id="panel-settlement" class="panel">
+    <!-- 시점 복구 모달 (정산 안전망) -->
+    <div id="snapshotRestoreModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:10002;align-items:center;justify-content:center;padding:30px" onclick="closeSnapshotRestoreModal(event)">
+      <div style="position:relative;width:980px;max-width:96%;max-height:92vh;background:white;border-radius:10px;display:flex;flex-direction:column;overflow:hidden" onclick="event.stopPropagation()">
+        <div style="padding:14px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:#f8fafc">
+          <div>
+            <div style="font-size:16px;font-weight:700;color:#0f766e">🕐 시점 복구 — 정산 데이터</div>
+            <div style="font-size:11px;color:#64748b;margin-top:3px">변경 시 즉시 + 30분 주기 자동 백업 · 24시간 전부 / 7일 일 1개 / 60일 주 1개</div>
+          </div>
+          <button onclick="closeSnapshotRestoreModal()" style="background:#fff;color:#374151;border:1px solid #e5e7eb;padding:6px 12px;border-radius:6px;font-size:13px;cursor:pointer">✕ 닫기 (ESC)</button>
+        </div>
+        <div style="display:flex;flex:1;min-height:420px;max-height:78vh;overflow:hidden">
+          <div style="width:400px;border-right:1px solid #e5e7eb;display:flex;flex-direction:column">
+            <div style="padding:8px 12px;background:#f1f5f9;font-size:11px;color:#475569;font-weight:600;display:flex;justify-content:space-between;align-items:center">
+              <span id="snapshotListCount">스냅샷 목록</span>
+              <button onclick="manualCreateSnapshot()" style="background:#0f766e;color:white;border:none;padding:3px 8px;border-radius:4px;font-size:10px;cursor:pointer;font-weight:600" title="현재 시점 백업">+ 지금 백업</button>
+            </div>
+            <div id="snapshotList" style="flex:1;overflow-y:auto;padding:6px"></div>
+          </div>
+          <div style="flex:1;display:flex;flex-direction:column;min-width:0">
+            <div style="padding:8px 12px;background:#f1f5f9;font-size:11px;color:#475569;font-weight:600">미리보기 (현재 데이터와 차이)</div>
+            <div id="snapshotPreview" style="flex:1;overflow-y:auto;padding:14px;font-size:12px;color:#475569">← 왼쪽 목록에서 시점을 선택하면 미리보기가 표시됩니다.</div>
+            <div id="snapshotActions" style="padding:12px;border-top:1px solid #e5e7eb;background:#fff7ed;display:none">
+              <div style="font-size:11px;color:#9a3412;margin-bottom:8px;font-weight:600">⚠ 복구 시 현재 데이터는 [복구 직전] 스냅샷으로 자동 백업되며, 선택 시점으로 교체됩니다.</div>
+              <button id="btnDoRestore" onclick="confirmRestoreSnapshot()" style="background:#dc2626;color:white;border:none;padding:9px 18px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer">⚠ 이 시점으로 복구</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="card">
       <div class="card-title"><span class="icon">📑</span> 기사 정산</div>
       
@@ -2179,6 +2208,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <div style="margin-left:auto;display:flex;gap:6px">
           <button class="btn btn-outline" id="btnClearStlData" onclick="clearSettlementData()" style="font-size:11px;padding:6px 10px;display:none">🗑 데이터 초기화</button>
           <button class="btn" onclick="saveSettlementBackupToSheet()" style="font-size:11px;padding:6px 10px;background:#1a365d;color:white;font-weight:700" title="현재 정산 데이터를 구글시트 [정산백업] 탭에 저장 (덮어쓰기)">📸 백업 저장</button>
+          <button class="btn" onclick="openSnapshotRestoreModal()" style="font-size:11px;padding:6px 10px;background:#0f766e;color:white;font-weight:700" title="시점 자동 백업에서 정산 데이터 복구 (변경 시 즉시 + 30분 자동 백업)">🕐 시점 복구</button>
           <button class="btn btn-outline" onclick="diagnoseAndDedupSettlement()" style="font-size:11px;padding:6px 10px;color:#dc2626;border-color:#dc2626;font-weight:700" title="같은 (날짜+배차코드) 중복 row 진단 + 정보 많은 1건만 안전하게 유지">🔍 중복 정밀 제거</button>
           <button class="btn btn-outline" onclick="repairSettlementDates()" style="font-size:11px;padding:6px 10px;color:#d97706;border-color:#d97706" title="수작업 데이터 유지하면서 잘못된 날짜만 교정">🔧 날짜 교정</button>
           <button class="btn btn-outline" onclick="backupAndDeleteMonth()" style="font-size:11px;padding:6px 10px;color:#7c3aed;border-color:#7c3aed" title="수작업 데이터 보존 후 현재월 삭제 → ERP 재등록 → 수작업 복원">🔄 수작업보존 재등록</button>
@@ -4057,6 +4087,330 @@ function idbGet(key) {
     req.onsuccess = e => resolve(e.target.result);
     req.onerror   = e => reject(e.target.error);
   }));
+}
+
+// ═════════════════════════════════════════════════════════════════
+// 정산 안전망: 시점 스냅샷 시스템
+// 별도 IDB (기존 데이터 영향 0). 자동 백업으로 사고 시 시점 복구.
+// 보관 정책: 24h 전부 / 24h~7d 일 1개 / 7d~60d 주 1개 / 60d+ 삭제
+// 트리거: saveSettlementLocal 호출 시 + 30분 주기
+// ═════════════════════════════════════════════════════════════════
+const SNAP_DB_NAME = 'clp_settlement_snapshots_db';
+const SNAP_DB_VER  = 1;
+const SNAP_STORE   = 'snapshots';
+let _snapDb = null;
+let _snapTimerStarted = false;
+let _lastSnapTime = 0;     // 디바운스용 (5초 내 중복 방지)
+
+function _openSnapDB() {
+  return new Promise((resolve, reject) => {
+    if(_snapDb) { resolve(_snapDb); return; }
+    const req = indexedDB.open(SNAP_DB_NAME, SNAP_DB_VER);
+    req.onupgradeneeded = e => {
+      const db = e.target.result;
+      if(!db.objectStoreNames.contains(SNAP_STORE)) {
+        db.createObjectStore(SNAP_STORE, { keyPath: 'id' });
+      }
+    };
+    req.onsuccess = e => { _snapDb = e.target.result; resolve(_snapDb); };
+    req.onerror   = e => reject(e.target.error);
+  });
+}
+
+function _snapAdd(snap) {
+  return _openSnapDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(SNAP_STORE, 'readwrite');
+    tx.objectStore(SNAP_STORE).put(snap);
+    tx.oncomplete = () => resolve();
+    tx.onerror    = e => reject(e.target.error);
+  }));
+}
+
+function _snapListMeta() {
+  // 무거운 data 필드 제외하고 메타정보만 반환 (목록 표시용)
+  return _openSnapDB().then(db => new Promise((resolve, reject) => {
+    const tx  = db.transaction(SNAP_STORE, 'readonly');
+    const req = tx.objectStore(SNAP_STORE).openCursor(null, 'prev'); // 최신순
+    const list = [];
+    req.onsuccess = e => {
+      const c = e.target.result;
+      if(c) {
+        const v = c.value;
+        list.push({ id: v.id, time: v.time, trigger: v.trigger, user: v.user, dataLen: v.dataLen });
+        c.continue();
+      } else resolve(list);
+    };
+    req.onerror = e => reject(e.target.error);
+  }));
+}
+
+function _snapGet(id) {
+  return _openSnapDB().then(db => new Promise((resolve, reject) => {
+    const tx  = db.transaction(SNAP_STORE, 'readonly');
+    const req = tx.objectStore(SNAP_STORE).get(id);
+    req.onsuccess = e => resolve(e.target.result);
+    req.onerror   = e => reject(e.target.error);
+  }));
+}
+
+function _snapDel(id) {
+  return _openSnapDB().then(db => new Promise((resolve, reject) => {
+    const tx = db.transaction(SNAP_STORE, 'readwrite');
+    tx.objectStore(SNAP_STORE).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror    = e => reject(e.target.error);
+  }));
+}
+
+// 보관 정책 정리 (오래된 것 압축)
+async function _cleanupSnapshots() {
+  try {
+    const list = await _snapListMeta(); // 최신순
+    if(list.length === 0) return;
+    const now = Date.now();
+    const H24 = 24 * 3600 * 1000;
+    const D7  = 7  * H24;
+    const D60 = 60 * H24;
+    // 그룹화 키 만들기
+    const _dayKey = t => { const d = new Date(t); return d.getFullYear()+'-'+d.getMonth()+'-'+d.getDate(); };
+    const _weekKey = t => { const d = new Date(t); const oj = new Date(d.getFullYear(),0,1); return d.getFullYear()+'-W'+Math.floor((d - oj)/(7*H24)); };
+    const seenDay = new Set();
+    const seenWeek = new Set();
+    const toDelete = [];
+    for(const s of list) {
+      const age = now - s.id;
+      if(age <= H24) continue;                      // 24h 이내: 전부 보관
+      if(age > D60) { toDelete.push(s.id); continue; }   // 60일 초과: 삭제
+      if(age > D7) {
+        // 7d~60d: 주별 1개만
+        const k = _weekKey(s.id);
+        if(seenWeek.has(k)) toDelete.push(s.id);
+        else seenWeek.add(k);
+      } else {
+        // 24h~7d: 일별 1개만
+        const k = _dayKey(s.id);
+        if(seenDay.has(k)) toDelete.push(s.id);
+        else seenDay.add(k);
+      }
+    }
+    for(const id of toDelete) await _snapDel(id);
+    if(toDelete.length > 0) console.log('[스냅샷 정리] 오래된 ' + toDelete.length + '건 정리');
+  } catch(e) { console.warn('스냅샷 정리 실패:', e); }
+}
+
+// 정산 스냅샷 생성 (메인 진입점)
+async function createSettlementSnapshot(trigger) {
+  try {
+    if(!Array.isArray(settlementData) || settlementData.length === 0) return; // 빈 데이터는 저장 안 함 (사고 방지)
+    const now = Date.now();
+    // 디바운스: 5초 내 중복 호출 방지
+    if(trigger === 'change' && now - _lastSnapTime < 5000) return;
+    _lastSnapTime = now;
+    const user = (getCurrentUser() && (getCurrentUser().name || getCurrentUser().username)) || 'unknown';
+    const snap = {
+      id: now,
+      time: new Date(now).toISOString(),
+      trigger: trigger || 'manual',
+      user: user,
+      dataLen: settlementData.length,
+      data: JSON.parse(JSON.stringify(settlementData))
+    };
+    await _snapAdd(snap);
+    // 정리는 백그라운드
+    setTimeout(() => _cleanupSnapshots(), 100);
+  } catch(e) {
+    console.warn('스냅샷 생성 실패:', e);
+  }
+}
+
+// 30분 주기 자동 스냅샷 시작 (1회만)
+function startSettlementSnapshotTimer() {
+  if(_snapTimerStarted) return;
+  _snapTimerStarted = true;
+  setInterval(() => {
+    if(Array.isArray(settlementData) && settlementData.length > 0) {
+      createSettlementSnapshot('periodic_30m');
+    }
+  }, 30 * 60 * 1000);
+  console.log('[정산 안전망] 30분 주기 자동 스냅샷 가동');
+}
+
+// ─────────────────────────────────────────────
+// 시점 복구 UI (모달)
+// ─────────────────────────────────────────────
+let _selectedSnapId = null;
+
+function openSnapshotRestoreModal() {
+  // 모달 열 때 현재 시점도 즉시 1회 백업 (안전망)
+  createSettlementSnapshot('open_restore_modal').then(() => {
+    _renderSnapList();
+  });
+  const m = document.getElementById('snapshotRestoreModal');
+  if(m) { m.style.display = 'flex'; document.body.style.overflow = 'hidden'; }
+  _selectedSnapId = null;
+  document.getElementById('snapshotPreview').innerHTML = '← 왼쪽 목록에서 시점을 선택하면 미리보기가 표시됩니다.';
+  document.getElementById('snapshotActions').style.display = 'none';
+}
+
+function closeSnapshotRestoreModal(e) {
+  if(e && e.target && e.target.id && e.target.id !== 'snapshotRestoreModal') return;
+  const m = document.getElementById('snapshotRestoreModal');
+  if(m) { m.style.display = 'none'; document.body.style.overflow = ''; }
+  _selectedSnapId = null;
+}
+
+// ESC로 닫기
+document.addEventListener('keydown', e => {
+  if(e.key === 'Escape') {
+    const m = document.getElementById('snapshotRestoreModal');
+    if(m && m.style.display === 'flex') closeSnapshotRestoreModal();
+  }
+});
+
+function _formatSnapTime(iso) {
+  try {
+    const d = new Date(iso);
+    const Y = d.getFullYear(), M = String(d.getMonth()+1).padStart(2,'0'), D = String(d.getDate()).padStart(2,'0');
+    const h = String(d.getHours()).padStart(2,'0'), m = String(d.getMinutes()).padStart(2,'0');
+    return `${Y}-${M}-${D} ${h}:${m}`;
+  } catch(e) { return iso || ''; }
+}
+
+function _formatRelTime(t) {
+  const diff = Date.now() - t;
+  if(diff < 60000) return '방금';
+  if(diff < 3600000) return Math.floor(diff/60000) + '분 전';
+  if(diff < 86400000) return Math.floor(diff/3600000) + '시간 전';
+  return Math.floor(diff/86400000) + '일 전';
+}
+
+const _SNAP_TRIGGER_LABEL = {
+  'change': '🔧 변경 시',
+  'periodic_30m': '⏱ 30분 자동',
+  'open_restore_modal': '🔍 복구창 열림',
+  'pre_restore': '↩ 복구 직전',
+  'manual': '👆 수동',
+};
+
+async function _renderSnapList() {
+  const list = await _snapListMeta();
+  const el = document.getElementById('snapshotList');
+  const countEl = document.getElementById('snapshotListCount');
+  if(countEl) countEl.textContent = `스냅샷 목록 (${list.length}개)`;
+  if(!el) return;
+  if(list.length === 0) {
+    el.innerHTML = '<div style="padding:30px;text-align:center;color:#9ca3af;font-size:12px">저장된 스냅샷이 없습니다.<br>정산 데이터 변경 시 자동 백업됩니다.</div>';
+    return;
+  }
+  const curLen = (settlementData || []).length;
+  el.innerHTML = list.map(s => {
+    const sel = (s.id === _selectedSnapId);
+    const diff = s.dataLen - curLen;
+    const diffStr = diff === 0 ? '<span style="color:#94a3b8">동일</span>'
+      : diff > 0 ? `<span style="color:#0f766e;font-weight:600">+${diff}</span>`
+      : `<span style="color:#dc2626;font-weight:700">${diff}</span>`;
+    const label = _SNAP_TRIGGER_LABEL[s.trigger] || s.trigger;
+    return `<div onclick="_selectSnap(${s.id})" style="padding:9px 11px;margin-bottom:4px;border:1px solid ${sel?'#0f766e':'#e5e7eb'};background:${sel?'#f0fdfa':'#fff'};border-radius:6px;cursor:pointer;font-size:11px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:3px">
+        <span style="font-weight:700;color:#1e293b">${_formatSnapTime(s.time)}</span>
+        <span style="font-size:10px;color:#64748b">${_formatRelTime(s.id)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;color:#64748b">
+        <span>${label}</span>
+        <span><b style="color:#1e293b">${s.dataLen.toLocaleString()}건</b> (현재比 ${diffStr})</span>
+      </div>
+      ${s.user && s.user !== 'unknown' ? `<div style="font-size:10px;color:#94a3b8;margin-top:2px">${s.user}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function _selectSnap(id) {
+  _selectedSnapId = id;
+  _renderSnapList();
+  const snap = await _snapGet(id);
+  if(!snap) return;
+  const cur = settlementData || [];
+  // 키별 매핑 (date|dispCode)
+  const _key = d => (d.date||'') + '|' + (d.dispCode||'');
+  const curMap = new Map(); cur.forEach(d => { const k = _key(d); if(k !== '|') curMap.set(k, d); });
+  const snapMap = new Map(); snap.data.forEach(d => { const k = _key(d); if(k !== '|') snapMap.set(k, d); });
+  let onlyInCur = 0, onlyInSnap = 0, both = 0;
+  curMap.forEach((v,k) => { if(snapMap.has(k)) both++; else onlyInCur++; });
+  snapMap.forEach((v,k) => { if(!curMap.has(k)) onlyInSnap++; });
+  // 월별 분포
+  const monthCur = {}, monthSnap = {};
+  cur.forEach(d => { const m = (d.date||'').substring(0,7) || '?'; monthCur[m] = (monthCur[m]||0)+1; });
+  snap.data.forEach(d => { const m = (d.date||'').substring(0,7) || '?'; monthSnap[m] = (monthSnap[m]||0)+1; });
+  const allMonths = [...new Set([...Object.keys(monthCur), ...Object.keys(monthSnap)])].sort().reverse();
+  const monthRows = allMonths.map(m => {
+    const c = monthCur[m]||0, s = monthSnap[m]||0;
+    const d = s - c;
+    const dStr = d === 0 ? '-' : d > 0 ? `<b style="color:#0f766e">+${d}</b>` : `<b style="color:#dc2626">${d}</b>`;
+    return `<tr><td style="padding:3px 8px">${m}</td><td style="padding:3px 8px;text-align:right">${c.toLocaleString()}</td><td style="padding:3px 8px;text-align:right">${s.toLocaleString()}</td><td style="padding:3px 8px;text-align:right">${dStr}</td></tr>`;
+  }).join('');
+
+  const warn = onlyInCur > 0
+    ? `<div style="background:#fef2f2;border-left:3px solid #dc2626;padding:8px 10px;margin-bottom:10px;font-size:11px;color:#7f1d1d"><b>⚠ 주의:</b> 현재만 있는 데이터 <b>${onlyInCur}건</b>이 복구 시 사라집니다. 복구 직전 자동 백업되니 다시 되돌릴 수는 있습니다.</div>`
+    : '';
+
+  document.getElementById('snapshotPreview').innerHTML = `
+    <div style="margin-bottom:10px"><b>${_formatSnapTime(snap.time)}</b> (${_formatRelTime(snap.id)}) — ${_SNAP_TRIGGER_LABEL[snap.trigger]||snap.trigger}</div>
+    ${warn}
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+      <div style="background:#f0fdfa;padding:9px;border-radius:6px;text-align:center"><div style="font-size:10px;color:#64748b">선택 시점</div><div style="font-size:18px;font-weight:700;color:#0f766e">${snap.data.length.toLocaleString()}</div></div>
+      <div style="background:#f8fafc;padding:9px;border-radius:6px;text-align:center"><div style="font-size:10px;color:#64748b">현재</div><div style="font-size:18px;font-weight:700;color:#1e293b">${cur.length.toLocaleString()}</div></div>
+      <div style="background:#fef3c7;padding:9px;border-radius:6px;text-align:center"><div style="font-size:10px;color:#64748b">차이</div><div style="font-size:18px;font-weight:700;color:${snap.data.length-cur.length>=0?'#0f766e':'#dc2626'}">${snap.data.length-cur.length>=0?'+':''}${(snap.data.length-cur.length).toLocaleString()}</div></div>
+    </div>
+    <div style="font-size:11px;color:#475569;margin-bottom:8px"><b>키 비교 (date+dispCode):</b></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:14px;font-size:11px">
+      <div style="background:#f8fafc;padding:7px;border-radius:4px;text-align:center">양쪽 모두 <b>${both}</b></div>
+      <div style="background:#fef2f2;padding:7px;border-radius:4px;text-align:center;color:#7f1d1d">현재만 <b>${onlyInCur}</b></div>
+      <div style="background:#f0fdf4;padding:7px;border-radius:4px;text-align:center;color:#14532d">시점에만 <b>${onlyInSnap}</b></div>
+    </div>
+    <div style="font-size:11px;color:#475569;margin-bottom:6px"><b>월별 분포:</b></div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px;background:#fff">
+      <thead style="background:#f1f5f9"><tr><th style="padding:5px 8px;text-align:left">월</th><th style="padding:5px 8px;text-align:right">현재</th><th style="padding:5px 8px;text-align:right">선택 시점</th><th style="padding:5px 8px;text-align:right">차이</th></tr></thead>
+      <tbody>${monthRows}</tbody>
+    </table>
+  `;
+  document.getElementById('snapshotActions').style.display = 'block';
+}
+
+async function manualCreateSnapshot() {
+  if(!Array.isArray(settlementData) || settlementData.length === 0) {
+    showToast('⚠ 정산 데이터가 없어 백업할 내용이 없습니다');
+    return;
+  }
+  // 디바운스 우회: _lastSnapTime 리셋
+  _lastSnapTime = 0;
+  await createSettlementSnapshot('manual');
+  showToast('✅ 현재 시점 백업 완료');
+  _renderSnapList();
+}
+
+async function confirmRestoreSnapshot() {
+  if(!_selectedSnapId) return;
+  const snap = await _snapGet(_selectedSnapId);
+  if(!snap) { showToast('❌ 스냅샷을 찾을 수 없습니다'); return; }
+  const curLen = (settlementData||[]).length;
+  const msg = `현재 정산 데이터(${curLen.toLocaleString()}건)를\n${_formatSnapTime(snap.time)} 시점(${snap.data.length.toLocaleString()}건)으로 복구합니다.\n\n복구 직전 [pre_restore] 스냅샷으로 자동 백업되어 다시 되돌릴 수 있습니다.\n\n진행하시겠습니까?`;
+  if(!confirm(msg)) return;
+  try {
+    // 1) 복구 직전 자동 백업
+    _lastSnapTime = 0;
+    await createSettlementSnapshot('pre_restore');
+    // 2) 데이터 교체 (deep copy — 스냅샷 원본 보호)
+    settlementData = JSON.parse(JSON.stringify(snap.data));
+    // 3) 로컬 저장 + 시트 push (skipMerge=true: 머지로 인한 부활 방지)
+    saveSettlementLocal({ skipMerge: true });
+    // 4) UI 갱신
+    if(typeof renderSettlement === 'function') renderSettlement();
+    showToast('✅ 복구 완료 — ' + snap.data.length.toLocaleString() + '건');
+    closeSnapshotRestoreModal();
+  } catch(e) {
+    console.error(e);
+    showToast('❌ 복구 실패: ' + e.message);
+  }
 }
 
 // 배차 이력 저장 (IndexedDB 메인 + localStorage 90일 캐시)
@@ -10240,6 +10594,8 @@ function saveSettlementLocal(opts) {
   }
   // 시트 push (skipPush=true면 자동 pull로 받은 데이터 → 무한 루프 방지)
   if(!skipPush) backupSettlementToSheet();
+  // 정산 안전망: 변경 시 시점 스냅샷 (디바운스 5초 + 백그라운드)
+  try { createSettlementSnapshot('change'); } catch(e) {}
 }
 
 // ─────────────────────────────────────────────
@@ -14193,6 +14549,8 @@ function updateStlMonthDisplay() {
 
 // 렌더링
 function renderSettlement() {
+  // 정산 안전망: 30분 주기 자동 스냅샷 가동 (정산 탭 첫 진입 시 1회만)
+  try { startSettlementSnapshotTimer(); } catch(e) {}
   // 스크롤 위치 보존
   const scrollY = window.scrollY || document.documentElement.scrollTop;
   
