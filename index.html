@@ -1552,7 +1552,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         </div>
         <span style="margin-left:auto;display:flex;gap:6px">
           <button class="btn btn-sm" onclick="showReceiptSnapshotList()" title="시점별 자동 스냅샷에서 복원 (최근 7일 보관)" style="background:#fef3c7;border:1px solid #fbbf24;color:#92400e;padding:6px 10px;font-size:11px;cursor:pointer;font-weight:600">🔙 시점 복원</button>
-          <button class="btn btn-sm" onclick="manualSyncReceiptCheck()" title="다른 PC에서 입력한 데이터를 가져와서 통합 + 시트에 다시 저장 (양방향 강제 동기화)" style="background:#dbeafe;border:1px solid #60a5fa;color:#1e40af;padding:6px 10px;font-size:11px;cursor:pointer;font-weight:600">🔄 다른 PC 동기화</button>
+          <button class="btn btn-sm" onclick="manualSyncReceiptCheck()" title="다른 PC가 체크한 내용을 가져와서 통합. 본 PC가 체크한 내용은 자동으로 시트에 즉시 저장됨 (실시간 pull은 제거됨 — 다른 PC 변경 받으려면 이 버튼)" style="background:#0f766e;border:1px solid #0f766e;color:white;padding:7px 14px;font-size:12px;cursor:pointer;font-weight:700;box-shadow:0 1px 3px rgba(15,118,110,0.3)">🔄 다른 PC 통합</button>
           <button class="btn btn-sm" onclick="cleanupManualReceipts()" title="현재 거래처 + 표시 기간의 (수동) 항목을 한 번에 정리" style="background:#fff7ed;border:1px solid #fdba74;color:#9a3412;padding:6px 10px;font-size:11px;cursor:pointer">🧹 (수동) 정리</button>
           <button class="btn btn-sm btn-primary" onclick="openAddReceiptDialog()" style="padding:6px 12px;font-size:12px" title="배차에 없는 옛 인수증 수동 등록용">+ 수동 추가</button>
           <button class="btn btn-sm" onclick="exportReceiptCheck()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:6px 10px;font-size:11px" title="전체요약 + 거래처별(LNL/덕평/여주) + 미회수 시트로 엑셀 다운로드">📥 엑셀 출력</button>
@@ -5029,7 +5029,16 @@ function switchTab(name) {
   if(name === 'stats') initStats();
   if(name === 'rateRef') initRateRef();
   if(name === 'clpFixed') { try { renderClpFixedRates(); } catch(e) {} }
-  if(name === 'receipt') { try { renderReceiptCheck(); } catch(e) {} }
+  if(name === 'receipt') {
+    try { renderReceiptCheck(); } catch(e) {}
+    // 탭 진입 시 1회 자동 pull (실시간 폴링 대체 — 백그라운드, 토스트 X)
+    // 완료 후 재렌더로 다른 PC 체크 반영
+    if(typeof pullReceiptCheckFromSheet === 'function') {
+      pullReceiptCheckFromSheet().then(() => {
+        try { renderReceiptCheck(); } catch(e) {}
+      }).catch(() => { /* silent */ });
+    }
+  }
   if(name === 'fixedReport') { try { initFixedReport(); } catch(e) {} }
   if(name === 'drivers') {
     // 로컬이 비어있으면 시트에서 자동 가져오기 (정산탭과 동일 패턴)
@@ -16070,10 +16079,8 @@ async function autoSync() {
     document.getElementById('lastSyncTime').textContent = '동기화: ' + String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
     // 관리자 다운로드 로그 폴링
     pollDownloadLogs();
-    // 인수증 체크 시트 pull (다른 PC 변경 감지)
-    if(typeof pullReceiptCheckFromSheet === 'function') {
-      try { await pullReceiptCheckFromSheet(); } catch(re) { /* silent */ }
-    }
+    // ※ 인수증 체크: 실시간 pull 제거 (race condition 방지)
+    // → 인수증 탭 진입 시 1회 자동 pull + [🔄 통합] 버튼 수동 동기화로 대체
     // 정산 시트 pull (다른 PC 변경 감지) — race condition 보호
     if(typeof pullSettlementFromSheet === 'function') {
       try { await pullSettlementFromSheet(); } catch(se) { /* silent */ }
