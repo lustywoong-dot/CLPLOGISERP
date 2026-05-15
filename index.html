@@ -6030,9 +6030,9 @@ function checkCodeDuplicate() {
   const existing = code ? dispatchLog.find(r => r.code === code && r.id !== selectedRecordId) : null;
 
   if(existing) {
-    // 기존 건 존재 → 배송일 표시 + 자동 별건 저장 안내
+    // 기존 건 존재 → 배송일 표시 + 자동 별건 저장 안내 (UX 명확화)
     const existDate = sanitizeDate(existing.deliveryDate || existing.date || '') || '(날짜없음)';
-    errEl.innerHTML = 'ℹ 같은 코드 기존 건 있음 (배송일: <b>' + existDate + '</b>) — <span style="color:#059669;font-weight:700">배송일 다르면 자동으로 별건 저장됨</span>. <button onclick="loadRecord(' + existing.id + ')" style="background:#3b82f6;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:10px;cursor:pointer;margin-left:4px">📋 기존 건 수정</button>';
+    errEl.innerHTML = 'ℹ <b>[' + existDate + ']</b>에 같은 코드 있음 — <span style="color:#059669;font-weight:700">다른 배송일로 입력하면 신규 별건 저장 ✅</span> <span style="color:#dc2626;font-weight:700">(아래 버튼은 [' + existDate + '] 건을 직접 수정 — 신규 저장 아님!)</span> <button onclick="loadRecord(' + existing.id + ')" style="background:#3b82f6;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:10px;cursor:pointer;margin-left:4px">📋 [' + existDate + '] 건 열기</button>';
     errEl.style.display = 'block';
     errEl.style.color = '#92400e';
     inputEl.style.borderColor = '#d97706';
@@ -16545,6 +16545,24 @@ async function saveDispatch(closeAfter) {
     // 수정 모드: 기존 레코드 업데이트
     const existing = dispatchLog.find(r => r.id === selectedRecordId);
     if(existing) {
+      // 🛡 덮어쓰기 사고 방지: 수정 모드에서 배송일이 바뀌면 명시적 confirm
+      // (같은 코드 며칠 연속 사용 시 직원이 [기존 건 수정] 무심코 클릭 → 다른 날짜로 옮겨가는 사고 차단)
+      const oldDD = sanitizeDate(existing.deliveryDate || existing.date || '');
+      const newDD = sanitizeDate(records[0].deliveryDate || records[0].date || '');
+      if(oldDD && newDD && oldDD !== newDD) {
+        const conflict = dispatchLog.find(r =>
+          r.id !== existing.id &&
+          r.code === existing.code &&
+          sanitizeDate(r.deliveryDate||r.date||'') === newDD
+        );
+        const msg = conflict
+          ? `⚠ 같은 코드 [${existing.code}]가 ${newDD}에 이미 등록되어 있습니다.\n\n현재 수정 중인 건 (배송일: ${oldDD})을 ${newDD}로 변경하면 두 건이 같은 날짜로 겹칠 수 있습니다.\n\n[확인]: 그래도 변경\n[취소]: 새 배차로 등록하려면 [+ 신규 배차] 버튼 사용`
+          : `⚠ 현재 수정 중인 배차의 배송일이 변경됩니다.\n\n  ${oldDD} → ${newDD}\n\n원래 ${oldDD}의 데이터가 사라지고 ${newDD}로 이동합니다.\n새 ${newDD} 건을 추가하고 ${oldDD} 건은 그대로 두려면 [취소] 후 [+ 신규 배차] 버튼 사용.\n\n진행하시겠습니까?`;
+        if(!confirm(msg)) {
+          showToast('취소됨 — 기존 ' + oldDD + ' 데이터 보존');
+          return;
+        }
+      }
       // 이전 코드 저장 (정산 동기화용)
       const oldCode = existing.code;
       const newData = records[0];
