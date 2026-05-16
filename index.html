@@ -11346,6 +11346,18 @@ async function manualSyncReceiptCheck() {
     return;
   }
   if(typeof showToast === 'function') showToast('🔄 다른 PC 데이터 동기화 중...');
+  // 동기화 전 본 PC 데이터 한번 정규화 (이전 pull로 잘못 들어간 'Sat May 16 ...' 같은 date 복구)
+  // 정규화로 키가 통일되면 두 PC 간 머지가 정상적으로 동작
+  let _fixed = 0;
+  receiptCheckData.forEach(c => {
+    if(!c) return;
+    if(c.date && typeof sanitizeDate === 'function') {
+      const f = sanitizeDate(c.date);
+      if(f && f !== c.date) { c.date = f; _fixed++; }
+    }
+    if(c.code != null && typeof c.code !== 'string') c.code = String(c.code);
+  });
+  if(_fixed > 0) console.log(`[인수증 동기화] 손상 date ${_fixed}건 정규화`);
   const before = receiptCheckData.length;
   // 1) 시트에서 가져와 머지
   _receiptLastPullHash = ''; // 강제 pull
@@ -11377,6 +11389,13 @@ async function pullReceiptCheckFromSheet() {
     const hash = _calcReceiptHash(data.records);
     if(hash === _receiptLastPullHash) return false;
     _receiptLastPullHash = hash;
+
+    // 시트의 Date 셀 자동변환으로 'Sat May 16 2026 ...' 형태로 오는 경우 정규화
+    // (정규화 안 하면 receiptCheckData.date 형식이 'YYYY-MM-DD'와 달라 _findReceiptCheck 매칭 실패 → 체크가 빈 칸으로 보임)
+    data.records.forEach(r => {
+      if(r && r.date && typeof sanitizeDate === 'function') r.date = sanitizeDate(r.date);
+      if(r && r.code != null && typeof r.code !== 'string') r.code = String(r.code);
+    });
 
     // 머지: 시트의 데이터 + 본 PC의 미push분 (updatedAt 기준 최신 우선)
     const localMap = new Map();
