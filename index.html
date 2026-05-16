@@ -11341,11 +11341,13 @@ function _debouncedBackupReceiptCheck() {
 
 // 수동 강제 동기화 — 다른 PC의 데이터를 가져와서 통합 후 시트로 다시 올림
 async function manualSyncReceiptCheck() {
+  // ─── 버전 표지: 새 코드 실행 검증용 (옛 코드면 이 메시지 안 뜸) ───
+  console.log('%c🆕 [v-df5bce5] manualSyncReceiptCheck 호출됨', 'color:#dc2626;font-weight:bold;font-size:14px');
   if(typeof isConnected !== 'function' || !isConnected()) {
     if(typeof showToast === 'function') showToast('⚠ 시트 연결 필요 (설정 탭 확인)');
     return;
   }
-  if(typeof showToast === 'function') showToast('🔄 다른 PC 데이터 동기화 중...');
+  if(typeof showToast === 'function') showToast('🔄 [v2] 다른 PC 데이터 동기화 중...');
   // 동기화 전 본 PC 데이터 한번 정규화 (이전 pull로 잘못 들어간 'Sat May 16 ...' 같은 date 복구)
   // 정규화로 키가 통일되면 두 PC 간 머지가 정상적으로 동작
   let _fixed = 0;
