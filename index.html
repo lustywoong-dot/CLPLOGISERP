@@ -2185,6 +2185,24 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         </div>
       </div>
     </div>
+    <!-- 유실 감지 경보 모달 (정산 안전망 2단계) -->
+    <div id="lossAlertModal" style="display:none;position:fixed;inset:0;background:rgba(127,29,29,0.55);z-index:10003;align-items:center;justify-content:center;padding:30px">
+      <div style="position:relative;width:580px;max-width:96%;background:white;border-radius:10px;display:flex;flex-direction:column;overflow:hidden;border:3px solid #dc2626;box-shadow:0 20px 50px rgba(127,29,29,0.4)" onclick="event.stopPropagation()">
+        <div style="padding:14px 20px;background:#dc2626;color:white;display:flex;align-items:center;gap:10px">
+          <span style="font-size:22px">🚨</span>
+          <div>
+            <div style="font-size:16px;font-weight:700">정산 데이터 유실 감지</div>
+            <div style="font-size:11px;opacity:0.92;margin-top:2px">직전 안정 시점 대비 비정상적 감소</div>
+          </div>
+        </div>
+        <div id="lossAlertBody" style="padding:18px 22px;max-height:60vh;overflow-y:auto"></div>
+        <div style="padding:12px 18px;border-top:1px solid #fecaca;background:#fef2f2;display:flex;justify-content:flex-end;gap:8px">
+          <button onclick="dismissLossAlert(true)" style="background:#fff;color:#7f1d1d;border:1px solid #fca5a5;padding:8px 14px;border-radius:6px;font-size:12px;cursor:pointer" title="이번 세션 동안 다시 경고하지 않음 (새로고침 시 재경고)">이번 세션은 무시</button>
+          <button onclick="dismissLossAlert(false)" style="background:#fff;color:#374151;border:1px solid #e5e7eb;padding:8px 14px;border-radius:6px;font-size:12px;cursor:pointer">닫기</button>
+          <button onclick="openRestoreFromLossAlert()" style="background:#dc2626;color:white;border:none;padding:8px 16px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer">🕐 시점 복구 열기</button>
+        </div>
+      </div>
+    </div>
     <div class="card">
       <div class="card-title"><span class="icon">📑</span> 기사 정산</div>
       
@@ -4415,6 +4433,93 @@ async function confirmRestoreSnapshot() {
   }
 }
 
+// ─────────────────────────────────────────────
+// 유실 감지 경보 (정산 안전망 2단계)
+// 정산 탭 진입 시 24h 이내 안정 스냅샷 대비 큰 감소를 감지하여 빨강 모달로 경고
+// ─────────────────────────────────────────────
+const _LOSS_PCT_THRESHOLD = 0.10;                  // 10% 이상 감소
+const _LOSS_ABS_THRESHOLD = 20;                    // 또는 20건 이상 감소
+const _LOSS_WINDOW_MS     = 24 * 60 * 60 * 1000;   // 비교 윈도우 24시간
+const _LOSS_STABLE_TRIGGERS = new Set(['change', 'periodic_30m', 'manual']); // 임시 스냅샷(pre_restore, open_restore_modal) 제외
+
+async function checkSettlementDataLoss() {
+  try {
+    const curLen = Array.isArray(settlementData) ? settlementData.length : 0;
+    if(curLen === 0) return;                                                  // 로딩 전/빈 데이터: 오탐 방지
+    if(sessionStorage.getItem('clp_loss_alert_dismissed') === '1') return;     // 이번 세션 이미 무시됨
+    const list = await _snapListMeta();
+    if(!list || list.length === 0) return;                                    // 스냅샷 없음 (첫 사용자)
+    const now = Date.now();
+    const stable = list.find(s => _LOSS_STABLE_TRIGGERS.has(s.trigger) && (now - s.id) <= _LOSS_WINDOW_MS);
+    if(!stable) return;
+    const prevLen = stable.dataLen || 0;
+    if(prevLen <= 0) return;
+    const drop = prevLen - curLen;
+    if(drop <= 0) return;                                                     // 증가/동일은 정상
+    const pct = drop / prevLen;
+    const hitPct = pct >= _LOSS_PCT_THRESHOLD;
+    const hitAbs = drop >= _LOSS_ABS_THRESHOLD;
+    if(!hitPct && !hitAbs) return;
+    _openLossAlertModal({
+      prevLen, curLen, drop,
+      pct: Math.round(pct * 1000) / 10,
+      snapTime: stable.time,
+      snapTrigger: stable.trigger
+    });
+  } catch(e) {
+    console.warn('[유실 감지] 체크 오류:', e);
+  }
+}
+
+function _openLossAlertModal(info) {
+  const m = document.getElementById('lossAlertModal');
+  if(!m) return;
+  const triggerLabel = _SNAP_TRIGGER_LABEL[info.snapTrigger] || info.snapTrigger;
+  const bodyEl = document.getElementById('lossAlertBody');
+  if(bodyEl) {
+    bodyEl.innerHTML = `
+      <div style="font-size:13px;color:#7f1d1d;margin-bottom:14px;line-height:1.6">
+        <b>정산 데이터가 비정상적으로 감소했습니다.</b><br>
+        직원 실수, 동기화 오류, 시트 누락 등 가능성이 있습니다.<br>
+        <b style="color:#dc2626">즉시 확인이 필요합니다.</b>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">
+        <div style="background:#fff;border:1px solid #fecaca;padding:10px;border-radius:6px;text-align:center">
+          <div style="font-size:10px;color:#7f1d1d">직전 안정 시점</div>
+          <div style="font-size:20px;font-weight:700;color:#0f766e">${info.prevLen.toLocaleString()}</div>
+          <div style="font-size:10px;color:#64748b">${_formatSnapTime(info.snapTime)}<br>${triggerLabel}</div>
+        </div>
+        <div style="background:#fff;border:1px solid #fecaca;padding:10px;border-radius:6px;text-align:center">
+          <div style="font-size:10px;color:#7f1d1d">현재</div>
+          <div style="font-size:20px;font-weight:700;color:#1e293b">${info.curLen.toLocaleString()}</div>
+          <div style="font-size:10px;color:#64748b">방금</div>
+        </div>
+        <div style="background:#fef2f2;border:2px solid #dc2626;padding:10px;border-radius:6px;text-align:center">
+          <div style="font-size:10px;color:#7f1d1d">감소</div>
+          <div style="font-size:20px;font-weight:700;color:#dc2626">-${info.drop.toLocaleString()}</div>
+          <div style="font-size:10px;color:#dc2626">-${info.pct}%</div>
+        </div>
+      </div>
+      <div style="background:#fef3c7;border-left:3px solid #f59e0b;padding:9px 11px;font-size:11px;color:#78350f">
+        <b>💡 권장:</b> [시점 복구] 버튼으로 직전 안정 상태로 되돌릴 수 있어요. 복구 직전에 현재 상태가 자동 백업되니 안전합니다.
+      </div>
+    `;
+  }
+  m.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function dismissLossAlert(remember) {
+  const m = document.getElementById('lossAlertModal');
+  if(m) { m.style.display = 'none'; document.body.style.overflow = ''; }
+  if(remember) sessionStorage.setItem('clp_loss_alert_dismissed', '1');
+}
+
+function openRestoreFromLossAlert() {
+  dismissLossAlert(false);
+  if(typeof openSnapshotRestoreModal === 'function') openSnapshotRestoreModal();
+}
+
 // 배차 이력 저장 (IndexedDB 메인 + localStorage 90일 캐시)
 async function saveDispatchHistory(opts) {
   const skipMerge = !!(opts && opts.skipMerge);
@@ -5037,6 +5142,12 @@ function switchTab(name) {
       pullReceiptCheckFromSheet().then(() => {
         try { renderReceiptCheck(); } catch(e) {}
       }).catch(() => { /* silent */ });
+    }
+  }
+  if(name === 'settlement') {
+    // 유실 감지: 24h 이내 안정 스냅샷 대비 큰 감소 시 빨강 경보 (정산 안전망 2단계)
+    if(typeof checkSettlementDataLoss === 'function') {
+      setTimeout(() => { checkSettlementDataLoss().catch(() => {}); }, 300);
     }
   }
   if(name === 'fixedReport') { try { initFixedReport(); } catch(e) {} }
