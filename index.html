@@ -11173,6 +11173,35 @@ function showSnapshotList() {
   }
 }
 
+// ─────────────────────────────────────────────
+// 시트 Lock 자동 재시도 wrapper (정산 안전망 3단계)
+// Apps Script LockService가 적용된 경우 locked:true 응답을 받을 수 있음
+// 받으면 짧은 지연 후 자동 1회 재시도. Lock 미적용 환경에서도 안전 (그냥 통과).
+// ─────────────────────────────────────────────
+async function _postSheetWithLockRetry(url, payload, opts) {
+  opts = opts || {};
+  const maxRetries = opts.maxRetries == null ? 1 : opts.maxRetries;
+  const retryDelay = opts.retryDelay || 2500;
+  let lastText = '';
+  let lastResult = null;
+  for(let attempt = 0; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify(payload)
+    });
+    lastText = await res.text();
+    try { lastResult = JSON.parse(lastText); } catch(_) { lastResult = null; }
+    if(!lastResult || !lastResult.locked) return { result: lastResult, text: lastText };
+    if(attempt < maxRetries) {
+      console.log(`🔒 시트 Lock 대기 (다른 PC 작업 중) — ${attempt+1}/${maxRetries} 재시도`);
+      if(typeof opts.onLocked === 'function') opts.onLocked(attempt + 1);
+      await new Promise(r => setTimeout(r, retryDelay));
+    }
+  }
+  return { result: lastResult, text: lastText };
+}
+
 // 정산 데이터 → 구글시트 백업 (자동)
 let _stlBackupTimer = null;
 function backupSettlementToSheet() {
@@ -11183,23 +11212,20 @@ function backupSettlementToSheet() {
   clearTimeout(_stlBackupTimer);
   _stlBackupTimer = setTimeout(async () => {
     try {
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: 'saveSettlement', records: settlementData })
-      });
-      const text = await res.text();
-      try {
-        const result = JSON.parse(text);
-        if(result.success) {
-          console.log('✅ 정산 백업 완료:', settlementData.length + '건');
-          const connEl = document.getElementById('connStatus');
-          if(connEl) connEl.title = '정산 백업: ' + new Date().toLocaleTimeString('ko-KR');
-        } else {
-          console.warn('정산 백업 실패:', result.message);
-        }
-      } catch(pe) {
-        console.warn('정산 백업 응답 파싱 오류:', text.substring(0,100));
+      // Lock 대기 시 자동 재시도 (자동 백업은 조용히 — 다음 변경 시 어차피 재시도되니 maxRetries=1)
+      const { result, text } = await _postSheetWithLockRetry(url, {
+        action: 'saveSettlement', records: settlementData
+      }, { maxRetries: 1, retryDelay: 2500 });
+      if(result && result.success) {
+        console.log('✅ 정산 백업 완료:', settlementData.length + '건');
+        const connEl = document.getElementById('connStatus');
+        if(connEl) connEl.title = '정산 백업: ' + new Date().toLocaleTimeString('ko-KR');
+      } else if(result && result.locked) {
+        console.warn('🔒 정산 백업 Lock 대기 후 실패 — 다음 변경 시 재시도');
+      } else if(result) {
+        console.warn('정산 백업 실패:', result.message);
+      } else {
+        console.warn('정산 백업 응답 파싱 오류:', (text||'').substring(0,100));
       }
     } catch(e) {
       console.warn('정산 백업 네트워크 오류:', e.message);
@@ -11416,18 +11442,19 @@ async function manualBackupSettlement() {
   
   showToast('💾 구글시트 백업 중... (' + settlementData.length + '건)');
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'saveSettlement', records: settlementData })
+    const { result, text } = await _postSheetWithLockRetry(url, {
+      action: 'saveSettlement', records: settlementData
+    }, {
+      maxRetries: 2, retryDelay: 3000,
+      onLocked: (n) => showToast(`🔒 다른 PC 작업 중 — 자동 재시도 ${n}/2`)
     });
-    const text = await res.text();
     console.log('수동 백업 응답:', text);
-    const result = JSON.parse(text);
-    if(result.success) {
+    if(result && result.success) {
       showToast('✅ 구글시트 백업 완료! ' + settlementData.length + '건 저장됨');
+    } else if(result && result.locked) {
+      showToast('⚠ 시트 Lock 해제 안 됨 — 30초 후 다시 시도해주세요');
     } else {
-      showToast('❌ 백업 실패: ' + (result.message||'알 수 없는 오류'));
+      showToast('❌ 백업 실패: ' + ((result && result.message)||'알 수 없는 오류'));
     }
   } catch(e) {
     console.error('수동 백업 오류:', e);
@@ -11448,18 +11475,20 @@ async function saveSettlementBackupToSheet() {
   
   showToast('📸 정산백업 탭에 저장 중...');
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ action: 'saveSettlementBackup', records: target })
+    const { result } = await _postSheetWithLockRetry(url, {
+      action: 'saveSettlementBackup', records: target
+    }, {
+      maxRetries: 2, retryDelay: 3000,
+      onLocked: (n) => showToast(`🔒 다른 PC 작업 중 — 자동 재시도 ${n}/2`)
     });
-    const result = JSON.parse(await res.text());
-    if(result.success) {
+    if(result && result.success) {
       const now = new Date();
       const timeStr = String(now.getHours()).padStart(2,'0') + ':' + String(now.getMinutes()).padStart(2,'0');
       showToast(`✅ 백업 완료! ${target.length}건 → [정산백업] 탭 저장 (${timeStr})`);
+    } else if(result && result.locked) {
+      showToast('⚠ 시트 Lock 해제 안 됨 — 30초 후 다시 시도해주세요');
     } else {
-      showToast('❌ 백업 실패: ' + (result.message||'오류'));
+      showToast('❌ 백업 실패: ' + ((result && result.message)||'오류'));
     }
   } catch(e) {
     showToast('❌ 백업 실패: ' + e.message);
