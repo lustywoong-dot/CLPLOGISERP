@@ -11392,10 +11392,28 @@ async function pullReceiptCheckFromSheet() {
 
     // 시트의 Date 셀 자동변환으로 'Sat May 16 2026 ...' 형태로 오는 경우 정규화
     // (정규화 안 하면 receiptCheckData.date 형식이 'YYYY-MM-DD'와 달라 _findReceiptCheck 매칭 실패 → 체크가 빈 칸으로 보임)
+    // 디버그: 시트에서 받은 첫 row의 raw 형식 출력 (보스 콘솔 확인용)
+    if(data.records.length > 0) {
+      const sample = data.records[0];
+      console.log('[인수증 pull] 시트에서 받은 첫 row 원본:', {
+        client: sample.client,
+        date: sample.date,
+        date_type: typeof sample.date,
+        code: sample.code,
+        code_type: typeof sample.code,
+        received: sample.received,
+        scanned: sample.scanned
+      });
+    }
+    let _normDate = 0, _normCode = 0;
     data.records.forEach(r => {
-      if(r && r.date && typeof sanitizeDate === 'function') r.date = sanitizeDate(r.date);
-      if(r && r.code != null && typeof r.code !== 'string') r.code = String(r.code);
+      if(r && r.date && typeof sanitizeDate === 'function') {
+        const fixed = sanitizeDate(r.date);
+        if(fixed !== r.date) { r.date = fixed; _normDate++; }
+      }
+      if(r && r.code != null && typeof r.code !== 'string') { r.code = String(r.code); _normCode++; }
     });
+    console.log(`[인수증 pull] 정규화: date ${_normDate}건 / code ${_normCode}건 / 총 ${data.records.length}건`);
 
     // 머지: 시트의 데이터 + 본 PC의 미push분 (updatedAt 기준 최신 우선)
     const localMap = new Map();
@@ -12720,12 +12738,24 @@ function _normalizeReceiptCode(code) {
 
 // receiptCheckData lookup — 메인 코드 정확 매치 우선, sub-code fallback (옛 데이터 호환)
 function _findReceiptCheck(client, date, mainCode) {
+  // 1차: 그대로 비교 (빠른 경로)
   let r = receiptCheckData.find(x => x.client === client && x.date === date && x.code === mainCode);
   if(r) return r;
-  return receiptCheckData.find(x =>
+  // 2차: 코드 정규화 비교
+  r = receiptCheckData.find(x =>
     x.client === client && x.date === date &&
     typeof x.code === 'string' && _normalizeReceiptCode(x.code) === mainCode
-  ) || null;
+  );
+  if(r) return r;
+  // 3차: date까지 정규화 비교 — 시트의 Date 셀 자동변환으로 'Sat May 16 ...' 같은 형식이 receiptCheckData에 들어왔을 때 매칭 보장
+  const _sd = (v) => (typeof sanitizeDate === 'function' && v) ? sanitizeDate(v) : v;
+  const targetDate = _sd(date);
+  return receiptCheckData.find(x => {
+    if(x.client !== client) return false;
+    if(_sd(x.date) !== targetDate) return false;
+    const xCode = typeof x.code === 'string' ? x.code : (x.code != null ? String(x.code) : '');
+    return xCode === mainCode || _normalizeReceiptCode(xCode) === mainCode;
+  }) || null;
 }
 
 // 기사정산(settlementData)에서 거래처별 코드 순회 (sub-code → 메인 코드 통합, 중복 제거)
