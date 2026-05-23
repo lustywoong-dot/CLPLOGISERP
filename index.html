@@ -12101,6 +12101,41 @@ function _buildReceiptImgKey(client, date, code) {
   return (client||'') + '|' + (date||'') + '|' + (code||'');
 }
 
+// 이미지 첨부 시 클라이언트 사이드 리사이즈/압축
+// 휴대폰 원본(5~13MB) → ~300KB. IndexedDB 용량 초과 방지.
+async function _resizeImageFileToDataURL(file, maxDim, quality) {
+  if(typeof maxDim !== 'number') maxDim = 1600;
+  if(typeof quality !== 'number') quality = 0.75;
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.naturalWidth || img.width;
+        let h = img.naturalHeight || img.height;
+        if(w > maxDim || h > maxDim) {
+          const ratio = Math.min(maxDim / w, maxDim / h);
+          w = Math.max(1, Math.round(w * ratio));
+          h = Math.max(1, Math.round(h * ratio));
+        }
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          // PNG는 압축률 낮으므로 JPEG로 강제. 단 알파 채널 손실 OK (인수증 사진).
+          const out = canvas.toDataURL('image/jpeg', quality);
+          resolve(out);
+        } catch(e) { reject(e); }
+      };
+      img.onerror = () => reject(new Error('이미지 디코딩 실패'));
+      img.src = ev.target.result;
+    };
+    reader.onerror = () => reject(new Error('파일 읽기 실패'));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function _loadReceiptImgs(key) {
   try {
     const data = await idbGet('receiptImgs');
@@ -12109,6 +12144,7 @@ async function _loadReceiptImgs(key) {
   } catch(e) { return []; }
 }
 
+// 저장 성공 여부를 반환 — 호출부가 실패 시 롤백/알림 처리
 async function _saveReceiptImgs(key, imgs) {
   try {
     const existing = await idbGet('receiptImgs');
@@ -12117,7 +12153,11 @@ async function _saveReceiptImgs(key, imgs) {
     else delete all[key];
     await idbSet('receiptImgs', JSON.stringify(all));
     _receiptImgCounts[key] = imgs ? imgs.length : 0;
-  } catch(e) { console.warn('인수증 이미지 저장 실패:', e); }
+    return { ok: true };
+  } catch(e) {
+    console.warn('인수증 이미지 저장 실패:', e);
+    return { ok: false, error: e };
+  }
 }
 
 async function _refreshReceiptImgCounts() {
@@ -12178,22 +12218,35 @@ async function addReceiptImagesFromInput(input) {
   if(!input.files || input.files.length === 0) return;
   if(!_currentReceiptImgCtx) return;
   const key = _buildReceiptImgKey(_currentReceiptImgCtx.client, _currentReceiptImgCtx.date, _currentReceiptImgCtx.code);
-  let added = 0;
+  const newImgs = [];
+  let skipFail = 0;
   for(const file of Array.from(input.files)) {
     if(!file.type || !file.type.startsWith('image/')) continue;
-    await new Promise(resolve => {
-      const reader = new FileReader();
-      reader.onload = (ev) => { _currentReceiptImgs.push(ev.target.result); added++; resolve(); };
-      reader.onerror = () => resolve();
-      reader.readAsDataURL(file);
-    });
+    try {
+      const dataUrl = await _resizeImageFileToDataURL(file);
+      newImgs.push(dataUrl);
+    } catch(e) {
+      skipFail++;
+      console.warn('이미지 처리 실패:', file.name, e);
+    }
   }
-  if(added > 0) {
-    await _saveReceiptImgs(key, _currentReceiptImgs);
-    _renderReceiptImgList();
-    document.getElementById('receiptImgManagerTitle').textContent =
-      `📎 미인식 인수증 사진 (${_currentReceiptImgs.length}장)`;
-    if(typeof showToast === 'function') showToast(`📎 사진 ${added}장 추가됨`);
+  if(newImgs.length > 0) {
+    const candidate = _currentReceiptImgs.concat(newImgs);
+    const r = await _saveReceiptImgs(key, candidate);
+    if(r.ok) {
+      _currentReceiptImgs = candidate;
+      _renderReceiptImgList();
+      document.getElementById('receiptImgManagerTitle').textContent =
+        `📎 미인식 인수증 사진 (${_currentReceiptImgs.length}장)`;
+      const extra = skipFail > 0 ? ` (${skipFail}장 실패)` : '';
+      if(typeof showToast === 'function') showToast(`📎 사진 ${newImgs.length}장 추가됨${extra}`);
+    } else {
+      const msg = '❌ 인수증 사진 저장 실패\n' + ((r.error && r.error.message) || '브라우저 저장 용량 초과일 수 있어요.\n기존 사진을 일부 삭제하거나 다른 브라우저에서 시도해 주세요.');
+      if(typeof showToast === 'function') showToast(msg);
+      else alert(msg);
+    }
+  } else if(skipFail > 0) {
+    if(typeof showToast === 'function') showToast(`❌ 사진 ${skipFail}장 처리 실패`);
   }
   input.value = '';
 }
@@ -12208,17 +12261,30 @@ function _receiptImgPasteHandler(e) {
       const file = it.getAsFile();
       if(!file) continue;
       e.preventDefault();
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        _currentReceiptImgs.push(ev.target.result);
+      (async () => {
+        let dataUrl;
+        try {
+          dataUrl = await _resizeImageFileToDataURL(file);
+        } catch(err) {
+          console.warn('이미지 처리 실패(paste):', err);
+          if(typeof showToast === 'function') showToast('❌ 사진 처리 실패');
+          return;
+        }
         const key = _buildReceiptImgKey(_currentReceiptImgCtx.client, _currentReceiptImgCtx.date, _currentReceiptImgCtx.code);
-        await _saveReceiptImgs(key, _currentReceiptImgs);
-        _renderReceiptImgList();
-        document.getElementById('receiptImgManagerTitle').textContent =
-          `📎 미인식 인수증 사진 (${_currentReceiptImgs.length}장)`;
-        if(typeof showToast === 'function') showToast('📎 사진 추가됨');
-      };
-      reader.readAsDataURL(file);
+        const candidate = _currentReceiptImgs.concat([dataUrl]);
+        const r = await _saveReceiptImgs(key, candidate);
+        if(r.ok) {
+          _currentReceiptImgs = candidate;
+          _renderReceiptImgList();
+          document.getElementById('receiptImgManagerTitle').textContent =
+            `📎 미인식 인수증 사진 (${_currentReceiptImgs.length}장)`;
+          if(typeof showToast === 'function') showToast('📎 사진 추가됨');
+        } else {
+          const msg = '❌ 인수증 사진 저장 실패\n' + ((r.error && r.error.message) || '브라우저 저장 용량 초과일 수 있어요.');
+          if(typeof showToast === 'function') showToast(msg);
+          else alert(msg);
+        }
+      })();
       break;
     }
   }
