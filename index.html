@@ -14370,13 +14370,18 @@ function updateStlFieldInline(inputEl, idx, field) {
   settlementData[idx][field] = val;
   saveSettlementLocal();
   
-  // 같은 행의 손익분 셀 업데이트
+  // 같은 행의 손익분 셀 업데이트 (다중차량 서브행은 KCTC=0 처리)
   const row = inputEl.closest('tr');
   if(row) {
     const d = settlementData[idx];
     const pay = parseInt(d.payment) || 0;
     const kctc = parseInt(d.kctcAmount) || 0;
-    const margin = kctc - pay;
+    const baseCode = String(d.dispCode||'').replace(/-\d+$/, '');
+    const multiSuffix = (d.dispCode||'').match(/-(\d+)$/);
+    const isMulti = multiSuffix && settlementData.some(r => r !== d && r.date === d.date && String(r.dispCode||'').replace(/-\d+$/, '') === baseCode);
+    const isFirstInGroup = !isMulti || !multiSuffix || multiSuffix[1] === '1';
+    const effectiveKctc = (isMulti && !isFirstInGroup) ? 0 : kctc;
+    const margin = effectiveKctc - pay;
     const marginCell = row.querySelector('.stl-margin-cell');
     if(marginCell) {
       marginCell.textContent = margin ? margin.toLocaleString() : '-';
@@ -14431,9 +14436,22 @@ function updateStlField(idx, field, value) {
 
 function updateStlFooter() {
   let totalPay = 0, totalKctc = 0, totalMargin = 0, count = 0;
-  const month = document.getElementById('settlementMonth').value;
   settlementData.forEach(d => {
-    if(!d.date || !d.date.startsWith(month)) return;
+    if(!d.date) return;
+    if(stlPeriodMode === 'day') {
+      const from = document.getElementById('stlDateFrom').value;
+      const to = document.getElementById('stlDateTo').value;
+      if(from && d.date < from) return;
+      if(to && d.date > to) return;
+    } else if(stlListRangeMode && settlementView === 'list') {
+      const from = document.getElementById('stlListDateFrom').value;
+      const to = document.getElementById('stlListDateTo').value;
+      if(from && d.date < from) return;
+      if(to && d.date > to) return;
+    } else {
+      const month = document.getElementById('settlementMonth').value;
+      if(!month || !d.date.startsWith(month)) return;
+    }
     if(stlActiveClient && stlActiveClient !== '전체' && d.client !== stlActiveClient) return;
     if(stlCodeFilterMode !== 'all') {
       if(stlCodeFilterMode === 'P') { if(!d.dispCode || !/^P[_\d]/i.test(d.dispCode)) return; }
