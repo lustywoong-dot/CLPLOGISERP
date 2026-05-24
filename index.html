@@ -804,7 +804,65 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <div style="font-size:11px;color:#7c3aed;line-height:28px;padding-top:18px">※ 배차코드 ECLP→여주 / ACLP→덕평 자동 감지</div>
         </div>
       </div>
-      <div class="form-grid" style="grid-template-columns:130px 1fr 80px 1fr">
+      <!-- 일반 모드 전용 폼 (상차지→하차지→거래처 순서) -->
+      <div id="generalFormArea" style="display:none">
+        <div style="margin-bottom:6px;padding:10px;background:#ecfdf5;border:1px solid #86efac;border-radius:6px">
+          <div style="margin-bottom:8px">
+            <label style="font-size:12px;font-weight:700;color:#059669;display:block;margin-bottom:3px">🚛 상차지</label>
+            <input type="text" id="genPickup" placeholder="상차지 주소 입력" oninput="_syncGen(this)" data-sync="pickupAddr" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #059669;border-radius:4px;background:white;box-sizing:border-box;font-weight:600">
+          </div>
+          <div style="display:grid;grid-template-columns:120px 1fr;gap:8px;margin-bottom:8px">
+            <div>
+              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">📍 하차지 (권역)</label>
+              <input type="text" id="genDelivery" placeholder="권역/지역" oninput="_syncGen(this);calculate();onCoreFieldChange();updateDriverRecommend()" data-sync="deliveryRegion" list="regionList" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">세부주소</label>
+              <input type="text" id="genDeliveryAddr" placeholder="상세 주소 입력" oninput="_syncGen(this);onCoreFieldChange()" data-sync="deliveryDetailAddr" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+            <div>
+              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">하차지 담당자</label>
+              <input type="text" id="genContact" placeholder="담당자명" oninput="_syncGen(this);onCoreFieldChange()" data-sync="deliveryContact" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">담당자 연락처</label>
+              <input type="tel" id="genPhone" placeholder="010-0000-0000" oninput="applyPhoneFormat(this);_syncGen(this);onCoreFieldChange()" data-sync="deliveryPhone" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box;color:#0369a1;font-weight:600">
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
+            <div>
+              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">🏢 거래처명</label>
+              <input type="text" id="genClientName" placeholder="거래처명" oninput="_syncGen(this);onCoreFieldChange()" data-sync="clientName" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">📋 참조번호 <span style="font-size:9px;color:#6b7280">선택</span></label>
+              <input type="text" id="genRefNo" placeholder="딜리버리/롯트 넘버 등" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">배차코드 <span style="font-size:9px;color:#6b7280">선택</span></label>
+              <input type="text" id="genDispatchCode" placeholder="미입력 시 자동생성" oninput="_syncGen(this);checkCodeDuplicate();onCoreFieldChange()" data-sync="dispatchCode" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px">
+            <div>
+              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">배차일자</label>
+              <input type="date" id="genDispatchDate" onchange="_syncGen(this);generateSMS()" data-sync="dispatchDate" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">배송일자 <span style="font-size:9px;color:var(--accent)">*SMS</span></label>
+              <input type="date" id="genDeliveryDate" onchange="_syncGen(this);generateSMS()" data-sync="deliveryDate" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
+            </div>
+            <div>
+              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">비고 / 요청사항</label>
+              <input type="text" id="genMemo" placeholder="비고 사항 입력" oninput="_syncGen(this);generateSMS()" data-sync="memo" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div id="stdFormRow1" class="form-grid" style="grid-template-columns:130px 1fr 80px 1fr">
         <div class="form-group">
           <label>배차코드 <span style="color:var(--danger);font-weight:700">*필수</span></label>
           <input type="text" id="dispatchCode" placeholder="P01001" autocomplete="off" style="border-color:var(--accent);font-weight:600" oninput="checkCodeDuplicate();onCoreFieldChange();autoDetectCenter();validateLiquorCodeCenter();validateCodeMode()">
@@ -834,7 +892,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       </div>
 
       <!-- 서류 수령 방식 (락앤락/주류 공통) -->
-      <div style="margin-top:5px;display:flex;align-items:center;gap:8px">
+      <div id="stdDocRow" style="margin-top:5px;display:flex;align-items:center;gap:8px">
         <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;padding:3px 10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px" title="체크하면 SMS에 '사무실에서 서류 수령' 안내가 표시됩니다">
           <input type="checkbox" id="lqOfficeDoc" onchange="onCoreFieldChange()" style="width:14px;height:14px">
           <span style="font-weight:600;color:#374151">📋 사무실 서류수령</span>
@@ -843,7 +901,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       </div>
 
       <!-- 2행: 담당자 -->
-      <div class="form-grid" style="margin-top:5px;grid-template-columns:1fr 1fr">
+      <div id="stdFormRow2" class="form-grid" style="margin-top:5px;grid-template-columns:1fr 1fr">
         <div class="form-group">
           <label>하차지 담당자</label>
           <input type="text" id="deliveryContact" placeholder="담당자명" oninput="onCoreFieldChange()">
@@ -1035,7 +1093,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       </div>
 
       <!-- 5행: 비고 + 상차지/날짜 (고정값) -->
-      <div class="form-grid" style="margin-top:6px;grid-template-columns:2fr 1fr 1fr 1fr">
+      <div id="stdFormRow5" class="form-grid" style="margin-top:6px;grid-template-columns:2fr 1fr 1fr 1fr">
         <div class="form-group">
           <label>비고 / 배송 요청사항</label>
           <input type="text" id="memo" placeholder="비고 사항 입력" oninput="generateSMS()">
@@ -3793,7 +3851,8 @@ function loadRecord(id) {
   // 비정형 배차 플래그 복원 (회송 / 단가 직접입력)
   isReturnMode = !!r.isReturn;
   _applyReturnToggleStyle();
-  customRateMode = !!r.customRate;
+  // 일반 모드: customRateMode 항상 ON 유지
+  customRateMode = dispatchMode === 'general' ? true : !!r.customRate;
   _applyCustomRateToggleStyle();
   if(customRateMode) {
     // 단가 직접입력 모드: 저장된 baseRate를 직접 표시 (자동계산 차단)
@@ -3836,6 +3895,12 @@ function loadRecord(id) {
   // 선택된 행 정보를 배차 내역 위에 표시 (스크롤 하지 않음)
   showInlineEditInfo(r);
   
+  // 일반 모드: gen_ 필드에 표준 필드 값 동기화 + refNo 복원
+  if(dispatchMode === 'general') {
+    _syncStdToGen();
+    const refEl = document.getElementById('genRefNo');
+    if(refEl) refEl.value = r.refNo || '';
+  }
   showToast('📋 ' + (r.code||'') + ' 불러옴 → 아래 폼에서 수정 후 [💾 저장 후 닫기]');
 }
 
@@ -5294,6 +5359,11 @@ function init() {
   document.getElementById('deliveryDate').value = _tomorrow.getFullYear()+'-'+String(_tomorrow.getMonth()+1).padStart(2,'0')+'-'+String(_tomorrow.getDate()).padStart(2,'0');
   // 상차지 기본값 (브라우저 캐싱 방지)
   document.getElementById('pickupAddr').value = '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
+  // 일반 모드 날짜 필드 초기값
+  const _genDD = document.getElementById('genDispatchDate');
+  const _genDE = document.getElementById('genDeliveryDate');
+  if(_genDD) _genDD.value = document.getElementById('dispatchDate').value;
+  if(_genDE) _genDE.value = document.getElementById('deliveryDate').value;
   
   // 권역 datalist
   const regionDL = document.getElementById('regionList');
@@ -7085,6 +7155,18 @@ function resetForm() {
   clearMemoDisplay();
   document.getElementById('resultBox').classList.remove('show');
   onTypeChange();
+  // 일반 모드: gen_ 필드 초기화
+  if(dispatchMode === 'general') {
+    ['genPickup','genDelivery','genDeliveryAddr','genClientName','genContact','genPhone','genDispatchCode','genMemo','genRefNo'].forEach(id => {
+      const el = document.getElementById(id);
+      if(el) el.value = '';
+    });
+    const gdd = document.getElementById('genDispatchDate');
+    const gde = document.getElementById('genDeliveryDate');
+    if(gdd) gdd.value = document.getElementById('dispatchDate').value;
+    if(gde) gde.value = document.getElementById('deliveryDate').value;
+    if(!customRateMode) toggleCustomRate();
+  }
   // 접이식 영역 초기화
   document.getElementById('extraFieldsArea').style.display = 'none';
   document.getElementById('extraFieldsIcon').textContent = '▶';
@@ -7265,10 +7347,14 @@ function saveCurrentModeData() {
     const el = document.getElementById(id);
     if(el) data[id] = el.value;
   });
-  // 일반 모드: 상차지 자유입력값 저장
+  // 일반 모드: gen_ 필드 전체 저장
   if(dispatchMode === 'general') {
-    const pickEl = document.getElementById('pickupAddr');
-    if(pickEl) data._generalPickup = pickEl.value;
+    data._generalPickup = document.getElementById('genPickup')?.value || '';
+    data._genRefNo = document.getElementById('genRefNo')?.value || '';
+    _GEN_SYNC_PAIRS.forEach(([std, gen]) => {
+      const g = document.getElementById(gen);
+      if(g) data['_gen_' + gen] = g.value;
+    });
   }
   data._liquorStops = JSON.parse(JSON.stringify(liquorStops));
   data._smsContent = document.getElementById('smsContent').value;
@@ -7296,11 +7382,23 @@ function restoreModeData(mode) {
     renderLiquorStops();
     calcLiquorTotal();
   }
-  // 일반 모드: 상차지 자유입력값 복원
-  if(mode === 'general' && data._generalPickup) {
+  // 일반 모드: gen_ 필드 전체 복원
+  if(mode === 'general') {
     setTimeout(() => {
-      const pickEl = document.getElementById('pickupAddr');
-      if(pickEl) pickEl.value = data._generalPickup;
+      _GEN_SYNC_PAIRS.forEach(([std, gen]) => {
+        const g = document.getElementById(gen);
+        if(g && data['_gen_' + gen]) g.value = data['_gen_' + gen];
+      });
+      if(data._generalPickup) {
+        const pickEl = document.getElementById('pickupAddr');
+        if(pickEl) pickEl.value = data._generalPickup;
+        const genPick = document.getElementById('genPickup');
+        if(genPick) genPick.value = data._generalPickup;
+      }
+      if(data._genRefNo) {
+        const refEl = document.getElementById('genRefNo');
+        if(refEl) refEl.value = data._genRefNo;
+      }
     }, 0);
   }
   // SMS 복원
@@ -7393,12 +7491,21 @@ function setDispatchMode(mode) {
     document.getElementById('pickupAddr').value = '';
     forceRegenerateSMS();
   }
+  // 일반 모드 전용 폼 표시/숨김
+  const isGeneral = mode === 'general';
+  document.getElementById('generalFormArea').style.display = isGeneral ? '' : 'none';
+  document.getElementById('stdFormRow1').style.display = isGeneral ? 'none' : '';
+  document.getElementById('stdDocRow').style.display = isGeneral ? 'none' : '';
+  document.getElementById('stdFormRow2').style.display = isGeneral ? 'none' : '';
+  document.getElementById('stdFormRow5').style.display = isGeneral ? 'none' : '';
   // 일반 모드: 단가 직접입력 자동 활성화
   if(mode === 'general' && !customRateMode) {
     toggleCustomRate();
   } else if(prevMode === 'general' && mode !== 'general' && customRateMode) {
     toggleCustomRate();
   }
+  // 일반 모드 진입 시 gen_ 필드 ← 기존 필드 동기화
+  if(isGeneral) _syncStdToGen();
 }
 
 // 일반 모드 상차지: select → text input 교체 (ID 유지로 기존 코드 호환)
@@ -7428,6 +7535,31 @@ function _swapPickupAddrForMode(newMode, oldMode) {
       _pickupAddrSelectBackup = null;
     }
   }
+}
+
+// gen_ 필드 → 기존 표준 필드 실시간 동기화
+function _syncGen(el) {
+  const stdId = el.dataset.sync;
+  if(stdId) {
+    const stdEl = document.getElementById(stdId);
+    if(stdEl) stdEl.value = el.value;
+  }
+}
+
+// 기존 표준 필드 → gen_ 필드 일괄 동기화 (레코드 로드 시)
+const _GEN_SYNC_PAIRS = [
+  ['pickupAddr','genPickup'],['deliveryRegion','genDelivery'],
+  ['deliveryDetailAddr','genDeliveryAddr'],['clientName','genClientName'],
+  ['dispatchCode','genDispatchCode'],['deliveryContact','genContact'],
+  ['deliveryPhone','genPhone'],['dispatchDate','genDispatchDate'],
+  ['deliveryDate','genDeliveryDate'],['memo','genMemo']
+];
+function _syncStdToGen() {
+  _GEN_SYNC_PAIRS.forEach(([std, gen]) => {
+    const s = document.getElementById(std);
+    const g = document.getElementById(gen);
+    if(s && g) g.value = s.value;
+  });
 }
 
 function autoDetectCenter() {
@@ -8970,10 +9102,10 @@ async function saveBulkOrders() {
   for(let i = 0; i < bulkParsedOrders.length; i++) {
     const o = bulkParsedOrders[i];
     const orderDeliveryDate = o.deliveryDate || today;
-    // 임시 코드도 현재 모드 prefix 적용 → 거래처 분류 보존 (락앤락/주류)
+    // 임시 코드도 현재 모드 prefix 적용 → 거래처 분류 보존 (락앤락/주류/일반)
     const _tempPrefix = dispatchMode === 'liquor'
       ? (document.getElementById('lqCenter')?.value === 'yj' ? 'ECLP' : 'ACLP')
-      : 'P';
+      : dispatchMode === 'general' ? 'GN' : 'P';
     let code = o.code || ('TEMP_' + _tempPrefix + '_' + today.replace(/-/g,'') + '_' + String(Date.now()).slice(-4) + '_' + i);
     
     // 중복 체크 (같은 코드 + 같은 배송일)
@@ -9717,7 +9849,7 @@ function generateSMS() {
   const clientName = document.getElementById('clientName').value || '';
   let pickup = document.getElementById('pickupAddr').value || '';
   // 락앤락 모드인데 상차지 값이 비어 있으면(옛 옵션 불일치 등) 기본값 보정
-  if(!pickup && dispatchMode !== 'liquor') {
+  if(!pickup && dispatchMode === 'locknlock') {
     pickup = '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
   }
   const code = document.getElementById('dispatchCode').value.trim() || '';
@@ -9737,21 +9869,42 @@ function generateSMS() {
   }
   
   const isLiquor = dispatchMode === 'liquor';
+  const isGeneral = dispatchMode === 'general';
   const activeWeight = isLiquor ? lqWt : weight;
-  
+
   let qtyInfo = '';
   if(plt && plt !== '0') qtyInfo += plt + 'PLT';
   if(activeWeight) qtyInfo += (qtyInfo ? ' / ' : '') + activeWeight + '톤';
   if(!qtyInfo) qtyInfo = '-';
-  
+
   let contactInfo = '';
   if(contact) contactInfo += contact;
   if(phone) contactInfo += (contactInfo ? ' ' : '') + phone;
   if(!contactInfo) contactInfo = '-';
-  
+
   let sms = '';
-  
-  if(isLiquor) {
+
+  if(isGeneral) {
+    // === 일반 모드 SMS ===
+    const refNo = document.getElementById('genRefNo')?.value || '';
+    const memo = document.getElementById('memo')?.value || '';
+    const boxes = document.getElementById('boxCount')?.value || '0';
+    let boxInfo = (boxes && boxes !== '0') ? boxes + '박스' : '';
+    if(qtyInfo !== '-' && boxInfo) qtyInfo += ' / ' + boxInfo;
+    else if(boxInfo) qtyInfo = boxInfo;
+
+    sms = `[배송 안내]
+■ 배송일: ${dateStr}
+■ 거래처: ${clientName || '-'}${refNo ? '\n■ 참조번호: ' + refNo : ''}
+
+1. 상차지: ${pickup || '-'}
+2. 하차지: ${region || '-'}${detailAddr ? '\n   주소: ' + detailAddr : ''}${contactInfo !== '-' ? '\n   담당자: ' + contactInfo : ''}
+3. 수량: ${qtyInfo}${memo ? '\n\n※ 비고: ' + memo : ''}
+
+※ 인수증 사진 전송 부탁드립니다.
+※ 감사합니다. (주)씨엘피`;
+
+  } else if(isLiquor) {
     // === 주류 모드 SMS ===
     const cleanCode = code.replace(/[_\-]/g, '');
     const center = document.getElementById('lqCenter').value;
@@ -16607,7 +16760,7 @@ function _calcSyncHash(d) {
 }
 
 // 시트 동기화 시 로컬 전용 필드 보존 (시트에 없는 필드를 기존 로컬 데이터에서 병합)
-const _LOCAL_ONLY_FIELDS = ['lqWeight','lqCenter','lqOfficeDoc','lqWaypointFee','liquorStops','cargoWeight','isMixed','mixedMjimIdx','mixedMjimSize','hapjimGroup','stickyMemo','isReturn','customRate'];
+const _LOCAL_ONLY_FIELDS = ['lqWeight','lqCenter','lqOfficeDoc','lqWaypointFee','liquorStops','cargoWeight','isMixed','mixedMjimIdx','mixedMjimSize','hapjimGroup','stickyMemo','isReturn','customRate','refNo'];
 function _mergeLocalFields(sheetData) {
   const localMap = {};
   dispatchLog.forEach(r => { if(r.id) localMap[r.id] = r; });
@@ -16876,6 +17029,7 @@ async function saveDispatch(closeAfter) {
           // 비정형 배차 플래그 (합짐은 단가 직접 입력 방식이라 customRate는 사용 안 함)
           isReturn: !!isReturnMode,
           customRate: false,
+          refNo: dispatchMode === 'general' ? (document.getElementById('genRefNo')?.value || '') : '',
           createdBy: getUserName() || '-'
         });
       });
@@ -16991,7 +17145,7 @@ async function saveDispatch(closeAfter) {
     const today = getTodayStr().replace(/-/g,'');
     const _tempPrefix = dispatchMode === 'liquor'
       ? (document.getElementById('lqCenter')?.value === 'yj' ? 'ECLP' : 'ACLP')
-      : 'P';
+      : dispatchMode === 'general' ? 'GN' : 'P';
     code = 'TEMP_' + _tempPrefix + '_' + today + '_' + String(Date.now()).slice(-4);
     document.getElementById('dispatchCode').value = code;
     showToast('ℹ 배차코드 미입력 → 임시코드 생성: ' + code + ' (나중에 수정 가능)');
@@ -17142,10 +17296,11 @@ async function saveDispatch(closeAfter) {
       // 비정형 배차 플래그 (회송 / 단가 직접입력)
       isReturn: !!isReturnMode,
       customRate: !!customRateMode,
+      refNo: dispatchMode === 'general' ? (document.getElementById('genRefNo')?.value || '') : '',
       createdBy: getUserName() || '-'
     });
   });
-  
+
   if(records.length === 0) { showToast('⚠ 저장할 데이터가 없습니다'); return; }
   _lastSaveTime = Date.now();
   
