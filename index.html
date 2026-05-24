@@ -618,6 +618,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <button class="btn btn-sm" id="ilFilterLock" onclick="setInlineFilter('락앤락')" style="padding:3px 10px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">🔒 락앤락</button>
           <button class="btn btn-sm" id="ilFilterYJ" onclick="setInlineFilter('KCTC여주')" style="padding:3px 10px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">🍷 여주</button>
           <button class="btn btn-sm" id="ilFilterDP" onclick="setInlineFilter('KCTC덕평')" style="padding:3px 10px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">🍷 덕평</button>
+          <button class="btn btn-sm" id="ilFilterGeneral" onclick="setInlineFilter('기타')" style="padding:3px 10px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">🏢 일반</button>
         </div>
         <div style="margin-left:auto;display:flex;gap:4px;align-items:center">
           <!-- 정렬 버튼 -->
@@ -786,6 +787,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       <div style="display:flex;gap:4px;margin-bottom:10px;background:#f1f5f9;border-radius:6px;padding:2px;width:fit-content">
         <button class="btn btn-sm" id="modeLocknlock" onclick="setDispatchMode('locknlock')" title="단축키: F3" style="padding:5px 14px;font-size:12px;background:var(--primary);color:white;border-radius:4px;font-weight:700">🔒 락앤락 <span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:800;margin-left:3px">F3</span></button>
         <button class="btn btn-sm" id="modeLiquor" onclick="setDispatchMode('liquor')" title="단축키: F4" style="padding:5px 14px;font-size:12px;background:transparent;color:var(--text);border:none;border-radius:4px;font-weight:700">🍷 주류 <span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:800;margin-left:3px">F4</span></button>
+        <button class="btn btn-sm" id="modeGeneral" onclick="setDispatchMode('general')" title="단축키: F5" style="padding:5px 14px;font-size:12px;background:transparent;color:var(--text);border:none;border-radius:4px;font-weight:700">🏢 일반 <span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:800;margin-left:3px">F5</span></button>
       </div>
 
       <!-- 주류모드: 센터 선택 -->
@@ -1718,6 +1720,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <button class="btn btn-sm" onclick="setStatsClient('락앤락')" id="statsClientLK" style="padding:3px 10px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">🔒 락앤락</button>
         <button class="btn btn-sm" onclick="setStatsClient('KCTC여주')" id="statsClientYJ" style="padding:3px 10px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">🍷 KCTC여주</button>
         <button class="btn btn-sm" onclick="setStatsClient('KCTC덕평')" id="statsClientDP" style="padding:3px 10px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">🍷 KCTC덕평</button>
+        <button class="btn btn-sm" onclick="setStatsClient('기타')" id="statsClientGN" style="padding:3px 10px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">🏢 일반</button>
       </div>
     </div>
 
@@ -3482,7 +3485,7 @@ function getDispatchClient(code) {
 
 function setInlineFilter(mode) {
   inlineFilterMode = mode;
-  const buttons = { 'all': 'ilFilterAll', '락앤락': 'ilFilterLock', 'KCTC여주': 'ilFilterYJ', 'KCTC덕평': 'ilFilterDP' };
+  const buttons = { 'all': 'ilFilterAll', '락앤락': 'ilFilterLock', 'KCTC여주': 'ilFilterYJ', 'KCTC덕평': 'ilFilterDP', '기타': 'ilFilterGeneral' };
   Object.entries(buttons).forEach(([key, id]) => {
     const el = document.getElementById(id);
     if(key === mode) {
@@ -3668,6 +3671,8 @@ function loadRecord(id) {
     setDispatchMode('liquor');
   } else if(/^P\d/.test(codeUpper) && dispatchMode !== 'locknlock') {
     setDispatchMode('locknlock');
+  } else if(getDispatchClient(r.code) === '기타' && codeUpper && dispatchMode !== 'general') {
+    setDispatchMode('general');
   }
   
   selectedRecordId = id;
@@ -6248,9 +6253,9 @@ function calculate() {
     baseRate = rateData[vehicle];
   }
   
-  // 수작업비
+  // 수작업비 (일반 모드: 수작업비 자동계산 없음 — 직접 입력)
   let manualFee = 0;
-  if(boxes >= 50) {
+  if(boxes >= 50 && dispatchMode !== 'general') {
     manualFee = (dispatchMode === 'liquor' ? LIQUOR_WORK_FEE[vehicle] : MANUAL_FEE[vehicle]) || 0;
   }
   
@@ -7047,6 +7052,8 @@ function resetForm() {
   // 상차지 모드별 초기화
   if(dispatchMode === 'liquor') {
     onCenterChange();
+  } else if(dispatchMode === 'general') {
+    document.getElementById('pickupAddr').value = '';
   } else {
     document.getElementById('pickupAddr').value = '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
   }
@@ -7215,6 +7222,14 @@ document.addEventListener('keydown', function(e) {
         showToast('⌨ F4 → 🍷 주류 모드');
       }
     }
+  } else if(e.key === 'F5') {
+    e.preventDefault();
+    if(typeof setDispatchMode === 'function') {
+      if(dispatchMode !== 'general') {
+        setDispatchMode('general');
+        showToast('⌨ F5 → 🏢 일반 모드');
+      }
+    }
   } else if(e.key === 'F8') {
     e.preventDefault();
     if(typeof saveDispatch === 'function') {
@@ -7237,11 +7252,11 @@ document.addEventListener('keydown', function(e) {
 // ============================================
 // 배차 모드 전환 (락앤락 / 주류)
 // ============================================
-let dispatchMode = 'locknlock'; // 'locknlock' or 'liquor'
+let dispatchMode = 'locknlock'; // 'locknlock', 'liquor', or 'general'
 let liquorStops = []; // 경유지 배열
 
 // 모드별 임시 저장소
-const modeFormData = { locknlock: {}, liquor: {} };
+const modeFormData = { locknlock: {}, liquor: {}, general: {} };
 const MODE_FIELDS = ['dispatchCode','clientName','deliveryRegion','deliveryDetailAddr','deliveryContact','deliveryPhone','palletCount','lqWeight','cargoWeight','vehicleTon','dispatchType','memo','driverName','driverPhone','vehicleNo','driverPay','dispatchRoute','deliveryDate'];
 
 function saveCurrentModeData() {
@@ -7250,6 +7265,11 @@ function saveCurrentModeData() {
     const el = document.getElementById(id);
     if(el) data[id] = el.value;
   });
+  // 일반 모드: 상차지 자유입력값 저장
+  if(dispatchMode === 'general') {
+    const pickEl = document.getElementById('pickupAddr');
+    if(pickEl) data._generalPickup = pickEl.value;
+  }
   data._liquorStops = JSON.parse(JSON.stringify(liquorStops));
   data._smsContent = document.getElementById('smsContent').value;
   data._smsManual = smsManualMode;
@@ -7275,6 +7295,13 @@ function restoreModeData(mode) {
     liquorStops = data._liquorStops || [];
     renderLiquorStops();
     calcLiquorTotal();
+  }
+  // 일반 모드: 상차지 자유입력값 복원
+  if(mode === 'general' && data._generalPickup) {
+    setTimeout(() => {
+      const pickEl = document.getElementById('pickupAddr');
+      if(pickEl) pickEl.value = data._generalPickup;
+    }, 0);
   }
   // SMS 복원
   if(data._smsManual) {
@@ -7307,18 +7334,25 @@ function restoreModeData(mode) {
 
 function setDispatchMode(mode) {
   if(mode === dispatchMode) return;
+  const prevMode = dispatchMode;
   // 현재 모드 데이터 저장
   saveCurrentModeData();
   dispatchMode = mode;
   // 전환할 모드 데이터 복원
   restoreModeData(mode);
-  
-  document.getElementById('modeLocknlock').style.cssText = mode === 'locknlock' ?
-    'padding:5px 14px;font-size:12px;background:var(--primary);color:white;border-radius:4px;font-weight:700' :
-    'padding:5px 14px;font-size:12px;background:transparent;color:var(--text);border:none;border-radius:4px;font-weight:700';
-  document.getElementById('modeLiquor').style.cssText = mode === 'liquor' ?
-    'padding:5px 14px;font-size:12px;background:#7c3aed;color:white;border-radius:4px;font-weight:700' :
-    'padding:5px 14px;font-size:12px;background:transparent;color:var(--text);border:none;border-radius:4px;font-weight:700';
+
+  // 버튼 스타일 (3개 모드)
+  const btnStyles = { locknlock: 'var(--primary)', liquor: '#7c3aed', general: '#059669' };
+  ['modeLocknlock','modeLiquor','modeGeneral'].forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    const modeKey = id === 'modeLocknlock' ? 'locknlock' : id === 'modeLiquor' ? 'liquor' : 'general';
+    if(modeKey === mode) {
+      el.style.cssText = 'padding:5px 14px;font-size:12px;background:' + btnStyles[modeKey] + ';color:white;border-radius:4px;font-weight:700';
+    } else {
+      el.style.cssText = 'padding:5px 14px;font-size:12px;background:transparent;color:var(--text);border:none;border-radius:4px;font-weight:700';
+    }
+  });
   // 센터 선택 + 경유지 영역 표시/숨김
   document.getElementById('lqCenterRow').style.display = mode === 'liquor' ? '' : 'none';
   document.getElementById('lqWaypointSection').style.display = mode === 'liquor' ? '' : 'none';
@@ -7348,12 +7382,51 @@ function setDispatchMode(mode) {
     if(typeSelect.value === '주류') typeSelect.value = '편도';
     if(lqOpt) lqOpt.style.display = 'none';
   }
-  // 상차지 연동
+  // 상차지 연동: 일반 모드 ↔ 기존 모드 전환 시 select/input 교체
+  _swapPickupAddrForMode(mode, prevMode);
   if(mode === 'liquor') {
     onCenterChange();
-  } else {
+  } else if(mode === 'locknlock') {
     document.getElementById('pickupAddr').value = '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
     forceRegenerateSMS();
+  } else if(mode === 'general') {
+    document.getElementById('pickupAddr').value = '';
+    forceRegenerateSMS();
+  }
+  // 일반 모드: 단가 직접입력 자동 활성화
+  if(mode === 'general' && !customRateMode) {
+    toggleCustomRate();
+  } else if(prevMode === 'general' && mode !== 'general' && customRateMode) {
+    toggleCustomRate();
+  }
+}
+
+// 일반 모드 상차지: select → text input 교체 (ID 유지로 기존 코드 호환)
+let _pickupAddrSelectBackup = null;
+function _swapPickupAddrForMode(newMode, oldMode) {
+  const current = document.getElementById('pickupAddr');
+  if(!current) return;
+  if(newMode === 'general' && oldMode !== 'general') {
+    // select → input 교체
+    if(current.tagName === 'SELECT') {
+      _pickupAddrSelectBackup = current;
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.id = 'pickupAddr';
+      inp.placeholder = '상차지 주소 직접 입력';
+      inp.style.cssText = 'font-size:12px;padding:6px 8px;border:1px solid #059669;border-radius:4px;width:100%;box-sizing:border-box;background:#ecfdf5';
+      inp.onchange = function(){ if(typeof forceRegenerateSMS==='function') forceRegenerateSMS(); };
+      current.parentElement.replaceChild(inp, current);
+    }
+  } else if(newMode !== 'general' && oldMode === 'general') {
+    // input → select 복원
+    if(_pickupAddrSelectBackup) {
+      const inp = document.getElementById('pickupAddr');
+      if(inp && inp.tagName === 'INPUT') {
+        inp.parentElement.replaceChild(_pickupAddrSelectBackup, inp);
+      }
+      _pickupAddrSelectBackup = null;
+    }
   }
 }
 
@@ -7407,6 +7480,8 @@ function updateDispatchCodePlaceholder() {
   if(dispatchMode === 'liquor') {
     const center = document.getElementById('lqCenter').value;
     input.placeholder = center === 'yj' ? 'ECLP00001' : 'ACLP00001';
+  } else if(dispatchMode === 'general') {
+    input.placeholder = '배차코드 자유입력';
   } else {
     input.placeholder = 'P01001';
   }
@@ -7466,6 +7541,13 @@ function validateCodeMode(showAlert) {
   if(!codeInput) return true;
   const rawCode = codeInput.value.trim().toUpperCase();
   if(!rawCode) return true;
+
+  // 일반 모드: 코드 제한 없음
+  if(dispatchMode === 'general') {
+    if(errEl) { errEl.textContent = ''; errEl.style.display = 'none'; }
+    if(codeInput) codeInput.style.borderColor = 'var(--accent)';
+    return true;
+  }
 
   // 합짐 모드 대응: 첫 코드만 검증
   const firstCode = rawCode.includes(',') ? rawCode.split(',')[0].trim() : rawCode;
@@ -17615,7 +17697,8 @@ function setStatsClient(mode) {
   statsClientMode = mode;
   const buttons = {
     'all': 'statsClientAll', '락앤락': 'statsClientLK',
-    'KCTC여주': 'statsClientYJ', 'KCTC덕평': 'statsClientDP'
+    'KCTC여주': 'statsClientYJ', 'KCTC덕평': 'statsClientDP',
+    '기타': 'statsClientGN'
   };
   Object.entries(buttons).forEach(([key, id]) => {
     const el = document.getElementById(id);
