@@ -842,7 +842,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
             </div>
             <div>
               <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">배차코드 <span style="font-size:9px;color:#6b7280">선택</span></label>
-              <input type="text" id="genDispatchCode" placeholder="미입력 시 자동생성" oninput="_syncGen(this);checkCodeDuplicate();onCoreFieldChange()" data-sync="dispatchCode" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
+              <input type="text" id="genDispatchCode" placeholder="미입력 시 자동생성 (GN- 접두사)" oninput="_syncGen(this);checkCodeDuplicate();onCoreFieldChange()" data-sync="dispatchCode" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
             </div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr 2fr;gap:8px">
@@ -3538,6 +3538,7 @@ function getDispatchClient(code) {
   if(checkCode.startsWith('ECLP')) return 'KCTC여주';
   if(checkCode.startsWith('ACLP')) return 'KCTC덕평';
   if(checkCode.startsWith('CLP')) return '씨엘피';
+  if(checkCode.startsWith('GN')) return '기타';
   return '기타';
 }
 
@@ -3725,19 +3726,20 @@ function loadRecord(id) {
 
   // 레코드의 거래처 코드로 배차 모드 자동 감지 및 전환
   const codeUpper = (r.code || '').replace(/[_\-]/g, '').toUpperCase();
+  const codeRaw = (r.code || '').toUpperCase();
   if(/^[EA]CLP/.test(codeUpper) && dispatchMode !== 'liquor') {
     setDispatchMode('liquor');
   } else if(/^P\d/.test(codeUpper) && dispatchMode !== 'locknlock') {
     setDispatchMode('locknlock');
-  } else if(getDispatchClient(r.code) === '기타' && codeUpper && dispatchMode !== 'general') {
+  } else if((codeRaw.startsWith('GN-') || codeRaw.startsWith('TEMP_GN') || getDispatchClient(r.code) === '기타') && codeUpper && dispatchMode !== 'general') {
     setDispatchMode('general');
   }
   
   selectedRecordId = id;
 
-  // 배차 유형 설정
+  // 배차 유형 설정 (일반 모드에서는 '주류' 유형 사용 안 함)
   const _typeSelect = document.getElementById('dispatchType');
-  if(r.type === '주류' || dispatchMode === 'liquor') {
+  if((r.type === '주류' || dispatchMode === 'liquor') && dispatchMode !== 'general') {
     const lqOpt = document.getElementById('optDispatchLiquor');
     if(lqOpt) lqOpt.style.display = '';
     _typeSelect.disabled = false;
@@ -7477,8 +7479,8 @@ function setDispatchMode(mode) {
     typeSelect.style.background = '';
     typeSelect.style.color = '';
     typeSelect.style.fontWeight = '';
-    if(typeSelect.value === '주류') typeSelect.value = '편도';
     if(lqOpt) lqOpt.style.display = 'none';
+    if(typeSelect.value === '주류' || !typeSelect.value) typeSelect.value = '편도';
   }
   // 상차지 연동: 일반 모드 ↔ 기존 모드 전환 시 select/input 교체
   _swapPickupAddrForMode(mode, prevMode);
@@ -7613,7 +7615,7 @@ function updateDispatchCodePlaceholder() {
     const center = document.getElementById('lqCenter').value;
     input.placeholder = center === 'yj' ? 'ECLP00001' : 'ACLP00001';
   } else if(dispatchMode === 'general') {
-    input.placeholder = '배차코드 자유입력';
+    input.placeholder = '코드 입력 (자동 GN- 접두사)';
   } else {
     input.placeholder = 'P01001';
   }
@@ -16992,7 +16994,7 @@ async function saveDispatch(closeAfter) {
           clientName: document.getElementById('clientName').value,
           date: sanitizeDate(document.getElementById('dispatchDate').value),
           deliveryDate: sanitizeDate(document.getElementById('deliveryDate').value),
-          type: dispatchMode === 'liquor' ? '주류' : type,
+          type: dispatchMode === 'liquor' ? '주류' : (type === '주류' ? '편도' : type),
           pickup: document.getElementById('pickupAddr').value,
           delivery: region,
           deliveryAddr: document.getElementById('deliveryDetailAddr').value,
@@ -17140,6 +17142,14 @@ async function saveDispatch(closeAfter) {
     }
   }
 
+  // 일반 모드: GN- 접두사 자동 부착 (P/ECLP/ACLP 충돌 방지)
+  if(dispatchMode === 'general' && code && !code.startsWith('GN-') && !code.startsWith('TEMP_')) {
+    code = 'GN-' + code;
+    document.getElementById('dispatchCode').value = code;
+    const genCodeEl = document.getElementById('genDispatchCode');
+    if(genCodeEl) genCodeEl.value = code;
+  }
+
   // 코드 없으면 임시 코드 생성 (나중에 수정 가능) — 현재 모드 prefix 적용
   if(!code) {
     const today = getTodayStr().replace(/-/g,'');
@@ -17259,7 +17269,7 @@ async function saveDispatch(closeAfter) {
       clientName: document.getElementById('clientName').value,
       date: sanitizeDate(document.getElementById('dispatchDate').value),
       deliveryDate: sanitizeDate(document.getElementById('deliveryDate').value),
-      type: dispatchMode === 'liquor' ? '주류' : type,
+      type: dispatchMode === 'liquor' ? '주류' : (type === '주류' ? '편도' : type),
       pickup: document.getElementById('pickupAddr').value,
       delivery: region,
       deliveryAddr: document.getElementById('deliveryDetailAddr').value,
