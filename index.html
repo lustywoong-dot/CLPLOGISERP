@@ -3743,9 +3743,9 @@ function loadRecord(id) {
   
   selectedRecordId = id;
 
-  // 배차 유형 설정 (일반 모드에서는 '주류' 유형 사용 안 함)
+  // 배차 유형 설정 (주류 모드에서만 '주류' 유형 활성화)
   const _typeSelect = document.getElementById('dispatchType');
-  if((r.type === '주류' || dispatchMode === 'liquor') && dispatchMode !== 'general') {
+  if(dispatchMode === 'liquor') {
     const lqOpt = document.getElementById('optDispatchLiquor');
     if(lqOpt) lqOpt.style.display = '';
     _typeSelect.disabled = false;
@@ -7631,6 +7631,7 @@ function autoDetectCenter() {
 }
 
 function onCenterChange() {
+  if(dispatchMode !== 'liquor') return;
   const center = document.getElementById('lqCenter').value;
   const centerPickup = {
     'dp1': '경기 이천시 마장면 서이천로 91 (KCTC덕평1센터)',
@@ -14297,12 +14298,13 @@ async function exportReceiptChecklist() {
   const wb = new ExcelJS.Workbook();
   
   // 거래처별 분류
-  const clientMap = { 'KCTC여주': [], 'KCTC덕평': [], '락앤락': [], '기타': [] };
+  const clientMap = { 'KCTC여주': [], 'KCTC덕평': [], '락앤락': [], '씨엘피': [], '기타': [] };
   filtered.forEach(d => {
     const code = (d.dispCode || '').toUpperCase();
     if(code.startsWith('ECLP')) clientMap['KCTC여주'].push(d);
     else if(code.startsWith('ACLP')) clientMap['KCTC덕평'].push(d);
     else if(/^P[_\d]/i.test(code)) clientMap['락앤락'].push(d);
+    else if(/^CLP/i.test(code)) clientMap['씨엘피'].push(d);
     else if(/^(GN[-_]|TEMP_GN)/i.test(code)) clientMap['기타'].push(d);
   });
   
