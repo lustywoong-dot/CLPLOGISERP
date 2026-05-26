@@ -7005,6 +7005,7 @@ async function refreshMemoImgArea() {
 }
 
 // 메모장 paste 핸들러 — 이미지면 가로채기, 텍스트면 그대로
+let _memoPasteLock = false;
 function handleMemoPaste(e) {
   const items = (e.clipboardData || window.clipboardData)?.items;
   if(!items || items.length === 0) return;
@@ -7016,29 +7017,39 @@ function handleMemoPaste(e) {
       break;
     }
   }
-  if(!imgFile) return; // 이미지 아니면 텍스트 paste 통과
+  if(!imgFile) return;
   e.preventDefault();
 
   if(!currentMemoCode) {
     if(typeof showToast === 'function') showToast('⚠ 배차코드 입력 후 이미지 붙여넣기 가능');
     return;
   }
+  if(_memoPasteLock) return;
+  _memoPasteLock = true;
 
-  const reader = new FileReader();
-  reader.onload = async (ev) => {
-    const dataUrl = ev.target.result;
-    const key = _buildMemoImgKey(currentMemoCode);
-    if(!key) return;
-    const imgs = await loadMemoImagesForKey(key);
-    imgs.push(dataUrl);
-    await saveMemoImagesForKey(key, imgs);
-    await refreshMemoImgArea();
-    if(typeof showToast === 'function') showToast(`📎 이미지 첨부 (총 ${imgs.length}장)`);
-  };
-  reader.onerror = () => {
-    if(typeof showToast === 'function') showToast('❌ 이미지 읽기 실패');
-  };
-  reader.readAsDataURL(imgFile);
+  const codeAtPaste = currentMemoCode;
+  (async () => {
+    try {
+      const dataUrl = await _resizeImageFileToDataURL(imgFile, 1200, 0.7);
+      const key = _buildMemoImgKey(codeAtPaste);
+      if(!key) return;
+      const imgs = await loadMemoImagesForKey(key);
+      const isDup = imgs.length > 0 && imgs[imgs.length - 1].length === dataUrl.length && imgs[imgs.length - 1].substring(0, 200) === dataUrl.substring(0, 200);
+      if(isDup) {
+        if(typeof showToast === 'function') showToast('⚠ 동일한 이미지가 이미 첨부되어 있습니다');
+        return;
+      }
+      imgs.push(dataUrl);
+      await saveMemoImagesForKey(key, imgs);
+      await refreshMemoImgArea();
+      if(typeof showToast === 'function') showToast(`📎 이미지 첨부 (총 ${imgs.length}장)`);
+    } catch(err) {
+      console.warn('메모 이미지 처리 실패:', err);
+      if(typeof showToast === 'function') showToast('❌ 이미지 처리 실패');
+    } finally {
+      _memoPasteLock = false;
+    }
+  })();
 }
 
 // 모달 — 큰 이미지 보기
