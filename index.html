@@ -12616,7 +12616,7 @@ function _findLatestSettlementDate(client) {
   let latest = '';
   settlementData.forEach(s => {
     if(!s || !s.dispCode || !s.date) return;
-    const mainCode = (typeof _normalizeReceiptCode === 'function' ? _normalizeReceiptCode(s.dispCode) : String(s.dispCode).replace(/-\d+$/, ''));
+    const mainCode = (typeof _getBaseCode === 'function' ? _getBaseCode(s.dispCode) : String(s.dispCode).replace(/-\d+$/, ''));
     if(getReceiptClient(mainCode) !== client) return;
     if(s.date > latest) latest = s.date;
   });
@@ -13073,10 +13073,16 @@ function onReceiptResetClick(el) {
   resetReceiptCheck(d, c);
 }
 
-// ─── 인수증 헬퍼 (기사정산 기반) ───────────────────────────
+// ─── 서브코드 헬퍼 ───────────────────────────
 // 다중차량 sub-code(-1, -2)를 메인 코드로 통합
+// GN- 접두사(일반 모드)는 독립 건이므로 접미사 제거 안 함
+function _getBaseCode(code) {
+  const c = String(code || '');
+  if(/^(GN-|TEMP_GN)/i.test(c)) return c;
+  return c.replace(/-\d+$/, '');
+}
 function _normalizeReceiptCode(code) {
-  return String(code || '').replace(/-\d+$/, '');
+  return _getBaseCode(code);
 }
 
 // receiptCheckData lookup — 메인 코드 정확 매치 우선, sub-code fallback (옛 데이터 호환)
@@ -14163,7 +14169,7 @@ function updateManualSettlement() {
   d.category = drv0.category;
 
   // 추가 기사 = 메인 코드 기준 빈 sub-code 번호 자동 부여 (-2부터 시작, 충돌 시 다음 번호로 증가)
-  const cleanBase = String(firstCode).replace(/-\d+$/, '');
+  const cleanBase = _getBaseCode(firstCode);
   // 그룹 내 이미 사용 중인 sub-code 번호 수집 (자기 자신/첫 행도 포함)
   const escBase = cleanBase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const subRe = new RegExp('^' + escBase + '-(\\d+)$');
@@ -14651,9 +14657,9 @@ function updateStlFieldInline(inputEl, idx, field) {
     const d = settlementData[idx];
     const pay = parseInt(d.payment) || 0;
     const kctc = parseInt(d.kctcAmount) || 0;
-    const baseCode = String(d.dispCode||'').replace(/-\d+$/, '');
+    const baseCode = _getBaseCode(d.dispCode);
     const multiSuffix = (d.dispCode||'').match(/-(\d+)$/);
-    const isMulti = multiSuffix && settlementData.some(r => r !== d && r.date === d.date && String(r.dispCode||'').replace(/-\d+$/, '') === baseCode);
+    const isMulti = multiSuffix && !(/^(GN-|TEMP_GN)/i.test(d.dispCode||'')) && settlementData.some(r => r !== d && r.date === d.date && _getBaseCode(r.dispCode) === baseCode);
     const isFirstInGroup = !isMulti || !multiSuffix || multiSuffix[1] === '1';
     const effectiveKctc = (isMulti && !isFirstInGroup) ? 0 : kctc;
     const margin = effectiveKctc - pay;
@@ -15179,10 +15185,10 @@ function renderCalDetail(filtered, dateStr) {
   document.getElementById('stlCalDateTitle').textContent = '📅 ' + dateStr + dayName;
   document.getElementById('stlCalDateCount').textContent = filtered.length + '건';
   
-  // 코드별 그룹핑 (다중 차량 지원)
+  // 코드별 그룹핑 (다중 차량 지원, GN 코드는 독립 건)
   const codeGroups = {};
   filtered.forEach(d => {
-    const baseCode = (d.dispCode || '').replace(/-\d+$/, '');
+    const baseCode = _getBaseCode(d.dispCode);
     if(!codeGroups[baseCode]) codeGroups[baseCode] = [];
     codeGroups[baseCode].push(d);
   });
@@ -15278,7 +15284,7 @@ function addVehicleToCode(sourceIdx, dateStr) {
   if(!src) return;
   
   // 기존 코드에서 다음 번호 계산
-  const baseCode = (src.dispCode || '').replace(/-\d+$/, '');
+  const baseCode = _getBaseCode(src.dispCode);
   const siblings = settlementData.filter(d => d.date === src.date && (d.dispCode === baseCode || (d.dispCode||'').startsWith(baseCode + '-')));
   const nextNum = siblings.length + 1;
   
@@ -15720,10 +15726,10 @@ function renderSettlementList(data) {
     filtered = filtered.filter(d => (d.date || '미지정') === stlDateFilter);
   }
   
-  // 다중 차량 그룹 감지 (같은 날짜 + 같은 베이스코드)
+  // 다중 차량 그룹 감지 (같은 날짜 + 같은 베이스코드, GN 코드는 독립)
   const codeGroupCounts = {};
   filtered.forEach(d => {
-    const base = String(d.dispCode||'').replace(/-\d+$/, '');
+    const base = _getBaseCode(d.dispCode);
     const key = (d.date||'') + '|' + base;
     codeGroupCounts[key] = (codeGroupCounts[key] || 0) + 1;
   });
@@ -15754,8 +15760,8 @@ function renderSettlementList(data) {
     const pay = parseInt(d.payment) || 0;
     const kctc = parseInt(d.kctcAmount) || 0;
     
-    // 다중 차량 감지
-    const baseCode = String(d.dispCode||'').replace(/-\d+$/, '');
+    // 다중 차량 감지 (GN 코드는 독립 건)
+    const baseCode = _getBaseCode(d.dispCode);
     const groupKey = (d.date||'') + '|' + baseCode;
     const groupSize = codeGroupCounts[groupKey] || 1;
     const isMulti = groupSize > 1;
