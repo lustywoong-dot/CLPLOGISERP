@@ -1082,7 +1082,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
               <span></span>
             </div>
           </div>
-          <button class="btn btn-sm" onclick="addDriverRow()" style="margin-top:2px;background:#059669;color:white;padding:2px 8px;font-size:10px;border:none;border-radius:3px">+ 차량 추가</button>
+          <button id="btnAddDriverRow" class="btn btn-sm" onclick="addDriverRow()" style="margin-top:2px;background:#059669;color:white;padding:2px 8px;font-size:10px;border:none;border-radius:3px">+ 차량 추가</button>
           <!-- 기사 추천 (접이식) -->
           <div id="driverRecommendArea" style="margin-top:4px;display:none">
             <div onclick="toggleDriverRecommend()" style="cursor:pointer;font-size:10px;color:#7c3aed;text-decoration:underline;user-select:none;display:inline-block">💡 이 지역 배차 실적 기사 ▼</div>
@@ -7512,8 +7512,12 @@ function setDispatchMode(mode) {
   } else if(prevMode === 'general' && mode !== 'general' && customRateMode) {
     toggleCustomRate();
   }
-  // 일반 모드 진입 시 gen_ 필드 ← 기존 필드 동기화 + 자동완성 갱신
+  // 일반 모드: 차량 추가 버튼 숨김 (각 배차를 개별 입력)
+  const addDrvBtn = document.getElementById('btnAddDriverRow');
+  if(addDrvBtn) addDrvBtn.style.display = isGeneral ? 'none' : '';
+  // 일반 모드 진입 시 다중 기사 행 → 1개로 리셋 + gen_ 동기화 + 자동완성
   if(isGeneral) {
+    if(typeof resetDriverRows === 'function') resetDriverRows();
     _syncStdToGen();
     _refreshGenAutocomplete();
   }
@@ -8065,6 +8069,10 @@ function syncDriverHidden() {
 }
 
 function addDriverRow() {
+  if(dispatchMode === 'general') {
+    showToast('⚠ 일반 모드에서는 배차 건별로 개별 입력해주세요');
+    return;
+  }
   const container = document.getElementById('driverRows');
   const count = container.querySelectorAll('.driver-row').length;
   const idx = count;
