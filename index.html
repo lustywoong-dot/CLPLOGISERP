@@ -9524,12 +9524,13 @@ function renderErpPreview() {
     if(/^P[_\d]/i.test(upper)) client = '락앤락';
     else if(upper.startsWith('ECLP')) client = 'KCTC여주';
     else if(upper.startsWith('ACLP')) client = 'KCTC덕평';
+    else if(/^(GN[-_]|TEMP_GN)/i.test(upper)) client = '기타';
     d._client = client;
     d._centerName = centerName;
     
     return `<tr style="${dupStyle}">
       <td><input type="checkbox" class="erp-check" value="${i}" ${checked}></td>
-      <td><span style="padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;${client==='락앤락'?'background:#dbeafe;color:#1e40af':client==='KCTC여주'?'background:#f3e8ff;color:#7c3aed':'background:#fce7f3;color:#be185d'}">${client}</span></td>
+      <td><span style="padding:1px 5px;border-radius:3px;font-size:10px;font-weight:600;${client==='락앤락'?'background:#dbeafe;color:#1e40af':client==='KCTC여주'?'background:#f3e8ff;color:#7c3aed':client==='기타'?'background:#ecfdf5;color:#059669':'background:#fce7f3;color:#be185d'}">${client}</span></td>
       <td style="font-weight:700;color:var(--primary)">${d.code}</td>
       <td style="font-size:10px">${centerName}</td>
       <td style="font-size:10px">${d.vehicleNo || '-'}</td>
@@ -13873,6 +13874,7 @@ function parseStlPaste() {
     if(/^P[_\d]/i.test(dispCode)) client = '락앤락';
     else if(/^ECLP/i.test(dispCode)) client = 'KCTC여주';
     else if(/^ACLP/i.test(dispCode)) client = 'KCTC덕평';
+    else if(/^(GN[-_]|TEMP_GN)/i.test(dispCode)) client = '기타';
     
     console.log(`   행${i+1}: ${date} | ${vehicle} | ${name} | ${phone} | ${dispCode} | ${dest} | ${area} | ${payment} | ${kctc} | ${category} | ${note}`);
     
@@ -13998,6 +14000,7 @@ function autoImportFromDispatch() {
     else if(/^ECLP/i.test(d.code)) client = 'KCTC여주';
     else if(/^ACLP/i.test(d.code)) client = 'KCTC덕평';
     else if(/^CLP/i.test(d.code)) client = '씨엘피';
+    else if(/^(GN[-_]|TEMP_GN)/i.test(d.code)) client = '기타';
     
     settlementData.push({
       client: client,
@@ -14085,6 +14088,7 @@ function addManualSettlement() {
   let client = stlActiveClient === '전체' ? '락앤락' : stlActiveClient;
   if(clientCode.startsWith('ECLP')) client = 'KCTC여주';
   else if(clientCode.startsWith('ACLP')) client = 'KCTC덕평';
+  else if(/^(GN[-_]|TEMP_GN)/i.test(clientCode)) client = '기타';
   
   drivers.forEach((drv, i) => {
     const recCode = drivers.length > 1 ? `${code}-${i+1}` : code;
@@ -14290,12 +14294,13 @@ async function exportReceiptChecklist() {
   const wb = new ExcelJS.Workbook();
   
   // 거래처별 분류
-  const clientMap = { 'KCTC여주': [], 'KCTC덕평': [], '락앤락': [] };
+  const clientMap = { 'KCTC여주': [], 'KCTC덕평': [], '락앤락': [], '기타': [] };
   filtered.forEach(d => {
     const code = (d.dispCode || '').toUpperCase();
     if(code.startsWith('ECLP')) clientMap['KCTC여주'].push(d);
     else if(code.startsWith('ACLP')) clientMap['KCTC덕평'].push(d);
     else if(/^P[_\d]/i.test(code)) clientMap['락앤락'].push(d);
+    else if(/^(GN[-_]|TEMP_GN)/i.test(code)) clientMap['기타'].push(d);
   });
   
   // 스타일 정의
