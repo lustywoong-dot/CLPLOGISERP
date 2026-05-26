@@ -807,9 +807,17 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       <!-- 일반 모드 전용 폼 (상차지→하차지→거래처 순서) -->
       <div id="generalFormArea" style="display:none">
         <div style="margin-bottom:6px;padding:10px;background:#ecfdf5;border:1px solid #86efac;border-radius:6px">
-          <div style="margin-bottom:8px">
-            <label style="font-size:12px;font-weight:700;color:#059669;display:block;margin-bottom:3px">🚛 상차지</label>
-            <input type="text" id="genPickup" placeholder="상차지 주소 입력" oninput="_syncGen(this)" data-sync="pickupAddr" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #059669;border-radius:4px;background:white;box-sizing:border-box;font-weight:600">
+          <datalist id="genPickupHistory"></datalist>
+          <datalist id="genClientHistory"></datalist>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+            <div>
+              <label style="font-size:12px;font-weight:700;color:#059669;display:block;margin-bottom:3px">🚛 상차지</label>
+              <input type="text" id="genPickup" placeholder="상차지 주소 입력" list="genPickupHistory" oninput="_syncGen(this)" data-sync="pickupAddr" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #059669;border-radius:4px;background:white;box-sizing:border-box;font-weight:600">
+            </div>
+            <div>
+              <label style="font-size:12px;font-weight:700;color:#059669;display:block;margin-bottom:3px">🏢 거래처명</label>
+              <input type="text" id="genClientName" placeholder="거래처명" list="genClientHistory" oninput="_syncGen(this);onCoreFieldChange()" data-sync="clientName" style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #059669;border-radius:4px;background:white;box-sizing:border-box;font-weight:600">
+            </div>
           </div>
           <div style="display:grid;grid-template-columns:120px 1fr;gap:8px;margin-bottom:8px">
             <div>
@@ -831,11 +839,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
               <input type="tel" id="genPhone" placeholder="010-0000-0000" oninput="applyPhoneFormat(this);_syncGen(this);onCoreFieldChange()" data-sync="deliveryPhone" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box;color:#0369a1;font-weight:600">
             </div>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
-            <div>
-              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">🏢 거래처명</label>
-              <input type="text" id="genClientName" placeholder="거래처명" oninput="_syncGen(this);onCoreFieldChange()" data-sync="clientName" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
-            </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
             <div>
               <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">📋 참조번호 <span style="font-size:9px;color:#6b7280">선택</span></label>
               <input type="text" id="genRefNo" placeholder="딜리버리/롯트 넘버 등" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
@@ -1567,6 +1571,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <button class="receipt-client-tab" data-client="LNL" onclick="setReceiptClient('LNL')" style="flex:1;min-width:80px;padding:8px 12px;border:none;background:#fff;border-radius:4px;cursor:pointer;font-size:13px;font-weight:600;color:var(--primary)">🔵 LNL (락앤락)</button>
         <button class="receipt-client-tab" data-client="덕평" onclick="setReceiptClient('덕평')" style="flex:1;min-width:80px;padding:8px 12px;border:none;background:transparent;border-radius:4px;cursor:pointer;font-size:13px;color:var(--text-light)">🟣 덕평2</button>
         <button class="receipt-client-tab" data-client="여주" onclick="setReceiptClient('여주')" style="flex:1;min-width:80px;padding:8px 12px;border:none;background:transparent;border-radius:4px;cursor:pointer;font-size:13px;color:var(--text-light)">🟢 여주</button>
+        <button class="receipt-client-tab" data-client="일반" onclick="setReceiptClient('일반')" style="flex:1;min-width:80px;padding:8px 12px;border:none;background:transparent;border-radius:4px;cursor:pointer;font-size:13px;color:var(--text-light)">🏢 일반</button>
       </div>
       <!-- 컨트롤 바 -->
       <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px">
@@ -2478,6 +2483,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <button class="btn btn-sm" id="stlCodeYJ" onclick="setStlCodeFilter('ECLP')" style="padding:2px 8px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">ECLP</button>
           <button class="btn btn-sm" id="stlCodeDP" onclick="setStlCodeFilter('ACLP')" style="padding:2px 8px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">ACLP</button>
           <button class="btn btn-sm" id="stlCodeLK" onclick="setStlCodeFilter('P')" style="padding:2px 8px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">P(락앤락)</button>
+          <button class="btn btn-sm" id="stlCodeGN" onclick="setStlCodeFilter('GN')" style="padding:2px 8px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">GN(일반)</button>
         </div>
         <div id="settlementDriverFilter" style="display:none;margin-left:8px;gap:6px;align-items:center;flex-wrap:wrap">
           <!-- 기사 필터 -->
@@ -7506,8 +7512,11 @@ function setDispatchMode(mode) {
   } else if(prevMode === 'general' && mode !== 'general' && customRateMode) {
     toggleCustomRate();
   }
-  // 일반 모드 진입 시 gen_ 필드 ← 기존 필드 동기화
-  if(isGeneral) _syncStdToGen();
+  // 일반 모드 진입 시 gen_ 필드 ← 기존 필드 동기화 + 자동완성 갱신
+  if(isGeneral) {
+    _syncStdToGen();
+    _refreshGenAutocomplete();
+  }
 }
 
 // 일반 모드 상차지: select → text input 교체 (ID 유지로 기존 코드 호환)
@@ -7562,6 +7571,26 @@ function _syncStdToGen() {
     const g = document.getElementById(gen);
     if(s && g) g.value = s.value;
   });
+}
+
+// 일반 모드: 최근 사용 상차지/거래처명 자동완성
+function _refreshGenAutocomplete() {
+  const pickupDL = document.getElementById('genPickupHistory');
+  const clientDL = document.getElementById('genClientHistory');
+  if(!pickupDL || !clientDL) return;
+  // dispatchLog에서 일반 모드 레코드의 상차지/거래처명 추출
+  const pickups = new Set();
+  const clients = new Set();
+  dispatchLog.forEach(r => {
+    if(!r.code) return;
+    const c = (r.code || '').toUpperCase();
+    if(c.startsWith('GN-') || c.startsWith('TEMP_GN')) {
+      if(r.pickup) pickups.add(r.pickup);
+      if(r.clientName) clients.add(r.clientName);
+    }
+  });
+  pickupDL.innerHTML = [...pickups].map(v => '<option value="' + v.replace(/"/g,'&quot;') + '">').join('');
+  clientDL.innerHTML = [...clients].map(v => '<option value="' + v.replace(/"/g,'&quot;') + '">').join('');
 }
 
 function autoDetectCenter() {
@@ -11878,6 +11907,7 @@ function getReceiptClient(code) {
   if(c.startsWith('ACLP')) return '덕평';
   if(c.startsWith('ECLP')) return '여주';
   if(c.startsWith('P')) return 'LNL';
+  if(c.startsWith('GN') || c.startsWith('TEMPGN')) return '일반';
   return null;
 }
 
@@ -13676,7 +13706,7 @@ function initSettlementMonth() {
 // ============================================
 // 거래처 관리
 // ============================================
-const DEFAULT_CLIENTS = ['락앤락', 'KCTC여주', 'KCTC덕평', '씨엘피'];
+const DEFAULT_CLIENTS = ['락앤락', 'KCTC여주', 'KCTC덕평', '씨엘피', '기타'];
 let stlClients;
 try { stlClients = JSON.parse(localStorage.getItem('clp_stl_clients') || 'null') || [...DEFAULT_CLIENTS]; }
 catch(e) { console.warn('거래처 파싱 오류:', e.message); stlClients = [...DEFAULT_CLIENTS]; }
@@ -14692,6 +14722,7 @@ function updateStlFooter() {
     if(stlActiveClient && stlActiveClient !== '전체' && d.client !== stlActiveClient) return;
     if(stlCodeFilterMode !== 'all') {
       if(stlCodeFilterMode === 'P') { if(!d.dispCode || !/^P[_\d]/i.test(d.dispCode)) return; }
+      else if(stlCodeFilterMode === 'GN') { if(!d.dispCode || !/^(GN[-_]|TEMP_GN)/i.test(d.dispCode)) return; }
       else { if(!d.dispCode || !d.dispCode.toUpperCase().startsWith(stlCodeFilterMode)) return; }
     }
     totalPay += parseInt(d.payment) || 0;
@@ -14720,7 +14751,7 @@ let stlCodeFilterMode = 'all';
 
 function setStlCodeFilter(mode) {
   stlCodeFilterMode = mode;
-  const buttons = {'all':'stlCodeAll','ECLP':'stlCodeYJ','ACLP':'stlCodeDP','P':'stlCodeLK'};
+  const buttons = {'all':'stlCodeAll','ECLP':'stlCodeYJ','ACLP':'stlCodeDP','P':'stlCodeLK','GN':'stlCodeGN'};
   Object.entries(buttons).forEach(([key, id]) => {
     const el = document.getElementById(id);
     if(key === mode) {
@@ -15006,6 +15037,7 @@ function renderSettlementCalendar() {
   if(stlActiveClient && stlActiveClient !== '전체') filtered = filtered.filter(d => d.client === stlActiveClient);
   if(stlCodeFilterMode !== 'all') {
     if(stlCodeFilterMode === 'P') filtered = filtered.filter(d => d.dispCode && /^P[_\d]/i.test(d.dispCode));
+    else if(stlCodeFilterMode === 'GN') filtered = filtered.filter(d => d.dispCode && /^(GN[-_]|TEMP_GN)/i.test(d.dispCode));
     else filtered = filtered.filter(d => d.dispCode && d.dispCode.toUpperCase().startsWith(stlCodeFilterMode));
   }
 
@@ -15100,6 +15132,7 @@ function selectCalDate(dateStr) {
   if(stlActiveClient && stlActiveClient !== '전체') filtered = filtered.filter(d => d.client === stlActiveClient);
   if(stlCodeFilterMode !== 'all') {
     if(stlCodeFilterMode === 'P') filtered = filtered.filter(d => d.dispCode && /^P[_\d]/i.test(d.dispCode));
+    else if(stlCodeFilterMode === 'GN') filtered = filtered.filter(d => d.dispCode && /^(GN[-_]|TEMP_GN)/i.test(d.dispCode));
     else filtered = filtered.filter(d => d.dispCode && d.dispCode.toUpperCase().startsWith(stlCodeFilterMode));
   }
 
@@ -15362,6 +15395,8 @@ function renderSettlement() {
   if(stlCodeFilterMode !== 'all') {
     if(stlCodeFilterMode === 'P') {
       filtered = filtered.filter(d => d.dispCode && /^P[_\d]/i.test(d.dispCode));
+    } else if(stlCodeFilterMode === 'GN') {
+      filtered = filtered.filter(d => d.dispCode && /^(GN[-_]|TEMP_GN)/i.test(d.dispCode));
     } else {
       filtered = filtered.filter(d => d.dispCode && d.dispCode.toUpperCase().startsWith(stlCodeFilterMode));
     }
@@ -15871,6 +15906,7 @@ async function downloadDailyReport() {
   if(stlActiveClient && stlActiveClient !== '전체') filtered = filtered.filter(d => d.client === stlActiveClient);
   if(stlCodeFilterMode !== 'all') {
     if(stlCodeFilterMode === 'P') filtered = filtered.filter(d => d.dispCode && /^P[_\d]/i.test(d.dispCode));
+    else if(stlCodeFilterMode === 'GN') filtered = filtered.filter(d => d.dispCode && /^(GN[-_]|TEMP_GN)/i.test(d.dispCode));
     else filtered = filtered.filter(d => d.dispCode && d.dispCode.toUpperCase().startsWith(stlCodeFilterMode));
   }
   
