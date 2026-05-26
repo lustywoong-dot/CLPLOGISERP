@@ -7151,7 +7151,7 @@ function resetForm() {
     isReturnMode = false;
     _applyReturnToggleStyle();
   }
-  if(customRateMode) {
+  if(customRateMode && dispatchMode !== 'general') {
     customRateMode = false;
     _applyCustomRateToggleStyle();
     const _rateEl = document.getElementById('autoRateDisplay');
@@ -9524,6 +9524,7 @@ function renderErpPreview() {
     if(/^P[_\d]/i.test(upper)) client = '락앤락';
     else if(upper.startsWith('ECLP')) client = 'KCTC여주';
     else if(upper.startsWith('ACLP')) client = 'KCTC덕평';
+    else if(/^CLP/i.test(upper)) client = '씨엘피';
     else if(/^(GN[-_]|TEMP_GN)/i.test(upper)) client = '기타';
     d._client = client;
     d._centerName = centerName;
@@ -13874,6 +13875,7 @@ function parseStlPaste() {
     if(/^P[_\d]/i.test(dispCode)) client = '락앤락';
     else if(/^ECLP/i.test(dispCode)) client = 'KCTC여주';
     else if(/^ACLP/i.test(dispCode)) client = 'KCTC덕평';
+    else if(/^CLP/i.test(dispCode)) client = '씨엘피';
     else if(/^(GN[-_]|TEMP_GN)/i.test(dispCode)) client = '기타';
     
     console.log(`   행${i+1}: ${date} | ${vehicle} | ${name} | ${phone} | ${dispCode} | ${dest} | ${area} | ${payment} | ${kctc} | ${category} | ${note}`);
@@ -14088,6 +14090,7 @@ function addManualSettlement() {
   let client = stlActiveClient === '전체' ? '락앤락' : stlActiveClient;
   if(clientCode.startsWith('ECLP')) client = 'KCTC여주';
   else if(clientCode.startsWith('ACLP')) client = 'KCTC덕평';
+  else if(/^CLP/i.test(clientCode)) client = '씨엘피';
   else if(/^(GN[-_]|TEMP_GN)/i.test(clientCode)) client = '기타';
   
   drivers.forEach((drv, i) => {
