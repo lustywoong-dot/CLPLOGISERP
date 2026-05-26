@@ -15801,7 +15801,7 @@ function renderSettlementList(data) {
       <td>${dateNo}</td>
       <td style="font-size:11px">${d.date ? d.date.substring(0,10).substring(5) : '-'}</td>
       <td style="font-size:11px;font-weight:700;color:var(--primary);cursor:pointer" onclick="copyCell(this,event)" title="클릭하여 복사">${d.dispCode||'-'}${multiLabel}</td>
-      <td style="font-size:10px">${d.client || '-'}</td>
+      <td style="font-size:10px"><select onchange="updateStlFieldQuiet(${globalIdx},'client',this.value,this)" style="font-size:9px;padding:1px 2px;border:1px solid #e2e8f0;border-radius:3px;background:${d.client==='기타'?'#ecfdf5':d.client==='락앤락'?'#dbeafe':d.client==='KCTC여주'?'#f3e8ff':d.client==='KCTC덕평'?'#fce7f3':'#f3f4f6'}"><option value="락앤락" ${d.client==='락앤락'?'selected':''}>락앤락</option><option value="KCTC여주" ${d.client==='KCTC여주'?'selected':''}>KCTC여주</option><option value="KCTC덕평" ${d.client==='KCTC덕평'?'selected':''}>KCTC덕평</option><option value="씨엘피" ${d.client==='씨엘피'?'selected':''}>씨엘피</option><option value="기타" ${d.client==='기타'?'selected':''}>기타</option></select></td>
       <td style="font-size:11px;cursor:pointer" onclick="copyCell(this,event)" title="클릭하여 복사">${d.vehicle||''}</td>
       <td style="font-weight:600;cursor:pointer" onclick="copyCell(this,event)" title="클릭하여 복사">${d.name||'-'}</td>
       <td style="font-size:11px;cursor:pointer" onclick="copyCell(this,event)" title="클릭하여 복사">${d.phone||''}</td>
