@@ -2504,6 +2504,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
                  style="padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:5px;width:200px">
           <button onclick="document.getElementById('stlListSearch').value='';renderSettlement()" style="padding:3px 6px;font-size:10px;background:#f3f4f6;border:1px solid var(--border);border-radius:3px;cursor:pointer;color:#6b7280">✕</button>
           <button id="btnDriverDownload" class="btn btn-secondary" onclick="downloadDriverSettlement()" style="display:none;padding:4px 10px;font-size:11px">📥 정산서 다운로드</button>
+          <button id="btnCategoryDownload" class="btn btn-secondary" onclick="downloadCategorySettlement()" style="display:none;padding:4px 10px;font-size:11px;background:#c05621;color:#fff;border:none">📁 분류 정산서</button>
           <button id="btnStlDelete" class="btn" onclick="deleteSelectedSettlement()" style="display:none;background:var(--danger);color:white;padding:4px 10px;font-size:11px">🗑 선택 삭제 (<span id="stlDeleteCount">0</span>건)</button>
           <!-- 차량번호 수정 -->
           <button onclick="document.getElementById('fixVehPanel').style.display=document.getElementById('fixVehPanel').style.display==='none'?'flex':'none'" style="padding:3px 8px;font-size:10px;background:#f3f4f6;border:1px solid var(--border);border-radius:3px;cursor:pointer;color:#374151">🔧 차량번호 수정</button>
@@ -15740,6 +15741,15 @@ function renderSettlementList(data) {
   }
   // 기사 선택 시 다운로드 버튼 표시
   document.getElementById('btnDriverDownload').style.display = driverFilter ? 'inline-block' : 'none';
+  // 분류 정산서 버튼: 통합검색값이 분류명과 정확히 일치할 때만 표시 (✕로 비우면 자동 숨김)
+  const _catList = [...new Set(settlementData.map(d => String(d.category||'').trim()).filter(c => c))];
+  const _curSearch = (document.getElementById('stlListSearch')?.value || '').trim();
+  _stlExportCategory = _catList.includes(_curSearch) ? _curSearch : '';
+  const _catBtn = document.getElementById('btnCategoryDownload');
+  if(_catBtn) {
+    _catBtn.style.display = _stlExportCategory ? 'inline-block' : 'none';
+    if(_stlExportCategory) _catBtn.textContent = '📁 ' + _stlExportCategory + ' 정산서';
+  }
   document.getElementById('btnStlDelete').style.display = 'none';
   document.getElementById('stlCheckAll').checked = false;
   
@@ -16245,6 +16255,180 @@ async function downloadDailyReport() {
   a.click();
   URL.revokeObjectURL(url);
   showToast(`📄 일일정산서 다운로드 완료! (${filtered.length}건)`);
+}
+
+// 현재 분류 정산서 출력 대상 (renderSettlementList에서 통합검색값 기준 자동 설정)
+let _stlExportCategory = '';
+
+// 분류(태영GLS 등) 전체 정산서 — 운송비 정산 내역서 양식, '기사명' 컬럼 포함
+async function downloadCategorySettlement() {
+  const month = document.getElementById('settlementMonth').value;
+  const cat = _stlExportCategory || (document.getElementById('stlListSearch')?.value || '').trim();
+  if(!cat) { showToast('⚠ 분류를 먼저 검색해주세요'); return; }
+
+  const filtered = settlementData.filter(d => d.date && d.date.startsWith(month) && String(d.category||'').trim() === cat);
+  if(filtered.length === 0) { showToast('⚠ 해당 분류의 데이터가 없습니다'); return; }
+  filtered.sort((a,b) => (a.date||'').localeCompare(b.date||''));
+
+  const totalPay = filtered.reduce((s,d) => s + (d.payment||0), 0);
+  const driverCount = new Set(filtered.map(d => d.name).filter(n => n)).size;
+  const [yy, mm] = month.split('-');
+  const monthLabel = yy + '년 ' + mm + '월';
+  const lastDay = new Date(parseInt(yy), parseInt(mm), 0).getDate();
+  const today = (function(){const _d=new Date();return _d.getFullYear()+'-'+String(_d.getMonth()+1).padStart(2,'0')+'-'+String(_d.getDate()).padStart(2,'0')})();
+
+  if(typeof ExcelJS === 'undefined') { showToast('⚠ ExcelJS 로딩 실패'); return; }
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('정산서');
+  ws.columns = [{width:6},{width:14},{width:18},{width:18},{width:10},{width:14},{width:14},{width:20}];
+
+  const BLUE = {argb:'FF2b6cb0'};
+  const ORANGE = {argb:'FFc05621'};
+  const GRAY = {argb:'FF718096'};
+  const WHITE_FONT = {argb:'FFffffff'};
+  const LIGHT_BLUE_BG = {type:'pattern', pattern:'solid', fgColor:{argb:'FFebf8ff'}};
+  const LIGHT_GRAY_BG = {type:'pattern', pattern:'solid', fgColor:{argb:'FFf7fafc'}};
+  const WHITE_BG = {type:'pattern', pattern:'solid', fgColor:{argb:'FFffffff'}};
+  const BLUE_BG = {type:'pattern', pattern:'solid', fgColor:{argb:'FF2b6cb0'}};
+  const THIN_B = {top:{style:'thin',color:{argb:'FFcbd5e0'}},bottom:{style:'thin',color:{argb:'FFcbd5e0'}},left:{style:'thin',color:{argb:'FFcbd5e0'}},right:{style:'thin',color:{argb:'FFcbd5e0'}}};
+  const THICK_B = {top:{style:'medium',color:BLUE},bottom:{style:'medium',color:BLUE},left:{style:'medium',color:BLUE},right:{style:'medium',color:BLUE}};
+
+  try {
+    const logoId = wb.addImage({ base64: CLP_LOGO_B64, extension:'png' });
+    ws.addImage(logoId, {tl:{col:0,row:0}, ext:{width:55,height:55}});
+  } catch(e) { console.log('Logo error:', e); }
+
+  ws.getRow(1).height = 15;
+  ws.mergeCells('B2:I2');
+  const titleCell = ws.getCell('B2');
+  titleCell.value = '운송비 정산 내역서';
+  titleCell.font = {size:18, bold:true, color:{argb:'FF000000'}};
+  titleCell.alignment = {horizontal:'center', vertical:'middle'};
+  ws.getRow(2).height = 35;
+
+  ws.mergeCells('B3:I3');
+  const subCell = ws.getCell('B3');
+  subCell.value = monthLabel + '  |  ' + cat;
+  subCell.font = {size:10, color:GRAY};
+  subCell.alignment = {horizontal:'center', vertical:'middle'};
+  ws.getRow(3).height = 20;
+  ws.getRow(4).height = 6;
+
+  const infoS = (addr, isLabel) => {
+    const c = ws.getCell(addr);
+    c.border = THIN_B;
+    c.alignment = {horizontal:'center', vertical:'middle'};
+    if(isLabel) { c.fill = LIGHT_GRAY_BG; c.font = {size:9, bold:true, color:GRAY}; }
+    else { c.font = {size:10}; }
+    return c;
+  };
+
+  ws.mergeCells('B5:C5'); ws.mergeCells('E5:F5'); ws.mergeCells('H5:I5');
+  infoS('A5',true).value = '거래처/분류';
+  const nameC = infoS('B5',false); nameC.value = cat; nameC.font = {size:13, bold:true};
+  infoS('D5',true).value = '기사 수';
+  infoS('E5',false).value = driverCount + '명';
+  infoS('G5',true).value = '발행일';
+  infoS('H5',false).value = today;
+  ws.getRow(5).height = 26;
+
+  ws.mergeCells('B6:C6'); ws.mergeCells('E6:F6'); ws.mergeCells('H6:I6');
+  infoS('A6',true).value = '정산기간';
+  infoS('B6',false).value = month+'-01 ~ '+month+'-'+lastDay;
+  infoS('D6',true).value = '운행건수';
+  const cntC = infoS('E6',false); cntC.value = filtered.length + '건'; cntC.font = {size:10, bold:true};
+  infoS('G6',true).value = '';
+  infoS('H6',false).value = '';
+  ws.getRow(6).height = 26;
+  ws.getRow(7).height = 6;
+
+  const hdrs = ['NO','배송일','배차코드','기사명','지역','지급액','거래처','비고'];
+  const hRow = ws.getRow(8);
+  hdrs.forEach((h, i) => {
+    const cell = hRow.getCell(i+1);
+    cell.value = h;
+    cell.font = {size:9, bold:true, color:WHITE_FONT};
+    cell.fill = BLUE_BG;
+    cell.alignment = {horizontal:'center', vertical:'middle'};
+    cell.border = {top:{style:'thin',color:BLUE},bottom:{style:'thin',color:BLUE},left:{style:'thin',color:{argb:'FF1e4e8c'}},right:{style:'thin',color:{argb:'FF1e4e8c'}}};
+  });
+  hRow.height = 24;
+
+  filtered.forEach((d, i) => {
+    const r = ws.getRow(9 + i);
+    const bg = i % 2 === 1 ? LIGHT_GRAY_BG : WHITE_BG;
+    const vals = [i+1, d.date||'', d.dispCode||'', d.name||'', d.area||'', d.payment||0, d.client||'', d.note||''];
+    vals.forEach((v, ci) => {
+      const cell = r.getCell(ci+1);
+      cell.value = v;
+      cell.border = THIN_B;
+      cell.fill = bg;
+      cell.font = {size:9};
+      cell.alignment = {vertical:'middle'};
+    });
+    r.getCell(1).alignment = {horizontal:'center', vertical:'middle'};
+    r.getCell(1).font = {size:9, color:GRAY};
+    r.getCell(2).alignment = {horizontal:'center', vertical:'middle'};
+    r.getCell(4).alignment = {horizontal:'center', vertical:'middle'};
+    r.getCell(4).font = {size:9, bold:true};
+    r.getCell(5).alignment = {horizontal:'center', vertical:'middle'};
+    r.getCell(6).numFmt = '#,##0';
+    r.getCell(6).font = {size:10, bold:true, color:ORANGE};
+    r.getCell(6).alignment = {horizontal:'right', vertical:'middle'};
+    r.getCell(7).alignment = {horizontal:'center', vertical:'middle'};
+    r.getCell(7).font = {size:8};
+    r.getCell(8).alignment = {horizontal:'center', vertical:'middle'};
+    r.getCell(8).font = {size:8};
+    r.height = 22;
+  });
+
+  const sn = 9 + filtered.length + 1;
+  ws.mergeCells('A'+sn+':E'+sn);
+  ws.mergeCells('G'+sn+':I'+sn);
+  const sr = ws.getRow(sn);
+  const sc1 = sr.getCell(1);
+  sc1.value = '합    계';
+  sc1.font = {size:13, bold:true, color:BLUE};
+  sc1.alignment = {horizontal:'center', vertical:'middle'};
+  sc1.fill = LIGHT_BLUE_BG; sc1.border = THICK_B;
+  const sc6 = sr.getCell(6);
+  const lastDataRow = 8 + filtered.length;
+  sc6.value = {formula:'SUM(F9:F'+lastDataRow+')', result: totalPay};
+  sc6.numFmt = '#,##0"원"';
+  sc6.font = {size:15, bold:true, color:ORANGE};
+  sc6.alignment = {horizontal:'right', vertical:'middle'};
+  sc6.fill = LIGHT_BLUE_BG; sc6.border = THICK_B;
+  const sc7 = sr.getCell(7);
+  sc7.value = filtered.length + '건';
+  sc7.font = {size:12, bold:true, color:BLUE};
+  sc7.alignment = {horizontal:'center', vertical:'middle'};
+  sc7.fill = LIGHT_BLUE_BG; sc7.border = THICK_B;
+  sr.height = 35;
+
+  const fn1 = sn + 2;
+  ws.mergeCells('A'+fn1+':D'+fn1);
+  ws.getCell('A'+fn1).value = '위 금액을 정히 청구합니다.';
+  ws.getCell('A'+fn1).font = {size:9, color:GRAY};
+  ws.mergeCells('F'+fn1+':I'+fn1);
+  ws.getCell('F'+fn1).value = '확인:  ____________________';
+  ws.getCell('F'+fn1).font = {size:9};
+  ws.getCell('F'+fn1).alignment = {horizontal:'right'};
+
+  const fn2 = fn1 + 1;
+  ws.mergeCells('A'+fn2+':C'+fn2);
+  ws.getCell('A'+fn2).value = '㈜씨엘피  |  ' + today;
+  ws.getCell('A'+fn2).font = {size:8, color:GRAY};
+
+  ws.pageSetup = { orientation:'landscape', fitToPage:true, fitToWidth:1, fitToHeight:0, paperSize:9 };
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'CLP_정산서_' + month + '_' + cat + '.xlsx';
+  a.click(); URL.revokeObjectURL(url);
+  showToast('📁 ' + cat + ' 분류 정산서 다운로드 완료! (' + filtered.length + '건)');
 }
 
 async function downloadDriverSettlement() {
