@@ -2490,7 +2490,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <div id="settlementDriverFilter" style="display:none;margin-left:8px;gap:6px;align-items:center;flex-wrap:wrap">
           <!-- 기사 필터 -->
           <div style="position:relative">
-            <input type="text" id="filterDriverInput" placeholder="기사명 검색..." autocomplete="off"
+            <input type="text" id="filterDriverInput" placeholder="기사명·분류(태영GLS) 검색..." autocomplete="off"
                    oninput="filterDriverList()" onfocus="showDriverDropdown()" 
                    onkeydown="if(event.key==='Enter'){event.preventDefault();selectDriverByEnter()}"
                    style="padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:5px;width:120px">
@@ -14873,6 +14873,21 @@ function filterDriverList() {
   const dd = document.getElementById('driverDropdown');
   let html = `<div onclick="selectDriver('')" style="padding:6px 10px;cursor:pointer;font-size:12px;color:var(--text-light);border-bottom:1px solid #f0f0f0" onmouseover="this.style.background='#f0f4ff'" onmouseout="this.style.background=''">전체 기사</div>`;
 
+  // 분류(카테고리) 매칭 — 태영GLS 등 분류 전체를 한 번에 합산 (검색어 있을 때만)
+  if(query) {
+    const cats = [...new Set(settlementData.map(d => (d.category||'').trim()).filter(c => c))]
+      .filter(c => c.toLowerCase().includes(query)).sort();
+    cats.forEach(cat => {
+      const cd = settlementData.filter(d => (d.category||'').trim() === cat && d.date && d.date.startsWith(month));
+      const ct = cd.reduce((s, d) => s + (parseInt(d.payment)||0), 0);
+      const safeCat = cat.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+      html += `<div onclick="selectStlCategory('${safeCat}')" style="padding:6px 10px;cursor:pointer;font-size:12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f0f0f0;background:#fffbeb" onmouseover="this.style.background='#fef3c7'" onmouseout="this.style.background='#fffbeb'">
+        <b>📁 ${cat} <span style="font-size:10px;color:#92400e">분류</span></b>
+        <span style="font-size:10px;color:var(--text-light)">${cd.length}건 / ${ct.toLocaleString()}원</span>
+      </div>`;
+    });
+  }
+
   const filtered = query
     ? drivers.filter(d => d.name.toLowerCase().includes(query) || (d.phone||'').includes(query) || (d.vehicle||'').toLowerCase().includes(query))
     : drivers;
@@ -14906,6 +14921,20 @@ function selectDriverByKey(compositeKey) {
   renderSettlement();
 }
 
+// 분류(카테고리) 전체 선택 — 통합검색을 분류명으로 채워 해당 분류 건 전체를 합산 표시
+function selectStlCategory(cat) {
+  const ls = document.getElementById('stlListSearch');
+  if(ls) ls.value = cat;
+  // 기사 필터는 해제 (분류 필터와 동시 적용 방지)
+  document.getElementById('filterDriver').value = '';
+  document.getElementById('filterDriverInput').value = '';
+  document.getElementById('btnDriverClear').style.display = 'none';
+  document.getElementById('driverDropdown').style.display = 'none';
+  document.removeEventListener('click', closeDriverDropdown);
+  renderSettlement();
+  showToast('📁 분류 "' + cat + '" 전체 합산 표시 (통합검색창 ✕로 해제)');
+}
+
 // 기사 선택 (이름만 - 하위호환)
 function selectDriver(name) {
   if(!name) { selectDriverByKey(''); return; }
@@ -14921,6 +14950,9 @@ function selectDriver(name) {
 function selectDriverByEnter() {
   const query = document.getElementById('filterDriverInput').value.trim();
   if(!query) { selectDriver(''); return; }
+  // 분류(카테고리) 정확 일치 우선 — 태영GLS 등
+  const allCats = [...new Set(settlementData.map(d => (d.category||'').trim()).filter(c => c))];
+  if(allCats.includes(query)) { selectStlCategory(query); return; }
   // 정확히 일치하는 기사 찾기
   const drivers = [...new Set(settlementData.map(d => d.name).filter(n => n))];
   const exact = drivers.find(d => d === query);
@@ -15699,6 +15731,7 @@ function renderSettlementList(data) {
       if((d.area||'').toLowerCase().includes(listSearch)) return true;
       if((d.dest||'').toLowerCase().includes(listSearch)) return true;
       if((d.client||'').toLowerCase().includes(listSearch)) return true;
+      if((d.category||'').toLowerCase().includes(listSearch)) return true;
       if((d.note||'').toLowerCase().includes(listSearch)) return true;
       // 날짜: "03-15" 또는 "2026-03-15" 형태 지원
       if((d.date||'').includes(listSearch)) return true;
