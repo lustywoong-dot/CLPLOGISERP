@@ -14911,6 +14911,12 @@ function filterDriverList() {
 }
 
 function selectDriverByKey(compositeKey) {
+  // 기사 선택 시 분류 검색이 켜져 있었으면 해제 (분류·기사 필터 동시적용 / 버튼 중복 방지)
+  const _ls = document.getElementById('stlListSearch');
+  if(_ls && _ls.value) {
+    const _cats = [...new Set(settlementData.map(d => String(d.category||'').trim()).filter(c => c))];
+    if(_cats.includes(_ls.value.trim())) _ls.value = '';
+  }
   const parts = compositeKey ? compositeKey.split('|') : ['',''];
   const name = parts[0] || '';
   const phone = parts[1] || '';
@@ -16710,8 +16716,8 @@ function backupAndDeleteMonth() {
 
   // 수작업 데이터가 있는 건 확인
   const hasManual = targets.filter(d =>
-    d.payment > 0 || (d.note && d.note.trim()) ||
-    (d.category && d.category.trim()) || d.receipt
+    d.payment > 0 || (d.note && String(d.note).trim()) ||
+    (d.category && String(d.category).trim()) || d.receipt
   );
 
   const msg = `[${month}] 정산 ${targets.length}건 처리\n\n`
