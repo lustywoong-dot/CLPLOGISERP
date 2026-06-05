@@ -2202,7 +2202,8 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <button class="btn btn-sm" onclick="renderStorageStatus()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:4px 10px;font-size:11px">🔄 새로고침</button>
         </div>
         <div style="font-size:11px;color:var(--text-light);margin-bottom:8px">
-          저장 시 'QuotaExceededError'가 발생하면 이 도구로 옛 캐시를 정리하세요. 시트 데이터는 영향 없습니다.
+          저장 시 'QuotaExceededError'가 발생하면 이 도구로 옛 캐시를 정리하세요. 시트 데이터는 영향 없습니다.<br>
+          ※ 정산 데이터는 이제 IndexedDB(대용량)에 저장되어 용량 초과가 발생하지 않습니다. (localStorage엔 최근 180일치만 캐시)
         </div>
         <div id="storageStatusBox" style="font-size:11px;background:#f9fafb;border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:10px;font-family:monospace"></div>
         <div style="display:flex;flex-wrap:wrap;gap:6px">
@@ -10887,7 +10888,13 @@ window.addEventListener('storage', function(e) {
   // 정산 데이터 — 가장 충돌 빈번. 다른 창 입력을 stale 메모리가 덮어쓰는 사고 차단
   if(e.key === 'clp_settlement_data') {
     _crossTabSync(e.key, () => {
-      settlementData = JSON.parse(e.newValue);
+      const cached = JSON.parse(e.newValue);
+      if(!Array.isArray(cached)) return;
+      // 다른 창 캐시는 최근 180일치만 → 본 창의 옛 데이터(180일 이전)는 보존 머지 (손실 방지)
+      const cut = _stlStorageCut(180);
+      const oldRecords = settlementData.filter(d => (d.date||'') < cut);
+      const cachedKeys = new Set(cached.map(d => (d.date||'')+'|'+(d.dispCode||'')));
+      settlementData = [...cached, ...oldRecords.filter(d => !cachedKeys.has((d.date||'')+'|'+(d.dispCode||'')))];
       if(typeof renderSettlement === 'function') renderSettlement();
       if(typeof updateDriverFilter === 'function') updateDriverFilter();
     }, '정산 데이터');
@@ -11187,6 +11194,12 @@ async function syncFromSheet() {
   }
 }
 
+// 정산 localStorage 캐시 보관 기준일 (오늘 - N일, YYYY-MM-DD, getFullYear 방식)
+function _stlStorageCut(days) {
+  const d = new Date(); d.setDate(d.getDate() - days);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+
 // 정산 데이터 저장 (로컬 + 구글시트 백업)
 function saveSettlementLocal(opts) {
   // skipMerge: 명시적 삭제 후 호출 시 true (머지로 인한 부활 방지)
@@ -11232,15 +11245,24 @@ function saveSettlementLocal(opts) {
         if(mergedAdds > 0 || mergedFills > 0) console.log('[멀티창 보호] 정산 머지 — 추가 ' + mergedAdds + '건 / 보충 ' + mergedFills + '건');
       }
     }
-    localStorage.setItem('clp_settlement_data', JSON.stringify(settlementData));
-  } catch(e) {
-    if(e && (e.name === 'QuotaExceededError' || /quota/i.test(e.message))) {
-      // 용량 초과 시 메모리에는 유지, 시트 백업으로 보존
-      console.warn('정산 캐시 용량 초과 — 시트 백업으로 대체');
-      if(typeof showToast === 'function') showToast('⚠ 정산 로컬 캐시 용량 초과 — 설정 탭의 캐시 정리 권장');
-    } else {
-      console.warn('정산 저장 실패:', e.message);
+    const _stlJson = JSON.stringify(settlementData);
+    // IDB에 전체 저장 (영구 메인 저장소, 용량 무제한) — 배차이력(dispatchHistory)과 동일 패턴
+    idbSet('clp_settlement_data', _stlJson).catch(err => console.warn('정산 IDB 저장 오류:', err));
+    // localStorage 캐시 (멀티창 동기화 + 빠른 초기로드용) — 최근 180일만 저장해 용량 절약
+    try {
+      localStorage.setItem('clp_settlement_data', JSON.stringify(
+        settlementData.filter(d => (d.date||'') >= _stlStorageCut(180))
+      ));
+    } catch(qe) {
+      // 180일치도 초과 시 90일로 축소 후 재시도, 그래도 실패하면 무시 (IDB에 전체 안전 보관)
+      try {
+        localStorage.setItem('clp_settlement_data', JSON.stringify(
+          settlementData.filter(d => (d.date||'') >= _stlStorageCut(90))
+        ));
+      } catch(qe2) { console.warn('정산 localStorage 캐시 초과 — IDB 전담 저장'); }
     }
+  } catch(e) {
+    console.warn('정산 저장 실패:', e.message);
   }
   // 시트 push (skipPush=true면 자동 pull로 받은 데이터 → 무한 루프 방지)
   if(!skipPush) backupSettlementToSheet();
@@ -13692,6 +13714,27 @@ try {
   });
   if(stlMigrated) saveSettlementLocal();
 } catch(e) { console.error('정산 데이터 로딩 오류:', e); }
+
+// IDB 우선 보강 (정산 영구 저장소) + 최초 1회 자동 마이그레이션 — 배차이력과 동일 패턴
+idbGet('clp_settlement_data').then(idbStr => {
+  if(idbStr) {
+    const idbData = JSON.parse(idbStr);
+    // IDB가 더 완전하면 채택 (데이터 손실 방지: 건수가 같거나 많을 때만 교체)
+    if(Array.isArray(idbData) && idbData.length >= settlementData.length) {
+      idbData.forEach(d => {
+        if(d.date && (d.date.includes('T') || d.date.length > 10)) d.date = sanitizeDate(d.date);
+        if(d.receipt === true) d.receipt = '완료';
+        else if(d.receipt === false) d.receipt = '';
+      });
+      settlementData = idbData;
+      if(typeof renderSettlement === 'function') renderSettlement();
+      if(typeof updateDriverFilter === 'function') updateDriverFilter();
+    }
+  } else if(settlementData.length > 0) {
+    // IDB 비어있고 localStorage에 데이터 있음 → 최초 마이그레이션: 전체를 IDB로 복사
+    idbSet('clp_settlement_data', JSON.stringify(settlementData)).catch(()=>{});
+  }
+}).catch(err => console.warn('정산 IDB 로드 오류:', err));
 
 // 전체 리스트 날짜 범위 검색
 let stlListRangeMode = false;
