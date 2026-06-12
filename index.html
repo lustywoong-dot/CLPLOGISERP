@@ -15606,7 +15606,7 @@ function renderSettlementArea(data) {
   // 지역별 집계 (area 기준, 없으면 dest)
   const groups = {};
   data.forEach(d => {
-    const region = (d.area || d.dest || '미지정').trim() || '미지정';
+    const region = String(d.area || d.dest || '미지정').trim() || '미지정';
     if(!groups[region]) groups[region] = { region, count: 0, payment: 0, kctc: 0 };
     groups[region].count++;
     groups[region].payment += (d.payment || 0);
@@ -15616,7 +15616,7 @@ function renderSettlementArea(data) {
   let list = Object.values(groups).sort((a, b) => b.payment - a.payment);
 
   if(searchTerm) {
-    list = list.filter(g => g.region.toLowerCase().includes(searchTerm));
+    list = list.filter(g => String(g.region||'').toLowerCase().includes(searchTerm));
   }
 
   if(list.length === 0) {
@@ -15685,8 +15685,8 @@ function renderSettlementSummary(data) {
     if(d.receipt === '완료') groups[compositeKey].receiptCount++;
     if(d.vehicle) groups[compositeKey].vehicle = d.vehicle;
     if(d.phone) groups[compositeKey].phone = d.phone;
-    if(d.area) groups[compositeKey].areas.add(d.area);
-    if(d.dest) groups[compositeKey].areas.add(d.dest);
+    if(d.area) groups[compositeKey].areas.add(String(d.area));
+    if(d.dest) groups[compositeKey].areas.add(String(d.dest));
   });
   
   let list = Object.values(groups).sort((a, b) => b.total - a.total);
@@ -15696,11 +15696,12 @@ function renderSettlementSummary(data) {
   list.forEach(g => { nameCounts[g.name] = (nameCounts[g.name]||0) + 1; });
   
   if(searchTerm) {
-    list = list.filter(g => 
-      g.name.includes(searchTerm) ||
-      (g.phone||'').includes(searchTerm) ||
-      (g.vehicle||'').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      [...(g.areas||[])].some(a => a.toLowerCase().includes(searchTerm.toLowerCase()))
+    const _st = searchTerm.toLowerCase();
+    list = list.filter(g =>
+      String(g.name||'').includes(searchTerm) ||
+      String(g.phone||'').includes(searchTerm) ||
+      String(g.vehicle||'').toLowerCase().includes(_st) ||
+      [...(g.areas||[])].some(a => String(a||'').toLowerCase().includes(_st))
     );
   }
   
@@ -15777,14 +15778,14 @@ function renderSettlementList(data) {
   const listSearch = (document.getElementById('stlListSearch')?.value || '').trim().toLowerCase();
   if(listSearch) {
     filtered = filtered.filter(d => {
-      if((d.dispCode||'').toLowerCase().includes(listSearch)) return true;
-      if((d.area||'').toLowerCase().includes(listSearch)) return true;
-      if((d.dest||'').toLowerCase().includes(listSearch)) return true;
-      if((d.client||'').toLowerCase().includes(listSearch)) return true;
+      if(String(d.dispCode||'').toLowerCase().includes(listSearch)) return true;
+      if(String(d.area||'').toLowerCase().includes(listSearch)) return true;
+      if(String(d.dest||'').toLowerCase().includes(listSearch)) return true;
+      if(String(d.client||'').toLowerCase().includes(listSearch)) return true;
       if(String(d.category||'').toLowerCase().includes(listSearch)) return true;
-      if((d.note||'').toLowerCase().includes(listSearch)) return true;
+      if(String(d.note||'').toLowerCase().includes(listSearch)) return true;
       // 날짜: "03-15" 또는 "2026-03-15" 형태 지원
-      if((d.date||'').includes(listSearch)) return true;
+      if(String(d.date||'').includes(listSearch)) return true;
       return false;
     });
   }
