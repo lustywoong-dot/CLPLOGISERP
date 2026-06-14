@@ -14896,21 +14896,46 @@ function closeDriverDropdown(e) {
 // 검색어로 필터링
 // 검색어로 필터링
 // 검색어로 필터링
+// 같은 기사 행 일부에만 전화번호가 있을 때(다른 PC 동기화 편차 등) 빈 전화번호를
+// 실제 전화번호로 보정하기 위한 맵. {이름: Set(실제전화번호들)}
+function stlRealPhonesByName() {
+  const m = {};
+  settlementData.forEach(d => {
+    if(!d.name) return;
+    const p = String(d.phone || '').trim();
+    if(!p) return;
+    if(!m[d.name]) m[d.name] = new Set();
+    m[d.name].add(p);
+  });
+  return m;
+}
+// 빈 전화번호를 실제 전화번호로 보정. 실제 전화번호가 정확히 1개일 때만 흡수
+// → 진짜 동명이인(실제 번호 2개 이상)은 그대로 구분 유지
+function resolveDriverPhone(name, phone, map) {
+  const p = String(phone || '').trim();
+  if(p) return p;
+  const reals = map[name];
+  if(reals && reals.size === 1) return [...reals][0];
+  return '';
+}
+
 function filterDriverList() {
   const query = document.getElementById('filterDriverInput').value.trim().toLowerCase();
   const month = document.getElementById('settlementMonth').value;
 
-  // 이름+전화번호 복합키로 목록 구성
+  // 이름+전화번호 복합키로 목록 구성 (빈 전화번호는 실제 전화번호 1개면 흡수)
+  const realPhones = stlRealPhonesByName();
   const groupMap = {};
   settlementData.forEach(d => {
     if(!d.name) return;
-    const key = d.name + '|' + (d.phone || '');
-    if(!groupMap[key]) groupMap[key] = { name: d.name, phone: d.phone||'', vehicle: d.vehicle||'', key };
+    const phone = resolveDriverPhone(d.name, d.phone, realPhones);
+    const key = d.name + '|' + phone;
+    if(!groupMap[key]) groupMap[key] = { name: d.name, phone, vehicle: d.vehicle||'', key };
     if(d.vehicle) groupMap[key].vehicle = d.vehicle;
   });
   const drivers = Object.values(groupMap).sort((a,b) => a.name.localeCompare(b.name));
 
-  // 동명이인 감지 (이름 동일, 전화번호 다름)
+  // 동명이인 감지 (이름 동일, 실제 전화번호 다름)
   const nameCounts = {};
   drivers.forEach(d => { nameCounts[d.name] = (nameCounts[d.name]||0) + 1; });
 
@@ -14940,11 +14965,13 @@ function filterDriverList() {
     html += '<div style="padding:8px 10px;font-size:11px;color:var(--text-light);text-align:center">일치하는 기사가 없습니다</div>';
   } else {
     filtered.forEach(g => {
-      const dData = settlementData.filter(d => d.name === g.name && (d.phone||'') === g.phone && d.date && d.date.startsWith(month));
+      const dData = settlementData.filter(d => d.name === g.name && resolveDriverPhone(d.name, d.phone, realPhones) === g.phone && d.date && d.date.startsWith(month));
       const total = dData.reduce((s,d) => s+d.payment, 0);
       const isDupe = nameCounts[g.name] > 1;
+      // 동명이인만 전화번호 복합키로 구분, 아니면 이름만 넘겨 빈 전화 행 누락 방지
+      const selKey = isDupe ? g.key : g.name;
       const suffix = isDupe ? ` <span style="font-size:10px;color:#7c3aed">(${g.vehicle||g.phone||'?'})</span>` : '';
-      html += `<div onclick="selectDriverByKey('${g.key}')" style="padding:6px 10px;cursor:pointer;font-size:12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f8f8f8" onmouseover="this.style.background='#f0f4ff'" onmouseout="this.style.background=''">
+      html += `<div onclick="selectDriverByKey('${selKey}')" style="padding:6px 10px;cursor:pointer;font-size:12px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #f8f8f8" onmouseover="this.style.background='#f0f4ff'" onmouseout="this.style.background=''">
         <b>${g.name}${suffix}</b>
         <span style="font-size:10px;color:var(--text-light)">${dData.length}건 / ${total.toLocaleString()}원</span>
       </div>`;
@@ -14988,12 +15015,15 @@ function selectStlCategory(cat) {
 // 기사 선택 (이름만 - 하위호환)
 function selectDriver(name) {
   if(!name) { selectDriverByKey(''); return; }
-  const phones = [...new Set(settlementData.filter(d => d.name === name).map(d => d.phone||''))];
+  // 빈 전화번호는 제외하고 실제 전화번호로만 동명이인 판별
+  // (다른 PC에서 일부 행 전화번호가 비어 있어도 동명이인으로 오인하지 않도록)
+  const phones = [...new Set(settlementData.filter(d => d.name === name).map(d => String(d.phone||'').trim()).filter(p => p))];
   if(phones.length > 1) {
     showToast('⚠ 동명이인이 있습니다. 목록에서 선택해주세요.');
     return;
   }
-  selectDriverByKey(name + '|' + (phones[0] || ''));
+  // 동명이인 아님 → 이름만으로 필터 (전화번호 빈 행도 포함되어 누락 방지)
+  selectDriverByKey(name);
 }
 
 
@@ -15672,13 +15702,16 @@ function renderSettlementSummary(data) {
   }
   
   // 기사별 그룹핑 - 이름+전화번호 복합키 (동명이인 구분)
+  // 빈 전화번호는 실제 전화번호 1개면 흡수 → 같은 기사가 두 줄로 갈라지지 않음
+  const _realPhones = stlRealPhonesByName();
   const groups = {};
   data.forEach(d => {
     if(!d.name) return;
-    // 복합키: 이름|전화번호 (전화번호 없으면 이름만)
-    const compositeKey = d.name + '|' + (d.phone || '');
+    // 복합키: 이름|전화번호 (빈 전화번호는 실제 번호로 보정)
+    const _phone = resolveDriverPhone(d.name, d.phone, _realPhones);
+    const compositeKey = d.name + '|' + _phone;
     if(!groups[compositeKey]) {
-      groups[compositeKey] = { name: d.name, vehicle: d.vehicle||'', phone: d.phone||'', count: 0, total: 0, receiptCount: 0, compositeKey, areas: new Set() };
+      groups[compositeKey] = { name: d.name, vehicle: d.vehicle||'', phone: _phone, count: 0, total: 0, receiptCount: 0, compositeKey, areas: new Set() };
     }
     groups[compositeKey].count++;
     groups[compositeKey].total += (d.payment||0);
@@ -15721,7 +15754,9 @@ function renderSettlementSummary(data) {
     const displayName = isDupe
       ? `${g.name} <span style="font-size:10px;color:#7c3aed;font-weight:400">(${g.vehicle||g.phone||'?'})</span>`
       : g.name;
-    html += `<tr style="cursor:pointer" onclick="selectDriverByKey('${g.compositeKey}');setSettlementView('list')">
+    // 동명이인만 전화번호 복합키로 구분, 아니면 이름만 넘겨 빈 전화 행 누락 방지
+    const selKey = isDupe ? g.compositeKey : g.name;
+    html += `<tr style="cursor:pointer" onclick="selectDriverByKey('${selKey}');setSettlementView('list')">
       <td>${i + 1}</td>
       <td style="font-weight:700">${displayName}</td>
       <td style="font-size:11px">${g.vehicle}</td>
