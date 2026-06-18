@@ -1619,7 +1619,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         </div>
         <span style="margin-left:auto;display:flex;gap:6px">
           <button class="btn btn-sm" onclick="showReceiptSnapshotList()" title="시점별 자동 스냅샷에서 복원 (최근 7일 보관)" style="background:#fef3c7;border:1px solid #fbbf24;color:#92400e;padding:6px 10px;font-size:11px;cursor:pointer;font-weight:600">🔙 시점 복원</button>
-          <button class="btn btn-sm" onclick="manualSyncReceiptCheck()" title="다른 PC가 체크한 내용을 가져와서 통합. 본 PC가 체크한 내용은 자동으로 시트에 즉시 저장됨 (실시간 pull은 제거됨 — 다른 PC 변경 받으려면 이 버튼)" style="background:#0f766e;border:1px solid #0f766e;color:white;padding:7px 14px;font-size:12px;cursor:pointer;font-weight:700;box-shadow:0 1px 3px rgba(15,118,110,0.3)">🔄 다른 PC 통합</button>
+          <button class="btn btn-sm" onclick="manualSyncReceiptCheck()" title="다른 PC가 체크한 내용을 즉시 가져와 통합. (인수증 탭이 열려 있으면 30초마다 자동으로도 받아옵니다 — 지금 바로 받고 싶을 때 이 버튼)" style="background:#0f766e;border:1px solid #0f766e;color:white;padding:7px 14px;font-size:12px;cursor:pointer;font-weight:700;box-shadow:0 1px 3px rgba(15,118,110,0.3)">🔄 다른 PC 통합</button>
           <button class="btn btn-sm" onclick="cleanupManualReceipts()" title="현재 거래처 + 표시 기간의 (수동) 항목을 한 번에 정리" style="background:#fff7ed;border:1px solid #fdba74;color:#9a3412;padding:6px 10px;font-size:11px;cursor:pointer">🧹 (수동) 정리</button>
           <button class="btn btn-sm btn-primary" onclick="openAddReceiptDialog()" style="padding:6px 12px;font-size:12px" title="배차에 없는 옛 인수증 수동 등록용">+ 수동 추가</button>
           <button class="btn btn-sm" onclick="exportReceiptCheck()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:6px 10px;font-size:11px" title="전체요약 + 거래처별(LNL/덕평/여주) + 미회수 시트로 엑셀 다운로드">📥 엑셀 출력</button>
@@ -5453,6 +5453,8 @@ function switchTab(name) {
   });
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-'+name).classList.add('active');
+  // 인수증 외 탭으로 가면 자동 pull 정지 (리소스/충돌 방지)
+  if(name !== 'receipt' && typeof stopReceiptAutoPull === 'function') stopReceiptAutoPull();
   if(name === 'dispatch') updateTodayDashboard();
   if(name === 'stats') initStats();
   if(name === 'rateRef') initRateRef();
@@ -5466,6 +5468,8 @@ function switchTab(name) {
         try { renderReceiptCheck(); } catch(e) {}
       }).catch(() => { /* silent */ });
     }
+    // 탭 열려 있는 동안 주기적 자동 pull 시작 (절충 동기화)
+    if(typeof startReceiptAutoPull === 'function') startReceiptAutoPull();
   }
   if(name === 'settlement') {
     // 유실 감지: 24h 이내 안정 스냅샷 대비 큰 감소 시 빨강 경보 (정산 안전망 2단계)
@@ -11600,6 +11604,8 @@ async function pushAllToSheet() {
 let _receiptPushTimer = null;
 let _receiptLastPushHash = '';
 let _receiptLastPullHash = '';
+let _receiptAutoPullTimer = null;   // 인수증 탭 열림 중 자동 pull 타이머 (절충 동기화)
+let _receiptLastEditTime = 0;       // 마지막 체크 입력 시각 — 직후 pull 멈춰 깜빡임/충돌 방지
 
 function _calcReceiptHash(data) {
   if(!Array.isArray(data) || data.length === 0) return '0';
@@ -11655,6 +11661,33 @@ async function backupReceiptCheckToSheet() {
 function _debouncedBackupReceiptCheck() {
   if(_receiptBackupTimer) clearTimeout(_receiptBackupTimer);
   _receiptBackupTimer = setTimeout(backupReceiptCheckToSheet, 5000);
+}
+
+// ── 절충 자동 동기화: 인수증 탭 열려 있을 때만 주기적으로 다른 PC 변경 받아오기 ──
+// 정산처럼 5초 실시간 pull은 과거 race condition으로 제거됨(7e0bfa8). 그래서 절충:
+//  · 인수증 탭이 화면에 보일 때만 30초 주기 (탭 떠나면 정지)
+//  · 내가 체크한 직후 8초간은 멈춤 (내 입력이 옛 데이터로 덮어써지는 깜빡임 방지)
+//  · 내 변경 push 대기 중이면 양보 (먼저 올라간 뒤 받기)
+//  · pull 내부 해시비교로 변경 없으면 렌더도 안 함 → 깜빡임 0
+const RECEIPT_AUTOPULL_MS = 30000;
+const RECEIPT_EDIT_GUARD_MS = 8000;
+async function _receiptAutoPullTick() {
+  try {
+    const panel = document.getElementById('panel-receipt');
+    if(!panel || !panel.classList.contains('active')) return;   // 인수증 탭 볼 때만
+    if(document.hidden) return;                                  // 브라우저 백그라운드면 스킵
+    if(typeof isConnected !== 'function' || !isConnected()) return;
+    if(Date.now() - _receiptLastEditTime < RECEIPT_EDIT_GUARD_MS) return;  // 방금 체크했으면 양보
+    if(_receiptPushTimer) return;                                // 내 변경 push 대기 중이면 양보
+    await pullReceiptCheckFromSheet();                           // 변경 있을 때만 내부에서 머지+렌더
+  } catch(e) { /* silent */ }
+}
+function startReceiptAutoPull() {
+  if(_receiptAutoPullTimer) clearInterval(_receiptAutoPullTimer);
+  _receiptAutoPullTimer = setInterval(_receiptAutoPullTick, RECEIPT_AUTOPULL_MS);
+}
+function stopReceiptAutoPull() {
+  if(_receiptAutoPullTimer) { clearInterval(_receiptAutoPullTimer); _receiptAutoPullTimer = null; }
 }
 
 // 수동 강제 동기화 — 다른 PC의 데이터를 가져와서 통합 후 시트로 다시 올림
@@ -11939,6 +11972,8 @@ function saveReceiptCheckLocal(opts) {
       console.warn('인수증 체크 저장 실패:', e.message);
     }
   }
+  // 사용자 체크 입력 시각 기록 (자동 pull 가드용) — pull로 인한 저장(skipPush)은 제외
+  if(!skipPush) _receiptLastEditTime = Date.now();
   // 시트 동기화 (다른 PC와 실시간 공유) — autoSync에서 받은 데이터 저장 시는 skip
   if(!skipPush && typeof _debouncedPushReceiptCheck === 'function') {
     _debouncedPushReceiptCheck();
