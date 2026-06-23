@@ -4868,7 +4868,7 @@ async function saveDispatchHistory(opts) {
 
   // IDB에 전체 저장 (async, 백그라운드)
   idbSet('dispatchHistory', JSON.stringify(dispatchLog))
-    .catch(e => console.warn('IDB 저장 오류:', e));
+    .catch(e => { console.warn('IDB 저장 오류:', e); if(typeof showToast==='function') showToast('⚠ 배차 저장 실패 — 새로고침 전 확인 필요'); });
 
   // localStorage에 최근 90일치 캐시 (초기 빠른 로딩용)
   try {
@@ -10906,7 +10906,12 @@ window.addEventListener('storage', function(e) {
   // 인수증 체크
   else if(e.key === 'clp_receipt_check_data') {
     _crossTabSync(e.key, () => {
-      receiptCheckData = JSON.parse(e.newValue);
+      const incoming = JSON.parse(e.newValue);
+      if(!Array.isArray(incoming)) return;
+      // 다른 창 변경 반영 + 본 창에만 있는(아직 저장 전) 체크 보존 — 통째 교체로 인한 유실 방지
+      const incKeys = new Set(incoming.map(c => (c.client||'')+'|'+(c.date||'')+'|'+(c.code||'')));
+      const onlyMine = receiptCheckData.filter(c => !incKeys.has((c.client||'')+'|'+(c.date||'')+'|'+(c.code||'')));
+      receiptCheckData = incoming.concat(onlyMine);
       if(typeof renderReceiptCheck === 'function') renderReceiptCheck();
     }, '인수증 체크');
   }
@@ -11184,7 +11189,7 @@ async function syncFromSheet() {
         let stlAdded = 0;
         stlData.data.forEach(r => {
           const key = (r.date||'') + '|' + (r.dispCode||'') + '|' + (r.name||'');
-          if(!localKeys.has(key)) { settlementData.push(r); stlAdded++; }
+          if(!localKeys.has(key)) { r.payment = parseInt(r.payment)||0; r.kctcAmount = parseInt(r.kctcAmount)||0; settlementData.push(r); stlAdded++; }
         });
         if(stlAdded > 0) { saveSettlementLocal(); updateDriverFilter(); renderSettlement(); }
       }
@@ -11228,6 +11233,8 @@ function saveSettlementLocal(opts) {
           const k = (s.date||'') + '|' + (s.dispCode||'');
           if(k === '|') return;
           if(!memIdx.has(k)) {
+            s.payment = parseInt(s.payment)||0;
+            s.kctcAmount = parseInt(s.kctcAmount)||0;
             settlementData.push(s);
             memIdx.set(k, settlementData.length - 1);
             mergedAdds++;
@@ -11251,7 +11258,7 @@ function saveSettlementLocal(opts) {
     }
     const _stlJson = JSON.stringify(settlementData);
     // IDB에 전체 저장 (영구 메인 저장소, 용량 무제한) — 배차이력(dispatchHistory)과 동일 패턴
-    idbSet('clp_settlement_data', _stlJson).catch(err => console.warn('정산 IDB 저장 오류:', err));
+    idbSet('clp_settlement_data', _stlJson).catch(err => { console.warn('정산 IDB 저장 오류:', err); if(typeof showToast==='function') showToast('⚠ 정산 저장 실패 — 새로고침 전 백업(📸) 권장'); });
     // localStorage 캐시 (멀티창 동기화 + 빠른 초기로드용) — 최근 180일만 저장해 용량 절약
     try {
       localStorage.setItem('clp_settlement_data', JSON.stringify(
@@ -11528,8 +11535,12 @@ async function _postSheetWithLockRetry(url, payload, opts) {
 let _stlBackupTimer = null;
 function backupSettlementToSheet() {
   const url = getSheetUrl();
-  if(!url || settlementData.length === 0) return;
-  
+  if(!url) return;
+  // 내 변경(추가/수정/삭제) 직후 자동 pull이 시트의 옛 데이터를 도로 가져와
+  // 삭제분이 부활하는 race 차단 (배차 deleteRecord와 동일 보호)
+  _lastSaveTime = Date.now();
+  if(settlementData.length === 0) return;
+
   // 디바운스: 3초 후 백업 (조용히 - 에러 토스트 없음)
   clearTimeout(_stlBackupTimer);
   _stlBackupTimer = setTimeout(async () => {
@@ -17341,6 +17352,9 @@ async function pullSettlementFromSheet() {
       const key = (r.date||'') + '|' + (r.dispCode||'');
       if(key === '|') return;
       if(!localIdx.has(key)) {
+        // 금액 숫자화 (시트가 문자열로 줄 때 합계 문자열 연결 폭주 방지)
+        r.payment = parseInt(r.payment)||0;
+        r.kctcAmount = parseInt(r.kctcAmount)||0;
         settlementData.push(r);
         localIdx.set(key, settlementData.length - 1);
         added++;
