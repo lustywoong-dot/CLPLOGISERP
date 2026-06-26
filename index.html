@@ -17900,14 +17900,21 @@ async function saveDispatch(closeAfter) {
     setTimeout(() => { _newRecordIds.delete(r.id); }, _NEW_BADGE_TTL);
   });
 
-  // ★ 날짜 필터를 저장한 배송일로 강제 맞춤
+  // ★ 날짜 필터 조정 — 저장한 건이 현재 범위 밖일 때만 그 배송일 하루로 이동.
+  // (기존엔 범위를 '확장'만 해서, 새 건 날짜까지 to가 늘어나는 사이에 낀 다른 날짜
+  //  진행건이 함께 노출되는 문제가 있었음 → 범위 밖이면 그날 하루로 좁혀 안 따라오게)
   const savedDeliveryDate = records[0]?.deliveryDate || records[0]?.date || '';
   if(savedDeliveryDate) {
     const fromEl = document.getElementById('ilDateFrom');
     const toEl   = document.getElementById('ilDateTo');
     if(fromEl && toEl) {
-      if(!fromEl.value || fromEl.value > savedDeliveryDate) fromEl.value = savedDeliveryDate;
-      if(!toEl.value   || toEl.value   < savedDeliveryDate) toEl.value   = savedDeliveryDate;
+      const _from = fromEl.value, _to = toEl.value;
+      const _outOfRange = !_from || !_to || savedDeliveryDate < _from || savedDeliveryDate > _to;
+      if(_outOfRange) {           // 새 건이 안 보이는 범위 → 그 배송일 하루로 이동
+        fromEl.value = savedDeliveryDate;
+        toEl.value   = savedDeliveryDate;
+      }
+      // 이미 범위 안이면 그대로 유지 (보던 맥락 보존)
     }
   }
 
