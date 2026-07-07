@@ -2482,11 +2482,11 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <button class="btn btn-sm btn-outline" onclick="resetStlListDateRange()" style="padding:3px 8px;font-size:10px">초기화</button>
         </div>
         <div id="stlCodeFilter" style="display:none;margin-left:4px;gap:2px;background:#f1f5f9;border-radius:4px;padding:2px">
-          <button class="btn btn-sm" id="stlCodeAll" onclick="setStlCodeFilter('all')" style="padding:2px 8px;font-size:10px;background:var(--primary);color:white;border-radius:3px">전체</button>
-          <button class="btn btn-sm" id="stlCodeYJ" onclick="setStlCodeFilter('ECLP')" style="padding:2px 8px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">ECLP</button>
-          <button class="btn btn-sm" id="stlCodeDP" onclick="setStlCodeFilter('ACLP')" style="padding:2px 8px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">ACLP</button>
-          <button class="btn btn-sm" id="stlCodeLK" onclick="setStlCodeFilter('P')" style="padding:2px 8px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">P(락앤락)</button>
-          <button class="btn btn-sm" id="stlCodeGN" onclick="setStlCodeFilter('GN')" style="padding:2px 8px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:3px">GN(일반)</button>
+          <button class="btn btn-sm" id="stlCodeAll" onclick="setStlCodeFilter('all')" style="padding:4px 11px;font-size:11px;background:var(--primary);color:white;border-radius:3px">전체</button>
+          <button class="btn btn-sm" id="stlCodeYJ" onclick="setStlCodeFilter('ECLP')" style="padding:4px 11px;font-size:11px;background:transparent;color:var(--text);border:none;border-radius:3px">ECLP</button>
+          <button class="btn btn-sm" id="stlCodeDP" onclick="setStlCodeFilter('ACLP')" style="padding:4px 11px;font-size:11px;background:transparent;color:var(--text);border:none;border-radius:3px">ACLP</button>
+          <button class="btn btn-sm" id="stlCodeLK" onclick="setStlCodeFilter('P')" style="padding:4px 11px;font-size:11px;background:transparent;color:var(--text);border:none;border-radius:3px">P(락앤락)</button>
+          <button class="btn btn-sm" id="stlCodeGN" onclick="setStlCodeFilter('GN')" style="padding:4px 11px;font-size:11px;background:transparent;color:var(--text);border:none;border-radius:3px">GN(일반)</button>
         </div>
         <div id="settlementDriverFilter" style="display:none;margin-left:8px;gap:6px;align-items:center;flex-wrap:wrap">
           <!-- 기사 필터 -->
@@ -2494,7 +2494,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
             <input type="text" id="filterDriverInput" placeholder="기사명·분류(태영GLS) 검색..." autocomplete="off"
                    oninput="filterDriverList()" onfocus="showDriverDropdown()" 
                    onkeydown="if(event.key==='Enter'){event.preventDefault();selectDriverByEnter()}"
-                   style="padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:5px;width:160px">
+                   style="padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:5px;width:160px">
             <input type="hidden" id="filterDriver" value="">
             <div id="driverDropdown" style="display:none;position:absolute;top:100%;left:0;width:180px;max-height:200px;overflow-y:auto;background:white;border:1px solid var(--border);border-radius:5px;box-shadow:0 4px 12px rgba(0,0,0,0.15);z-index:100"></div>
           </div>
@@ -2502,7 +2502,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <!-- 통합 검색창 -->
           <input type="text" id="stlListSearch" placeholder="배차코드·지역·거래처·날짜 검색..." autocomplete="off"
                  oninput="renderSettlement()"
-                 style="padding:4px 8px;font-size:12px;border:1px solid var(--border);border-radius:5px;width:200px">
+                 style="padding:6px 8px;font-size:12px;border:1px solid var(--border);border-radius:5px;width:200px">
           <button onclick="document.getElementById('stlListSearch').value='';renderSettlement()" style="padding:3px 6px;font-size:10px;background:#f3f4f6;border:1px solid var(--border);border-radius:3px;cursor:pointer;color:#6b7280">✕</button>
           <button id="btnDriverDownload" class="btn btn-secondary" onclick="downloadDriverSettlement()" style="display:none;padding:4px 10px;font-size:11px">📥 정산서 다운로드</button>
           <button id="btnCategoryDownload" class="btn btn-secondary" onclick="downloadCategorySettlement()" style="display:none;padding:4px 10px;font-size:11px;background:#c05621;color:#fff;border:none">📁 분류 정산서</button>
