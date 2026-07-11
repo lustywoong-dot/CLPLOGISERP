@@ -8871,6 +8871,82 @@ function getDateWarning(deliveryDateStr, today) {
   return '';
 }
 
+// ─── 헤더(제목) 기반 열 매핑 ─────────────────────────────
+// 원청 담당자마다 열 순서가 바뀌거나 제목을 다르게 써도, 제목 줄만 있으면
+// "이 단어=이 필드" 사전으로 각 열 위치를 자동으로 찾아 매핑한다.
+// 제목 줄이 감지되면 이 경로로, 없으면 기존 패턴인식 방식으로 폴백.
+function _detectBulkHeader(lines) {
+  if(!lines || !lines.length) return null;
+  const headerCells = lines[0].split('\t').map(s => String(s||'').trim());
+  // 필드별 제목 동의어 (일머리 없는 담당자 변형까지 흡수)
+  const syn = {
+    deliveryDate: /(배송|납품|출고|도착|납기)[\s]*일|^일자$|날짜/,
+    pallet: /PLT|파렛|파레|팔레|팔렛|파레트|매수|파렛트|수량/i,
+    code: /배차[\s]*코드|^코드$|오더[\s]*코드|차량코드|^차량$/,
+    clientName: /배송처|거래처|납품처|수하인|상호|업체명|^업체$|고객/,
+    memo: /비고|특이[\s]*사항|요청[\s]*사항|참고|메모|^내용$/
+  };
+  const order5 = ['deliveryDate','pallet','code','clientName','memo'];
+  const map = {};
+  headerCells.forEach((cell, i) => {
+    if(!cell) return;
+    for(const f of order5) {
+      if(map[f] != null) continue;
+      if(syn[f].test(cell)) { map[f] = i; break; }
+    }
+  });
+  const matched = Object.keys(map).length;
+  const hasKey = (map.clientName != null || map.code != null);
+  // 헤더로 인정: 핵심 필드(코드/배송처) 포함 + 총 2개 이상 매칭
+  if(matched >= 2 && hasKey) {
+    return { map, dataLines: lines.slice(1).filter(l => l.trim()) };
+  }
+  return null;
+}
+
+// 엑셀 날짜 일련번호(예: 46216) → YYYY-MM-DD (toISOString 미사용)
+function _excelSerialToDate(n) {
+  const ms = Date.UTC(1899, 11, 30) + Math.round(n) * 86400000;
+  const d = new Date(ms);
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth()+1).padStart(2,'0') + '-' + String(d.getUTCDate()).padStart(2,'0');
+}
+
+// 비고1 한 칸에 몰린 정보(전화/주소/담당자/도착시간/권역/날짜)를 추출 — 기존 로직 재사용
+function _bulkExtractMemo(order, memoText, today) {
+  if(!memoText) return;
+  order.memo = memoText;
+  const mParts = memoText.split('/').map(s => s.trim()).filter(s => s);
+  const phones = [];
+  const phoneRe = /(?:01[016789]|0\d{1,2})[-\s]?\d{3,4}[-\s]?\d{4}/;
+  mParts.forEach(mp => {
+    if(phoneRe.test(mp)) {
+      const pm = mp.match(phoneRe);
+      if(pm) {
+        phones.push(pm[0]);
+        const before = mp.substring(0, mp.indexOf(pm[0])).trim();
+        if(before && !order.deliveryContact && isPersonName(before)) order.deliveryContact = before;
+      }
+      return;
+    }
+    if(!order.deliveryAddr && mp.length > 8 && /[도시군구읍면동]/.test(mp)) {
+      order.deliveryAddr = mp;
+      if(!order.delivery) { const r = extractRegionFromAddress(mp); if(r) order.delivery = r; }
+      return;
+    }
+    if(!order.arrivalTime && (
+      /(오전|오후|AM|PM)\s*\d{1,2}\s*시/.test(mp) ||
+      /\d{1,2}\s*시\s*(도착|까지|이전|이후)/.test(mp) ||
+      /\d{1,2}:\d{2}/.test(mp)
+    )) { order.arrivalTime = mp; return; }
+    if(!order.deliveryContact && isPersonName(mp)) order.deliveryContact = mp;
+  });
+  if(phones.length >= 1 && !order.deliveryPhone) order.deliveryPhone = phones[0];
+  if(order._dateSource === 'default') {
+    const ed = extractDateFromMemo(memoText, today);
+    if(ed) { order.deliveryDate = ed; order._dateSource = 'memo'; order._dateWarn = getDateWarning(ed, today); }
+  }
+}
+
 function parseBulkOrders() {
   const raw = document.getElementById('bulkPasteInput').value.trim();
   const resultEl = document.getElementById('bulkParseResult');
@@ -8881,7 +8957,63 @@ function parseBulkOrders() {
   
   const today = getTodayStr();
   const tomorrow = (function(){ const d=new Date(); d.setDate(d.getDate()+1); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); })();
-  
+
+  // ── 헤더 감지: 제목 줄이 있으면 열 순서와 무관하게 매핑 ──
+  const _hdr = _detectBulkHeader(lines);
+  if(_hdr) {
+    const map = _hdr.map;
+    _hdr.dataLines.forEach((line, idx) => {
+      const cols = line.split('\t').map(p => String(p||'').trim());
+      if(cols.filter(c => c).length < 2) return; // 조각/빈 행 무시
+      let order = {
+        _line: idx + 1,
+        code: '', clientName: '', vehicle: '', pallet: '',
+        delivery: '', deliveryAddr: '', deliveryContact: '', deliveryPhone: '',
+        baseRate: 0, total: 0, memo: '', boxes: 0,
+        date: today, deliveryDate: tomorrow,
+        arrivalTime: '', _dateWarn: '', _dateSource: 'default'
+      };
+      // 배송일자 (엑셀 일련번호 또는 날짜 문자열 모두 대응)
+      if(map.deliveryDate != null && cols[map.deliveryDate]) {
+        const rawD = cols[map.deliveryDate];
+        let ds = '';
+        if(/^\d{5}$/.test(rawD) && +rawD >= 40000 && +rawD <= 60000) ds = _excelSerialToDate(+rawD);
+        else ds = sanitizeDate(rawD) || '';
+        if(ds) { order.deliveryDate = ds; order._dateSource = 'col_date'; order._dateWarn = getDateWarning(ds, today); }
+      }
+      // 차량 열 = 배차코드 (P_006_10 등)
+      if(map.code != null && cols[map.code]) {
+        const cv = cols[map.code].trim();
+        if(/^P[_\d]/i.test(cv) || /[EA]?CLP/i.test(cv)) order.code = cv;
+      }
+      // PLT (앞자리 숫자만 추출 — 칸에 잡글이 섞여도 안전)
+      if(map.pallet != null && cols[map.pallet]) {
+        const pm = String(cols[map.pallet]).match(/\d{1,2}/);
+        if(pm) { const n = parseInt(pm[0]); if(n >= 1 && n <= 30) order.pallet = String(n); }
+      }
+      // 배송처명 = 거래처명
+      if(map.clientName != null && cols[map.clientName]) {
+        const nm = cols[map.clientName].trim();
+        if(nm.length >= 2 && !/^\d+$/.test(nm)) order.clientName = nm;
+      }
+      // 비고1 → 전화/주소/담당자/도착시간/권역/날짜 추출
+      if(map.memo != null && cols[map.memo]) _bulkExtractMemo(order, cols[map.memo], today);
+      // 코드 → 차량 톤수
+      if(order.code) {
+        const cleaned = order.code.replace(/[_\-]/g, '');
+        if(cleaned.length >= 4) {
+          const v = CODE_TO_VEHICLE[cleaned.replace(/^[A-Za-z]+/, '').substring(0, 3)];
+          if(v) order.vehicle = v;
+        }
+      }
+      // 원청단가 계산
+      if(order.delivery && order.vehicle && RATES[order.delivery] && RATES[order.delivery][order.vehicle]) {
+        order.baseRate = RATES[order.delivery][order.vehicle];
+        order.total = order.baseRate;
+      }
+      bulkParsedOrders.push(order);
+    });
+  } else {
   lines.forEach((line, idx) => {
     const parts = line.split('\t').map(p => p.trim());
     if(parts.filter(p => p).length < 2) return; // 빈 행 무시
@@ -9075,7 +9207,8 @@ function parseBulkOrders() {
     
     bulkParsedOrders.push(order);
   });
-  
+  } // end else (헤더 없음 → 기존 패턴인식 폴백)
+
   if(bulkParsedOrders.length === 0) {
     resultEl.innerHTML = '<span style="color:var(--danger)">⚠ 분석 가능한 오더가 없습니다</span>';
     return;
@@ -9102,6 +9235,9 @@ function parseBulkOrders() {
     } else if(o._dateSource === 'memo') {
       dateCellStyle += 'color:#059669;'; // 비고 추출 - 초록색 (일반)
       dateBadge = ' <span style="font-size:9px;background:#d1fae5;color:#065f46;padding:1px 3px;border-radius:2px">비고</span>';
+    } else if(o._dateSource === 'col_date') {
+      dateCellStyle += 'color:#2563eb;'; // 배송일자 열에서 추출 - 파란색
+      dateBadge = ' <span style="font-size:9px;background:#dbeafe;color:#1e40af;padding:1px 3px;border-radius:2px">배송일</span>';
     } else {
       dateCellStyle += 'color:var(--text-light);'; // 기본(익일) - 회색
       dateBadge = ' <span style="font-size:9px;color:#9ca3af">기본</span>';
