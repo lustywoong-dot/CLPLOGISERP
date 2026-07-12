@@ -1029,8 +1029,8 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <span style="font-size:12px;font-weight:700;color:#7c3aed">📍 경유지 (2착 이후)</span>
           <span id="lqStopCount" style="font-size:11px;color:var(--text-light)">0건</span>
           <div style="display:flex;align-items:center;gap:4px;margin-left:8px">
-            <label style="font-size:10px;font-weight:600;color:#7c3aed">경유비:</label>
-            <input type="number" id="lqWaypointFee" min="0" step="5000" value="0" placeholder="0" onchange="calcLiquorTotal();calculate();onCoreFieldChange()" oninput="calcLiquorTotal();calculate();onCoreFieldChange()" style="width:90px;padding:3px 6px;font-size:12px;font-weight:700;color:#7c3aed;border:1px solid #c4b5fd;border-radius:4px;text-align:right">
+            <label style="font-size:10px;font-weight:600;color:#7c3aed">경유비(자동):</label>
+            <input type="number" id="lqWaypointFee" min="0" value="0" placeholder="0" readonly title="경유비는 착지 권역에 따라 자동 계산됩니다 (경유지별 동일/타권역으로 조정)" style="width:90px;padding:3px 6px;font-size:12px;font-weight:700;color:#7c3aed;border:1px solid #c4b5fd;border-radius:4px;text-align:right;background:#f5f3ff">
             <span style="font-size:10px;color:var(--text-light)">원</span>
           </div>
           <span id="lqWaypointTotal" style="font-size:11px;font-weight:700;color:#7c3aed"></span>
@@ -6313,6 +6313,7 @@ function calculate() {
 
   // 원청 단가 (모드에 따라 다른 단가표)
   let baseRate = 0;
+  let _lqBreakdown = null; // 🍷 주류 요율 분해 (기본요율=최고가, 경유비 자동)
   let isMixed = document.getElementById('mixedCargoCheck')?.checked;
 
   if(customRateMode) {
@@ -6343,6 +6344,11 @@ function calculate() {
       return;
     }
     baseRate = rateData[vehicle];
+    // 🍷 주류: 기본요율 = 전체 착지 중 최고가(가장 비싼 곳). 나머지는 경유비 자동.
+    if(dispatchMode === 'liquor') {
+      _lqBreakdown = computeLiquorBreakdown(vehicle, region);
+      if(_lqBreakdown && _lqBreakdown.base) baseRate = _lqBreakdown.base.rate;
+    }
   }
   
   // 수작업비 (일반 모드: 수작업비 자동계산 없음 — 직접 입력)
@@ -6363,10 +6369,19 @@ function calculate() {
     roundFee = Math.round(baseRate * 0.5);
   }
   
-  // 총 매출 (주류: 1착 단가 + 경유지 단가 합산)
+  // 총 매출 (주류: 기본요율=최고가 + 경유비 자동합계)
   let waypointTotal = 0;
   if(dispatchMode === 'liquor') {
-    waypointTotal = parseInt(document.getElementById('lqWaypointFee')?.value) || 0;
+    waypointTotal = _lqBreakdown ? _lqBreakdown.waypointTotal : (parseInt(document.getElementById('lqWaypointFee')?.value) || 0);
+    // 자동 경유비를 입력칸/헤더에 반영 (저장·표시용)
+    const _feeEl = document.getElementById('lqWaypointFee');
+    if(_feeEl) _feeEl.value = waypointTotal;
+    const _totEl = document.getElementById('lqWaypointTotal');
+    if(_totEl) _totEl.textContent = waypointTotal > 0 ? '경유비 합계: ' + waypointTotal.toLocaleString() + '원' : '';
+    // 경유지 목록 배지 갱신 — 단, 경유지 칸 타이핑 중이면 커서 튕김 방지 위해 스킵
+    const _ae = document.activeElement;
+    const _stopsEl = document.getElementById('lqStopsArea');
+    if(_stopsEl && !(_ae && _ae.closest && _ae.closest('#lqStopsArea'))) renderLiquorStops();
   }
   const extraFee = parseInt(document.getElementById('extraWorkFee').value) || 0;
   const total = baseRate + manualFee + waitFee + roundFee + waypointTotal + extraFee;
@@ -7775,15 +7790,63 @@ function validateCodeMode(showAlert) {
   return true; // 통과 — errEl은 validateLiquorCodeCenter가 처리
 }
 
-function addLiquorStop() {
-  liquorStops.push({ dest:'', area:'', addr:'', contact:'', phone:'', qty:'', weight:'', rate:0 });
+// ─── 🍷 주류 요율 자동 계산 ────────────────────────────────
+// 규칙(보스 확정): 기본요율 = 전체 착지(1착+경유지) 중 단가표상 "가장 비싼 곳".
+//   나머지 착지마다 경유비 1개씩. 경유비 동일/타권역 = 그 착지 권역명이 기본요율 권역명과
+//   같으면 동일(same), 다르면 타권역(diff). (서울=구, 경기=시 단위로 단가표 키가 이미 구분됨)
+//   → 단가표가 거리순위를 담고 있어 네이버 지도 없이 자동 판별.
+function computeLiquorBreakdown(vehicle, mainRegion) {
+  if(!vehicle) return null;
+  const rateTable = getLiquorRateTable();
+  const all = [];
+  const mr = String(mainRegion || '').trim();
+  if(mr && rateTable[mr] && rateTable[mr][vehicle])
+    all.push({ region: mr, rate: rateTable[mr][vehicle], isMain: true, idx: -1 });
+  liquorStops.forEach((s, i) => {
+    const reg = String(s.area || '').trim();
+    const r = (reg && rateTable[reg] && rateTable[reg][vehicle]) ? rateTable[reg][vehicle] : 0;
+    all.push({ region: reg, rate: r, isMain: false, idx: i });
+  });
+  if(all.length === 0) return null;
+  // 기본요율 = 최고가 (동률이면 먼저 입력된 것)
+  let base = all[0];
+  for(const a of all) { if(a.rate > base.rate) base = a; }
+  // 경유비: 기본요율 착지 제외 나머지
+  let waypointTotal = 0;
+  const waypoints = [];
+  all.forEach(a => {
+    if(a === base) return;
+    // 경유지 수동 override(feeType) 우선, 없으면 자동(권역명 일치 여부)
+    const ov = (!a.isMain && liquorStops[a.idx]) ? (liquorStops[a.idx].feeType || '') : '';
+    let feeType;
+    if(ov === 'same' || ov === 'diff') feeType = ov;
+    else feeType = (a.region && base.region && a.region === base.region) ? 'same' : 'diff';
+    const fee = (LIQUOR_WAYPOINT_FEE[feeType] && LIQUOR_WAYPOINT_FEE[feeType][vehicle]) || 0;
+    waypointTotal += fee;
+    waypoints.push({ region: a.region, isMain: a.isMain, idx: a.idx, feeType, fee, rate: a.rate });
+  });
+  return { base, waypoints, waypointTotal };
+}
+
+// 경유지 동일/타권역 수동 지정 ('' = 자동)
+function setStopFeeType(idx, type) {
+  if(!liquorStops[idx]) return;
+  liquorStops[idx].feeType = (type === 'same' || type === 'diff') ? type : '';
   renderLiquorStops();
+  calculate();
+  onCoreFieldChange();
+}
+
+function addLiquorStop() {
+  liquorStops.push({ dest:'', area:'', addr:'', contact:'', phone:'', qty:'', weight:'', rate:0, feeType:'' });
+  renderLiquorStops();
+  calculate();
 }
 
 function removeLiquorStop(idx) {
   liquorStops.splice(idx, 1);
   renderLiquorStops();
-  calcLiquorTotal();
+  calculate();
   onCoreFieldChange();
 }
 
@@ -7816,10 +7879,10 @@ function updateLiquorStop(idx, field, value) {
     const rateData = rateTable[value];
     if(rateData && vehicle && rateData[vehicle]) {
       liquorStops[idx].rate = rateData[vehicle];
-      renderLiquorStops();
     }
   }
-  calcLiquorTotal();
+  // 재렌더는 calculate() 안에서 포커스 가드로 처리 (경유지 칸 타이핑 중 커서 튕김 방지)
+  calculate();
   generateSMS();
 }
 
@@ -7840,22 +7903,52 @@ function recalcAllStops() {
 
 function renderLiquorStops() {
   const area = document.getElementById('lqStopsArea');
-  if(liquorStops.length === 0) {
-    area.innerHTML = '<div style="text-align:center;padding:16px;color:var(--text-light);font-size:12px">위 폼이 1착 목적지입니다. 2착부터 여기에 추가하세요.</div>';
-    document.getElementById('lqStopCount').textContent = '0건';
-    return;
-  }
+  if(!area) return;
+  const vehicle = document.getElementById('vehicleTon').value;
+  const bd = computeLiquorBreakdown(vehicle, getSelectedRegion());
   document.getElementById('lqStopCount').textContent = liquorStops.length + '건';
 
-  let html = '';
+  // 요약: 기본요율(가장 비싼 곳) + 경유비 내역
+  let summary = '';
+  if(bd && bd.base) {
+    const wpText = bd.waypoints.length
+      ? bd.waypoints.map(w => `${w.region||'?'}(${w.feeType==='same'?'동일':'타'}) ${w.fee.toLocaleString()}`).join(' + ')
+      : '없음';
+    summary = `<div style="padding:6px 8px;margin-bottom:6px;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:5px;font-size:11px;line-height:1.7">
+      🏁 <b style="color:#7c3aed">기본요율</b>: ${bd.base.region||'-'} <b>${(bd.base.rate||0).toLocaleString()}원</b> <span style="color:#9ca3af">(가장 비싼 곳${bd.base.isMain?' · 1착':' · 경유지'})</span><br>
+      🚏 <b style="color:#7c3aed">경유비</b>: ${wpText} <b style="color:#7c3aed">= ${bd.waypointTotal.toLocaleString()}원</b>
+    </div>`;
+  }
+
+  if(liquorStops.length === 0) {
+    area.innerHTML = summary + '<div style="text-align:center;padding:16px;color:var(--text-light);font-size:12px">위 폼이 1착 목적지입니다. 2착부터 여기에 추가하세요.</div>';
+    return;
+  }
+
+  let html = summary;
   liquorStops.forEach((s, i) => {
-    html += `<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;padding:4px 6px;background:#faf5ff;border:1px solid #e9d5ff;border-radius:5px">
+    const isBase = !!(bd && bd.base && !bd.base.isMain && bd.base.idx === i);
+    const wp = bd ? bd.waypoints.find(w => !w.isMain && w.idx === i) : null;
+    let statusCell;
+    if(isBase) {
+      statusCell = `<span style="font-size:10px;font-weight:700;color:#6d28d9;background:#ede9fe;padding:3px 6px;border-radius:4px;white-space:nowrap" title="전체 착지 중 가장 비싸 기본요율로 적용됨">🏁 기본요율 ${(bd.base.rate||0).toLocaleString()}</span>`;
+    } else if(wp) {
+      statusCell = `<span style="font-size:10px;color:#7c3aed;white-space:nowrap">경유 <select onchange="setStopFeeType(${i},this.value)" style="font-size:10px;padding:1px 2px;border:1px solid #c4b5fd;border-radius:3px" title="자동은 권역명 일치로 판정. 필요시 수동 지정">
+          <option value="" ${!s.feeType?'selected':''}>자동·${wp.feeType==='same'?'동일':'타'}</option>
+          <option value="same" ${s.feeType==='same'?'selected':''}>동일권역</option>
+          <option value="diff" ${s.feeType==='diff'?'selected':''}>타권역</option>
+        </select> <b>${wp.fee.toLocaleString()}</b></span>`;
+    } else {
+      statusCell = `<span style="font-size:10px;color:#9ca3af;white-space:nowrap">권역 입력</span>`;
+    }
+    html += `<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;padding:4px 6px;background:${isBase?'#ede9fe':'#faf5ff'};border:1px solid ${isBase?'#c4b5fd':'#e9d5ff'};border-radius:5px">
       <span style="font-size:10px;font-weight:700;color:#7c3aed;min-width:28px">${i+2}착</span>
-      <input type="text" value="${s.dest}" placeholder="배송처" oninput="updateLiquorStop(${i},'dest',this.value)" style="width:100px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
-      <input type="text" value="${s.area}" list="regionList" placeholder="권역" oninput="updateLiquorStop(${i},'area',this.value)" style="width:65px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
-      <input type="text" value="${s.addr}" placeholder="주소" oninput="updateLiquorStop(${i},'addr',this.value)" style="flex:1;min-width:100px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
-      <input type="text" value="${s.contact}" placeholder="담당자" oninput="updateLiquorStop(${i},'contact',this.value)" style="width:55px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
-      <input type="text" value="${s.phone}" placeholder="연락처" oninput="updateLiquorStop(${i},'phone',this.value)" style="width:90px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
+      <input type="text" value="${s.dest}" placeholder="배송처" oninput="updateLiquorStop(${i},'dest',this.value)" style="width:90px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
+      <input type="text" value="${s.area}" list="regionList" placeholder="권역" oninput="updateLiquorStop(${i},'area',this.value)" style="width:60px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
+      <input type="text" value="${s.addr}" placeholder="주소" oninput="updateLiquorStop(${i},'addr',this.value)" style="flex:1;min-width:80px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
+      <input type="text" value="${s.contact}" placeholder="담당자" oninput="updateLiquorStop(${i},'contact',this.value)" style="width:50px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
+      <input type="text" value="${s.phone}" placeholder="연락처" oninput="updateLiquorStop(${i},'phone',this.value)" style="width:85px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
+      ${statusCell}
       <div style="display:flex;flex-direction:column;gap:1px">
         <button onclick="moveLiquorStop(${i},-1)" ${i===0?'disabled':''} style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:9px;padding:0 4px;color:#7c3aed;line-height:14px;${i===0?'opacity:0.3;cursor:default':''}" title="위로">▲</button>
         <button onclick="moveLiquorStop(${i},1)" ${i===liquorStops.length-1?'disabled':''} style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:9px;padding:0 4px;color:#7c3aed;line-height:14px;${i===liquorStops.length-1?'opacity:0.3;cursor:default':''}" title="아래로">▼</button>
@@ -7866,10 +7959,17 @@ function renderLiquorStops() {
   area.innerHTML = html;
 }
 
+// 경유비 합계(자동) 계산 → 헤더/입력칸 반영 (leaf: calculate 호출 안 함)
 function calcLiquorTotal() {
-  const fee = parseInt(document.getElementById('lqWaypointFee')?.value) || 0;
-  document.getElementById('lqStopCount').textContent = liquorStops.length + '건';
-  document.getElementById('lqWaypointTotal').textContent = fee > 0 ? '경유비: ' + fee.toLocaleString() + '원' : '';
+  const vehicle = document.getElementById('vehicleTon').value;
+  const bd = computeLiquorBreakdown(vehicle, getSelectedRegion());
+  const wpTotal = bd ? bd.waypointTotal : 0;
+  const feeEl = document.getElementById('lqWaypointFee');
+  if(feeEl) feeEl.value = wpTotal; // 자동 경유비 (저장/표시용)
+  const cntEl = document.getElementById('lqStopCount');
+  if(cntEl) cntEl.textContent = liquorStops.length + '건';
+  const totEl = document.getElementById('lqWaypointTotal');
+  if(totEl) totEl.textContent = wpTotal > 0 ? '경유비 합계: ' + wpTotal.toLocaleString() + '원' : '';
 }
 
 // ============================================
@@ -17876,6 +17976,7 @@ async function saveDispatch(closeAfter) {
 
   const type = document.getElementById('dispatchType').value;
   let region, vehicle, plt, baseRate, total;
+  let _saveLqBd = null; // 🍷 주류 요율 분해 (저장용)
 
   if(type === 'M짐') {
     const mjimIdx = document.getElementById('mjimRegion').value;
@@ -17915,6 +18016,11 @@ async function saveDispatch(closeAfter) {
           rateData = RATES[region];
         }
         baseRate = (rateData && vehicle) ? (rateData[vehicle] || 0) : 0;
+        // 🍷 주류: 기본요율 = 전체 착지 중 최고가. 화면 계산(calculate)과 동일 규칙.
+        if(dispatchMode === 'liquor') {
+          _saveLqBd = computeLiquorBreakdown(vehicle, region);
+          if(_saveLqBd && _saveLqBd.base) baseRate = _saveLqBd.base.rate;
+        }
       }
     }
   }
@@ -17928,7 +18034,10 @@ async function saveDispatch(closeAfter) {
   let roundFee = type === '왕복' ? Math.round(baseRate * 0.5) : 0;
   let waypointTotal = 0;
   if(dispatchMode === 'liquor') {
-    waypointTotal = parseInt(document.getElementById('lqWaypointFee')?.value) || 0;
+    waypointTotal = _saveLqBd ? _saveLqBd.waypointTotal : (parseInt(document.getElementById('lqWaypointFee')?.value) || 0);
+    // 저장 레코드에 자동 경유비 반영 (입력칸도 동기화)
+    const _feeEl = document.getElementById('lqWaypointFee');
+    if(_feeEl) _feeEl.value = waypointTotal;
   }
   const extraFee = parseInt(document.getElementById('extraWorkFee').value) || 0;
   total = baseRate + manualFee + waitFee + roundFee + waypointTotal + extraFee;
