@@ -18419,8 +18419,10 @@ async function deleteSelectedInline() {
   const idsToDelete = Array.from(checked).map(c => parseInt(c.value));
   const idsSet = new Set(idsToDelete);
   
-  // autoSync가 삭제된 데이터를 다시 복원하지 못하도록 차단 (5초만 차단)
-  _lastSaveTime = Date.now() - 25000;
+  // autoSync가 삭제된 데이터를 다시 복원하지 못하도록 차단 (단건 삭제 deleteRecord와 동일하게 30초 완전 보호)
+  // 이전엔 Date.now()-25000 이라 5초만 차단 → 시트 삭제 전파 전에 autoSync가 옛 데이터를 통째 복원해
+  // 삭제분이 되살아나던 버그. 완전 보호로 교정.
+  _lastSaveTime = Date.now();
 
   dispatchLog = dispatchLog.filter(r => !idsSet.has(r.id));
   saveDispatchHistory({skipMerge: true});
@@ -18435,6 +18437,9 @@ async function deleteSelectedInline() {
       updateConnStatus('loading', '삭제 중...');
       const result = await deleteFromSheet(idsToDelete);
       if(result.success) {
+        // 시트 삭제 완료 시점부터 다시 30초 보호 (대량 삭제로 await가 길어져도 부활 차단)
+        _lastSaveTime = Date.now();
+        _lastSyncHash = '';
         updateConnStatus('ok');
         showToast('✅ ' + idsToDelete.length + '건 삭제 완료 (로컬 + 구글시트)');
       } else {
