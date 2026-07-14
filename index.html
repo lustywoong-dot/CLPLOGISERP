@@ -1023,6 +1023,24 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           </div>
         </div>
       </div>
+      <!-- 주류 차량 구성 (여러 대 운행 시) -->
+      <div id="lqVehicleSection" style="display:none;margin-top:8px;padding:8px 10px;background:#faf5ff;border:1px solid #ddd6fe;border-radius:6px">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">
+          <span style="font-size:12px;font-weight:700;color:#7c3aed">🚚 차량 구성</span>
+          <span style="font-size:10px;color:#9ca3af">한 코드 여러 대 운행 시 대수만큼 자동 합산 (기본요율·경유비·작업비 포함)</span>
+          <span id="lqVehicleSummary" style="margin-left:auto;font-size:11px;font-weight:700;color:#7c3aed"></span>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+          <span style="font-size:11px;color:#6b7280">대표차량</span>
+          <b id="lqPrimaryVehicleLabel" style="font-size:12px;color:#7c3aed;min-width:40px">-</b>
+          <span style="font-size:11px;color:#6b7280">×</span>
+          <input type="number" id="lqVehicleCount" min="1" max="20" value="1" onchange="calculate()" oninput="calculate()" style="width:52px;padding:3px 6px;font-size:12px;font-weight:700;text-align:center;border:1px solid #c4b5fd;border-radius:4px;color:#7c3aed">
+          <span style="font-size:11px;color:#6b7280">대</span>
+          <button type="button" onclick="addLqExtraVehicle()" title="다른 톤수 차량을 추가로 붙입니다 (예: 18톤 + 5톤축)" style="margin-left:8px;background:#fff;color:#7c3aed;border:1px solid #7c3aed;border-radius:4px;padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer">+ 다른 톤수</button>
+        </div>
+        <div id="lqExtraVehicleRows" style="margin-top:6px"></div>
+      </div>
+
       <!-- 주류 경유지 (주류 모드에서만 표시) -->
       <div id="lqWaypointSection" style="display:none;margin-top:8px;border:1px solid #c4b5fd;border-radius:6px;overflow:hidden">
         <div style="display:flex;align-items:center;padding:6px 10px;background:#f5f3ff;gap:8px;flex-wrap:wrap">
@@ -3845,6 +3863,11 @@ function loadRecord(id) {
       liquorStops = [];
       renderLiquorStops();
     }
+    // 🚚 차량 구성 복원
+    lqExtraVehicles = (r.lqExtraVehicles && Array.isArray(r.lqExtraVehicles)) ? JSON.parse(JSON.stringify(r.lqExtraVehicles)) : [];
+    const _vcEl = document.getElementById('lqVehicleCount');
+    if(_vcEl) _vcEl.value = r.lqVehicleCount || 1;
+    renderLqExtraVehicles();
   }
 
   // 🛡 사무실 서류수령 복원 — 락앤락/주류 둘 다 사용하는 필드이므로 모드 무관 항상 복원
@@ -6315,6 +6338,7 @@ function calculate() {
   // 원청 단가 (모드에 따라 다른 단가표)
   let baseRate = 0;
   let _lqBreakdown = null; // 🍷 주류 요율 분해 (기본요율=최고가, 경유비 자동)
+  let _lqMV = null; // 🚚 주류 다중 차량 합산
   let isMixed = document.getElementById('mixedCargoCheck')?.checked;
 
   if(customRateMode) {
@@ -6345,10 +6369,12 @@ function calculate() {
       return;
     }
     baseRate = rateData[vehicle];
-    // 🍷 주류: 기본요율 = 전체 착지 중 최고가(가장 비싼 곳). 나머지는 경유비 자동.
+    // 🍷 주류: 기본요율 = 전체 착지 중 최고가. 🚚 여러 대면 대수·톤수만큼 합산.
     if(dispatchMode === 'liquor') {
-      _lqBreakdown = computeLiquorBreakdown(vehicle, region);
-      if(_lqBreakdown && _lqBreakdown.base) baseRate = _lqBreakdown.base.rate;
+      _lqMV = computeLiquorMultiVehicle(region, boxes, type === '왕복');
+      _lqBreakdown = _lqMV ? _lqMV.bd : computeLiquorBreakdown(vehicle, region);
+      if(_lqMV) baseRate = _lqMV.sumBase;
+      else if(_lqBreakdown && _lqBreakdown.base) baseRate = _lqBreakdown.base.rate;
     }
   }
   
@@ -6357,23 +6383,26 @@ function calculate() {
   if(boxes >= 50 && dispatchMode !== 'general') {
     manualFee = (dispatchMode === 'liquor' ? LIQUOR_WORK_FEE[vehicle] : MANUAL_FEE[vehicle]) || 0;
   }
-  
-  // 대기료 (2시간 무료, 3시간째부터 시간당 1만원)
+  // 🚚 주류 다중 차량: 작업비도 대수·톤수만큼 합산
+  if(dispatchMode === 'liquor' && _lqMV) manualFee = _lqMV.sumWork;
+
+  // 대기료 (2시간 무료, 3시간째부터 시간당 1만원) — 주류 다중 차량은 대수만큼
   let waitFee = 0;
   if(waitH > 2) {
     waitFee = (waitH - 2) * 10000;
   }
-  
-  // 왕복 할증
+  if(dispatchMode === 'liquor' && _lqMV) waitFee *= _lqMV.count;
+
+  // 왕복 할증 — 주류 다중 차량은 차량별 합산
   let roundFee = 0;
   if(type === '왕복') {
-    roundFee = Math.round(baseRate * 0.5);
+    roundFee = (dispatchMode === 'liquor' && _lqMV) ? _lqMV.sumRound : Math.round(baseRate * 0.5);
   }
   
-  // 총 매출 (주류: 기본요율=최고가 + 경유비 자동합계)
+  // 총 매출 (주류: 기본요율=최고가 + 경유비 자동합계, 다중 차량은 대수만큼)
   let waypointTotal = 0;
   if(dispatchMode === 'liquor') {
-    waypointTotal = _lqBreakdown ? _lqBreakdown.waypointTotal : (parseInt(document.getElementById('lqWaypointFee')?.value) || 0);
+    waypointTotal = _lqMV ? _lqMV.sumWaypoint : (_lqBreakdown ? _lqBreakdown.waypointTotal : (parseInt(document.getElementById('lqWaypointFee')?.value) || 0));
     // 자동 경유비를 입력칸/헤더에 반영 (저장·표시용)
     const _feeEl = document.getElementById('lqWaypointFee');
     if(_feeEl) _feeEl.value = waypointTotal;
@@ -6383,6 +6412,12 @@ function calculate() {
     const _ae = document.activeElement;
     const _stopsEl = document.getElementById('lqStopsArea');
     if(_stopsEl && !(_ae && _ae.closest && _ae.closest('#lqStopsArea'))) renderLiquorStops();
+    // 🚚 차량 구성 표시 갱신
+    const _pvEl = document.getElementById('lqPrimaryVehicleLabel');
+    if(_pvEl) _pvEl.textContent = vehicle || '-';
+    const _mvSum = document.getElementById('lqVehicleSummary');
+    if(_mvSum) _mvSum.textContent = (_lqMV && _lqMV.count > 1) ? ('총 ' + _lqMV.count + '대 · 원금합계 ' + (_lqMV.sumBase + _lqMV.sumWaypoint + _lqMV.sumWork + _lqMV.sumRound).toLocaleString() + '원') : '';
+    if(!(_ae && _ae.closest && _ae.closest('#lqExtraVehicleRows'))) renderLqExtraVehicles();
   }
   const extraFee = parseInt(document.getElementById('extraWorkFee').value) || 0;
   const total = baseRate + manualFee + waitFee + roundFee + waypointTotal + extraFee;
@@ -7225,7 +7260,11 @@ function resetForm() {
   resetDriverRows();
   // 주류 모드 초기화
   liquorStops = [];
+  lqExtraVehicles = [];
+  const _vcReset = document.getElementById('lqVehicleCount');
+  if(_vcReset) _vcReset.value = 1;
   if(document.getElementById('lqStopsArea')) renderLiquorStops();
+  if(document.getElementById('lqExtraVehicleRows')) renderLqExtraVehicles();
   calcLiquorTotal();
   // 현재 모드 임시 데이터 초기화
   modeFormData[dispatchMode] = {};
@@ -7385,6 +7424,7 @@ document.addEventListener('keydown', function(e) {
 // ============================================
 let dispatchMode = 'locknlock'; // 'locknlock', 'liquor', or 'general'
 let liquorStops = []; // 경유지 배열
+let lqExtraVehicles = []; // 주류 추가 차량 [{ton, count}] — 대표차량(vehicleTon)+대수 외 다른 톤수
 
 // 모드별 임시 저장소
 const modeFormData = { locknlock: {}, liquor: {}, general: {} };
@@ -7406,6 +7446,8 @@ function saveCurrentModeData() {
     });
   }
   data._liquorStops = JSON.parse(JSON.stringify(liquorStops));
+  data._lqExtraVehicles = JSON.parse(JSON.stringify(lqExtraVehicles));
+  data._lqVehicleCount = parseInt(document.getElementById('lqVehicleCount')?.value) || 1;
   data._smsContent = document.getElementById('smsContent').value;
   data._smsManual = smsManualMode;
   // 오더 붙여넣기 상태 저장
@@ -7428,7 +7470,11 @@ function restoreModeData(mode) {
   });
   if(mode === 'liquor') {
     liquorStops = data._liquorStops || [];
+    lqExtraVehicles = data._lqExtraVehicles || [];
+    const _vc = document.getElementById('lqVehicleCount');
+    if(_vc) _vc.value = data._lqVehicleCount || 1;
     renderLiquorStops();
+    renderLqExtraVehicles();
     calcLiquorTotal();
   }
   // 일반 모드: gen_ 필드 전체 복원
@@ -7503,6 +7549,8 @@ function setDispatchMode(mode) {
   // 센터 선택 + 경유지 영역 표시/숨김
   document.getElementById('lqCenterRow').style.display = mode === 'liquor' ? '' : 'none';
   document.getElementById('lqWaypointSection').style.display = mode === 'liquor' ? '' : 'none';
+  const _lqVehSec = document.getElementById('lqVehicleSection');
+  if(_lqVehSec) _lqVehSec.style.display = mode === 'liquor' ? '' : 'none';
   document.getElementById('lqWeightGroup').style.display = mode === 'liquor' ? '' : 'none';
   document.getElementById('row3Grid').style.gridTemplateColumns = mode === 'liquor' ? 'repeat(5,1fr)' : 'repeat(4,1fr)';
   // 배차코드 플레이스홀더 업데이트 (주류: 센터별 / 락앤락: 기본)
@@ -7836,6 +7884,87 @@ function setStopFeeType(idx, type) {
   renderLiquorStops();
   calculate();
   onCoreFieldChange();
+}
+
+// ─── 🚚 주류 차량 구성 (한 코드 여러 대 운행) ───────────────
+// 대표차량(vehicleTon) × 대수 + 추가 톤수들. 각 차량마다 기본요율·경유비·작업비를
+// 자기 톤수로 계산해 전부 합산(대수만큼). 1대면 기존 단일 계산과 동일.
+const LQ_VEHICLE_OPTS = ['1톤','2.5톤','3.5톤','5톤','5톤축','11톤','18톤'];
+
+function _lqVehicleEntries() {
+  const entries = [];
+  const primary = document.getElementById('vehicleTon')?.value || '';
+  const cnt = Math.max(1, parseInt(document.getElementById('lqVehicleCount')?.value) || 1);
+  if(primary) entries.push({ ton: primary, count: cnt });
+  lqExtraVehicles.forEach(e => {
+    if(e.ton) entries.push({ ton: e.ton, count: Math.max(1, parseInt(e.count) || 1) });
+  });
+  return entries;
+}
+
+// 경로(기본요율 착지 + 경유지 동일/타)는 대표차량 기준 1회 결정, 톤수별 금액만 각 차량에 맞춰 합산.
+function computeLiquorMultiVehicle(mainRegion, boxes, isRound) {
+  const entries = _lqVehicleEntries();
+  if(entries.length === 0) return null;
+  const bd = computeLiquorBreakdown(entries[0].ton, mainRegion);
+  if(!bd || !bd.base) return null;
+  const rateTable = getLiquorRateTable();
+  const baseRegion = bd.base.region;
+  const rateAt = ton => (baseRegion && rateTable[baseRegion] && rateTable[baseRegion][ton]) ? rateTable[baseRegion][ton] : 0;
+  let sumBase = 0, sumWaypoint = 0, sumWork = 0, sumRound = 0, count = 0;
+  const per = [];
+  entries.forEach(e => {
+    const baseRate = rateAt(e.ton);
+    let wp = 0;
+    bd.waypoints.forEach(w => { wp += (LIQUOR_WAYPOINT_FEE[w.feeType] && LIQUOR_WAYPOINT_FEE[w.feeType][e.ton]) || 0; });
+    const work = (boxes >= 50) ? (LIQUOR_WORK_FEE[e.ton] || 0) : 0;
+    const round = isRound ? Math.round(baseRate * 0.5) : 0;
+    sumBase += baseRate * e.count;
+    sumWaypoint += wp * e.count;
+    sumWork += work * e.count;
+    sumRound += round * e.count;
+    count += e.count;
+    per.push({ ton: e.ton, count: e.count, baseRate, wp, work, round });
+  });
+  return { bd, baseRegion, per, sumBase, sumWaypoint, sumWork, sumRound, count, entries };
+}
+
+function addLqExtraVehicle() {
+  lqExtraVehicles.push({ ton: '18톤', count: 1 });
+  renderLqExtraVehicles();
+  calculate();
+}
+function removeLqExtraVehicle(i) {
+  lqExtraVehicles.splice(i, 1);
+  renderLqExtraVehicles();
+  calculate();
+}
+function updateLqExtraVehicle(i, field, val) {
+  if(!lqExtraVehicles[i]) return;
+  if(field === 'count') lqExtraVehicles[i].count = Math.max(1, parseInt(val) || 1);
+  else lqExtraVehicles[i].ton = val;
+  calculate();
+}
+function renderLqExtraVehicles() {
+  const area = document.getElementById('lqExtraVehicleRows');
+  if(!area) return;
+  if(lqExtraVehicles.length === 0) { area.innerHTML = ''; return; }
+  const mv = computeLiquorMultiVehicle(getSelectedRegion(), parseInt(document.getElementById('boxCount').value)||0, document.getElementById('dispatchType').value==='왕복');
+  let html = '';
+  lqExtraVehicles.forEach((e, i) => {
+    const opts = LQ_VEHICLE_OPTS.map(t => `<option value="${t}" ${e.ton===t?'selected':''}>${t}</option>`).join('');
+    const p = mv ? mv.per[i+1] : null; // per[0]=대표차량, 추가차량은 1부터
+    const unit = p ? (p.baseRate + p.wp + p.work + p.round) : 0;
+    html += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+      <select onchange="updateLqExtraVehicle(${i},'ton',this.value)" style="font-size:11px;padding:2px 4px;border:1px solid #c4b5fd;border-radius:4px">${opts}</select>
+      <span style="font-size:11px;color:#6b7280">×</span>
+      <input type="number" min="1" max="20" value="${e.count}" onchange="updateLqExtraVehicle(${i},'count',this.value)" oninput="updateLqExtraVehicle(${i},'count',this.value)" style="width:46px;padding:2px 4px;font-size:11px;text-align:center;border:1px solid #c4b5fd;border-radius:4px">
+      <span style="font-size:11px;color:#6b7280">대</span>
+      <span style="font-size:11px;color:#7c3aed;font-weight:600">${unit ? ('= ' + (unit * e.count).toLocaleString() + '원') : ''}</span>
+      <button type="button" onclick="removeLqExtraVehicle(${i})" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px;padding:2px 4px" title="삭제">✕</button>
+    </div>`;
+  });
+  area.innerHTML = html;
 }
 
 function addLiquorStop() {
@@ -18077,13 +18206,20 @@ async function saveDispatch(closeAfter) {
   const boxes = parseInt(document.getElementById('boxCount').value) || 0;
   const waitH = 0;
 
+  // 🚚 주류 다중 차량 합산 (화면 calculate와 동일 규칙) — boxes 확정 후 계산
+  const _saveLqMV = (dispatchMode === 'liquor') ? computeLiquorMultiVehicle(region, boxes, type === '왕복') : null;
+  if(_saveLqMV) baseRate = _saveLqMV.sumBase;
+
   let manualFee = 0;
   if(type !== 'M짐' && boxes >= 50) manualFee = (dispatchMode === 'liquor' ? LIQUOR_WORK_FEE[vehicle] : MANUAL_FEE[vehicle]) || 0;
+  if(_saveLqMV) manualFee = _saveLqMV.sumWork;
   let waitFee = waitH > 2 ? (waitH - 2) * 10000 : 0;
+  if(_saveLqMV) waitFee *= _saveLqMV.count;
   let roundFee = type === '왕복' ? Math.round(baseRate * 0.5) : 0;
+  if(_saveLqMV) roundFee = _saveLqMV.sumRound;
   let waypointTotal = 0;
   if(dispatchMode === 'liquor') {
-    waypointTotal = _saveLqBd ? _saveLqBd.waypointTotal : (parseInt(document.getElementById('lqWaypointFee')?.value) || 0);
+    waypointTotal = _saveLqMV ? _saveLqMV.sumWaypoint : (_saveLqBd ? _saveLqBd.waypointTotal : (parseInt(document.getElementById('lqWaypointFee')?.value) || 0));
     // 저장 레코드에 자동 경유비 반영 (입력칸도 동기화)
     const _feeEl = document.getElementById('lqWaypointFee');
     if(_feeEl) _feeEl.value = waypointTotal;
@@ -18147,6 +18283,8 @@ async function saveDispatch(closeAfter) {
       lqOfficeDoc: !!document.getElementById('lqOfficeDoc')?.checked,
       lqWaypointFee: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqWaypointFee')?.value) || 0) : 0,
       liquorStops: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(liquorStops)) : undefined,
+      lqExtraVehicles: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(lqExtraVehicles)) : undefined,
+      lqVehicleCount: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqVehicleCount')?.value) || 1) : undefined,
       // 혼적(M짐) 정보 저장 — 수정 모드에서 단가 손상 방지
       isMixed: !!document.getElementById('mixedCargoCheck')?.checked,
       mixedMjimIdx: document.getElementById('mixedCargoCheck')?.checked ? (document.getElementById('mixedMjimRegion')?.value || '') : '',
