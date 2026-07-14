@@ -7877,6 +7877,35 @@ function computeLiquorBreakdown(vehicle, mainRegion) {
   return { base, waypoints, waypointTotal };
 }
 
+// 🔃 1착(메인) ↔ 경유지 자리 교체 — 같은 권역 등 요율로 순서를 못 정하는 경우 수동 배치용.
+// 요금은 순서와 무관(기본요율=최고가, 경유비=권역명 기준)하므로 순서/문자만 바뀌고 금액 불변.
+function swapMainWithStop(stopIdx) {
+  if(!liquorStops[stopIdx]) return;
+  const g = id => document.getElementById(id);
+  const main = {
+    dest: g('clientName').value || '', area: g('deliveryRegion').value || '',
+    addr: g('deliveryDetailAddr').value || '', contact: g('deliveryContact').value || '',
+    phone: g('deliveryPhone').value || ''
+  };
+  const s = liquorStops[stopIdx];
+  // 경유지 → 메인(1착)
+  g('clientName').value = s.dest || '';
+  g('deliveryRegion').value = s.area || '';
+  g('deliveryDetailAddr').value = s.addr || '';
+  g('deliveryContact').value = s.contact || '';
+  g('deliveryPhone').value = s.phone || '';
+  // 메인 → 경유지
+  liquorStops[stopIdx] = {
+    dest: main.dest, area: main.area, addr: main.addr, contact: main.contact, phone: main.phone,
+    qty: '', weight: '', rate: 0, feeType: ''
+  };
+  renderLiquorStops();
+  calculate();
+  generateSMS();
+  onCoreFieldChange();
+  showToast('🔃 1착 ↔ ' + (stopIdx + 2) + '착 순서 변경');
+}
+
 // 경유지 동일/타권역 수동 지정 ('' = 자동)
 function setStopFeeType(idx, type) {
   if(!liquorStops[idx]) return;
@@ -8104,6 +8133,16 @@ function renderLiquorStops() {
   }
 
   let html = summary;
+  // [1착] = 메인 폼 목적지. ▼로 경유지와 순서 교체 가능 (요율로 순서를 못 정하는 경우 수동 배치)
+  const _mainDest = document.getElementById('clientName').value || '-';
+  const _mainRegion = getSelectedRegion() || '-';
+  const _mainIsBase = !!(bd && bd.base && bd.base.isMain);
+  html += `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;padding:4px 6px;background:${_mainIsBase?'#ede9fe':'#f8fafc'};border:1px solid ${_mainIsBase?'#c4b5fd':'#e2e8f0'};border-radius:5px">
+    <span style="font-size:10px;font-weight:700;color:#7c3aed;min-width:28px">1착</span>
+    <span style="flex:1;font-size:11px;color:#374151"><b>${_mainDest}</b> <span style="color:#9ca3af">(${_mainRegion})</span> <span style="font-size:9px;color:#94a3b8">← 위 메인 폼에서 입력</span></span>
+    ${_mainIsBase ? '<span style="font-size:10px;font-weight:700;color:#6d28d9;background:#ede9fe;padding:3px 6px;border-radius:4px;white-space:nowrap">🏁 기본요율</span>' : ''}
+    <button onclick="swapMainWithStop(0)" title="2착과 순서 교체 (1착을 아래로 내림)" style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:9px;padding:1px 6px;color:#7c3aed">▼ 아래로</button>
+  </div>`;
   liquorStops.forEach((s, i) => {
     const isBase = !!(bd && bd.base && !bd.base.isMain && bd.base.idx === i);
     const wp = bd ? bd.waypoints.find(w => !w.isMain && w.idx === i) : null;
@@ -8128,7 +8167,7 @@ function renderLiquorStops() {
       <input type="text" value="${s.phone}" placeholder="연락처" oninput="updateLiquorStop(${i},'phone',this.value)" style="width:85px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
       ${statusCell}
       <div style="display:flex;flex-direction:column;gap:1px">
-        <button onclick="moveLiquorStop(${i},-1)" ${i===0?'disabled':''} style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:9px;padding:0 4px;color:#7c3aed;line-height:14px;${i===0?'opacity:0.3;cursor:default':''}" title="위로">▲</button>
+        <button onclick="${i===0?'swapMainWithStop(0)':`moveLiquorStop(${i},-1)`}" style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:9px;padding:0 4px;color:#7c3aed;line-height:14px" title="${i===0?'1착(메인)과 순서 교체':'위로'}">▲</button>
         <button onclick="moveLiquorStop(${i},1)" ${i===liquorStops.length-1?'disabled':''} style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:9px;padding:0 4px;color:#7c3aed;line-height:14px;${i===liquorStops.length-1?'opacity:0.3;cursor:default':''}" title="아래로">▼</button>
       </div>
       <button onclick="removeLiquorStop(${i})" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px;padding:2px 4px" title="삭제">✕</button>
