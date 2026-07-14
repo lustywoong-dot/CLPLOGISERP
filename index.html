@@ -1052,7 +1052,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
             <span style="font-size:10px;color:var(--text-light)">원</span>
           </div>
           <span id="lqWaypointTotal" style="font-size:11px;font-weight:700;color:#7c3aed"></span>
-          <button class="btn btn-sm" onclick="autoSortLiquorStops()" title="가까운 곳 → 먼 곳 순으로 착지 자동 정렬 (단가표 거리 기준). 1착 포함 재배치." style="margin-left:auto;background:#fff;color:#7c3aed;border:1px solid #7c3aed;padding:4px 10px;font-size:11px;font-weight:600">🔀 자동정렬</button>
+          <button class="btn btn-sm" onclick="autoSortLiquorStopsByMap()" title="가까운 곳 → 먼 곳 순으로 착지 자동 정렬 (카카오맵 실제 좌표 기준, 1착 포함 재배치). 지도 사용 불가 시 요율 기준으로 폴백." style="margin-left:auto;background:#fff;color:#7c3aed;border:1px solid #7c3aed;padding:4px 10px;font-size:11px;font-weight:600">🔀 자동정렬</button>
           <button class="btn btn-sm" onclick="addLiquorStop()" style="background:#7c3aed;color:white;padding:4px 10px;font-size:11px">+ 경유지 추가</button>
         </div>
         <div id="lqStopsArea" style="padding:8px;background:white;max-height:400px;overflow-y:auto">
@@ -2797,6 +2797,8 @@ body.hide-cost-col .col-sensitive { display: none !important; }
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<!-- 카카오맵 SDK (주류 착지 지오코딩 정렬용) — autoload=false: 필요 시 lazy 로드 -->
+<script src="https://dapi.kakao.com/v2/maps/sdk.js?appkey=254b5429bc7ec3e7b57303ab74745ff1&libraries=services&autoload=false"></script>
 <script>
 // ============================================
 // 원청 단가 데이터 (부발 Lock&Lock 출발)
@@ -8065,7 +8067,102 @@ function autoSortLiquorStops() {
   calculate();
   generateSMS();
   onCoreFieldChange();
-  showToast('🔀 가까운 곳 → 먼 곳 순으로 자동 정렬 완료');
+  showToast('🔀 가까운 곳 → 먼 곳 순으로 자동 정렬 완료 (요율 기준)');
+}
+
+// ─── 🗺️ 카카오맵 지오코딩 기반 착지 정렬 (실제 좌표 최근접순) ──────
+// 요율표에 없는 세부지역(읍/면)도 실제 주소 좌표로 구분해 순서 결정.
+// 배포 사이트(github.io)에서만 동작 — 로컬 파일 직접 열기/오프라인이면 요율 정렬로 폴백.
+let _kakaoLoadPromise = null;
+function ensureKakaoMaps() {
+  if(_kakaoLoadPromise) return _kakaoLoadPromise;
+  _kakaoLoadPromise = new Promise((resolve) => {
+    if(typeof kakao === 'undefined' || !kakao.maps || typeof kakao.maps.load !== 'function') { resolve(false); return; }
+    try { kakao.maps.load(() => resolve(!!(kakao.maps && kakao.maps.services))); }
+    catch(e) { resolve(false); }
+  });
+  return _kakaoLoadPromise;
+}
+// 주소/장소명 → {lat,lng} (실패 시 null). 주소검색 먼저, 실패하면 키워드검색.
+function _kakaoGeocode(query) {
+  return new Promise((resolve) => {
+    const q = String(query || '').trim();
+    if(!q) { resolve(null); return; }
+    try {
+      const geocoder = new kakao.maps.services.Geocoder();
+      geocoder.addressSearch(q, (res, status) => {
+        if(status === kakao.maps.services.Status.OK && res[0]) {
+          resolve({ lat: parseFloat(res[0].y), lng: parseFloat(res[0].x) });
+        } else {
+          const places = new kakao.maps.services.Places();
+          places.keywordSearch(q, (res2, st2) => {
+            if(st2 === kakao.maps.services.Status.OK && res2[0]) resolve({ lat: parseFloat(res2[0].y), lng: parseFloat(res2[0].x) });
+            else resolve(null);
+          });
+        }
+      });
+    } catch(e) { resolve(null); }
+  });
+}
+// 두 좌표 직선거리(km) — 하버사인
+function _haversine(a, b) {
+  const R = 6371, toR = d => d * Math.PI / 180;
+  const dLat = toR(b.lat - a.lat), dLng = toR(b.lng - a.lng);
+  const s = Math.sin(dLat/2) ** 2 + Math.cos(toR(a.lat)) * Math.cos(toR(b.lat)) * Math.sin(dLng/2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(s));
+}
+const _LQ_CENTER_ADDR = {
+  dp1: '경기 이천시 마장면 서이천로 91',
+  dp2: '경기 이천시 마장면 덕평로661번길 87',
+  yj: '경기 여주시 대신면 대신로 894-10'
+};
+
+async function autoSortLiquorStopsByMap() {
+  if(dispatchMode !== 'liquor') { showToast('⚠ 주류 모드에서만 사용합니다'); return; }
+  const g = id => document.getElementById(id);
+  const main = { dest:g('clientName').value||'', area:g('deliveryRegion').value||'', addr:g('deliveryDetailAddr').value||'', contact:g('deliveryContact').value||'', phone:g('deliveryPhone').value||'', qty:'', weight:'', feeType:'' };
+  const all = [main].concat(liquorStops.map(s => ({ dest:s.dest||'', area:s.area||'', addr:s.addr||'', contact:s.contact||'', phone:s.phone||'', qty:s.qty||'', weight:s.weight||'', feeType:s.feeType||'' })));
+  if(all.length < 2) { showToast('⚠ 정렬하려면 착지가 2곳 이상이어야 합니다'); return; }
+
+  const ok = await ensureKakaoMaps();
+  if(!ok) { showToast('🗺️ 지도 사용 불가(로컬/오프라인) — 요율 기준으로 정렬합니다'); autoSortLiquorStops(); return; }
+
+  showToast('🗺️ 지도에서 위치 확인 중...');
+  const queryOf = d => (d.addr && d.addr.trim()) ? d.addr.trim() : ((d.area || '') + ' ' + (d.dest || '')).trim();
+  const center = g('lqCenter').value;
+  const centerQ = _LQ_CENTER_ADDR[center] || g('pickupAddr').value || '';
+  try {
+    const results = await Promise.all([_kakaoGeocode(centerQ)].concat(all.map(d => _kakaoGeocode(queryOf(d)))));
+    const centerCoord = results[0];
+    const coords = results.slice(1);
+    if(!centerCoord || coords.some(c => !c)) {
+      showToast('⚠ 일부 주소를 지도에서 못 찾음 — 요율 기준으로 정렬합니다 (주소 상세히 입력 시 정확)');
+      autoSortLiquorStops();
+      return;
+    }
+    // 센터에서 출발하는 최근접 이웃 정렬
+    const pool = all.map((d, i) => ({ d, coord: coords[i] }));
+    const ordered = [];
+    let cur = centerCoord;
+    while(pool.length) {
+      let bi = 0, best = Infinity;
+      pool.forEach((it, idx) => { const dist = _haversine(cur, it.coord); if(dist < best) { best = dist; bi = idx; } });
+      const next = pool.splice(bi, 1)[0];
+      ordered.push(next); cur = next.coord;
+    }
+    const f = ordered[0].d;
+    g('clientName').value = f.dest || ''; g('deliveryRegion').value = f.area || '';
+    g('deliveryDetailAddr').value = f.addr || ''; g('deliveryContact').value = f.contact || ''; g('deliveryPhone').value = f.phone || '';
+    liquorStops = ordered.slice(1).map(o => ({ dest:o.d.dest||'', area:o.d.area||'', addr:o.d.addr||'', contact:o.d.contact||'', phone:o.d.phone||'', qty:o.d.qty||'', weight:o.d.weight||'', rate:0, feeType:o.d.feeType||'' }));
+    renderLiquorStops();
+    calculate();
+    generateSMS();
+    onCoreFieldChange();
+    showToast('🗺️ 지도 기준 가까운 곳 → 먼 곳 순으로 정렬 완료');
+  } catch(e) {
+    showToast('⚠ 지도 정렬 오류 — 요율 기준으로 정렬합니다');
+    autoSortLiquorStops();
+  }
 }
 
 function getLiquorRateTable() {
