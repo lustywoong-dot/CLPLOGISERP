@@ -80,7 +80,7 @@
 .date-chip:hover { background:#f0f4ff;border-color:#93c5fd; }
 .date-chip.active { background:var(--primary);color:white;border-color:var(--primary); }
 .date-chip .dc-day { font-weight:700;font-size:11px; }
-.date-chip .dc-count { font-size:9px;opacity:0.8; }
+.date-chip .dc-count { font-size:10px;opacity:0.8; }
 .date-chip.dc-sun .dc-day { color:#dc2626; }
 .date-chip.dc-sat .dc-day { color:#2563eb; }
 .date-chip.active .dc-day, .date-chip.active .dc-count { color:white; }
@@ -625,11 +625,11 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <div style="margin-left:auto;display:flex;gap:4px;align-items:center">
           <!-- 정렬 버튼 -->
           <div style="display:flex;gap:1px;background:#e2e8f0;border-radius:3px;padding:1px">
-            <button class="btn btn-sm il-sort-btn" data-sort="date" onclick="setInlineSortMode('date')" style="padding:2px 7px;font-size:9px;background:var(--primary);color:white;border:none;border-radius:2px;cursor:pointer" title="배송일순">📅 날짜</button>
-            <button class="btn btn-sm il-sort-btn" data-sort="code" onclick="setInlineSortMode('code')" style="padding:2px 7px;font-size:9px;background:transparent;color:var(--text);border:none;border-radius:2px;cursor:pointer" title="배차코드순(차량크기순)">🔢 코드</button>
+            <button class="btn btn-sm il-sort-btn" data-sort="date" onclick="setInlineSortMode('date')" style="padding:2px 7px;font-size:10px;background:var(--primary);color:white;border:none;border-radius:2px;cursor:pointer" title="배송일순">📅 날짜</button>
+            <button class="btn btn-sm il-sort-btn" data-sort="code" onclick="setInlineSortMode('code')" style="padding:2px 7px;font-size:10px;background:transparent;color:var(--text);border:none;border-radius:2px;cursor:pointer" title="배차코드순(차량크기순)">🔢 코드</button>
           </div>
           <button class="btn btn-sm btn-danger" id="inlineDeleteBtn" onclick="deleteSelectedInline()" style="display:none">🗑 선택 삭제</button>
-          <button class="btn btn-sm" id="btnNewDispatch" onclick="openNewDispatch()" title="단축키: F2" style="background:#e07b39;color:white;border:none;padding:3px 10px;font-size:10px;border-radius:3px;cursor:pointer">+ 신규 배차 <span style="background:rgba(255,255,255,0.25);padding:1px 4px;border-radius:3px;font-size:9px;font-weight:700;margin-left:2px">F2</span></button>
+          <button class="btn btn-sm" id="btnNewDispatch" onclick="openNewDispatch()" title="단축키: F2" style="background:#e07b39;color:white;border:none;padding:3px 10px;font-size:10px;border-radius:3px;cursor:pointer">+ 신규 배차 <span style="background:rgba(255,255,255,0.25);padding:1px 4px;border-radius:3px;font-size:10px;font-weight:700;margin-left:2px">F2</span></button>
         </div>
       </div>
       <!-- 대기건 요약 바 -->
@@ -645,14 +645,14 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <span style="color:var(--text-light)">~</span>
         <input type="date" id="ilDateTo" style="padding:2px 6px;font-size:10px;border:1px solid var(--border);border-radius:4px">
         <button class="btn btn-sm" id="btnInlineSearch" onclick="searchFeedback(this);setInlineDateFilter('range')" style="padding:2px 8px;font-size:10px;background:var(--primary);color:white;border:none;border-radius:3px;cursor:pointer;font-weight:700">🔍 검색</button>
-        <button class="btn btn-sm" onclick="setInlineDateQuick('today')" style="padding:2px 6px;font-size:9px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:3px;cursor:pointer">당일</button>
-        <button class="btn btn-sm" onclick="setInlineDateQuick('week')" style="padding:2px 6px;font-size:9px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:3px;cursor:pointer">1주</button>
-        <button class="btn btn-sm" onclick="setInlineDateQuick('month')" style="padding:2px 6px;font-size:9px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:3px;cursor:pointer">1개월</button>
-        <button class="btn btn-sm" id="btnMyDispatch" onclick="toggleMyDispatch()" style="padding:2px 8px;font-size:9px;background:#059669;color:white;border:none;border-radius:3px;cursor:pointer;font-weight:700">👤 내 배차</button>
+        <button class="btn btn-sm" onclick="setInlineDateQuick('today')" style="padding:2px 6px;font-size:10px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:3px;cursor:pointer">당일</button>
+        <button class="btn btn-sm" onclick="setInlineDateQuick('week')" style="padding:2px 6px;font-size:10px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:3px;cursor:pointer">1주</button>
+        <button class="btn btn-sm" onclick="setInlineDateQuick('month')" style="padding:2px 6px;font-size:10px;background:#e0e7ff;color:#3730a3;border:1px solid #c7d2fe;border-radius:3px;cursor:pointer">1개월</button>
+        <button class="btn btn-sm" id="btnMyDispatch" onclick="toggleMyDispatch()" style="padding:2px 8px;font-size:10px;background:#059669;color:white;border:none;border-radius:3px;cursor:pointer;font-weight:700">👤 내 배차</button>
         <div style="display:flex;gap:1px;background:#e2e8f0;border-radius:3px;padding:1px;margin-left:4px">
-          <button class="btn btn-sm" id="ilStatusAll" onclick="setInlineStatus('all')" style="padding:2px 6px;font-size:9px;background:var(--primary);color:white;border:none;border-radius:2px;cursor:pointer">전체</button>
-          <button class="btn btn-sm" id="ilStatusAssigned" onclick="setInlineStatus('assigned')" style="padding:2px 6px;font-size:9px;background:transparent;color:#374151;border:none;border-radius:2px;cursor:pointer">🟢배차</button>
-          <button class="btn btn-sm" id="ilStatusWaiting" onclick="setInlineStatus('waiting')" style="padding:2px 6px;font-size:9px;background:transparent;color:#374151;border:none;border-radius:2px;cursor:pointer">🔴대기</button>
+          <button class="btn btn-sm" id="ilStatusAll" onclick="setInlineStatus('all')" style="padding:2px 6px;font-size:10px;background:var(--primary);color:white;border:none;border-radius:2px;cursor:pointer">전체</button>
+          <button class="btn btn-sm" id="ilStatusAssigned" onclick="setInlineStatus('assigned')" style="padding:2px 6px;font-size:10px;background:transparent;color:#374151;border:none;border-radius:2px;cursor:pointer">🟢배차</button>
+          <button class="btn btn-sm" id="ilStatusWaiting" onclick="setInlineStatus('waiting')" style="padding:2px 6px;font-size:10px;background:transparent;color:#374151;border:none;border-radius:2px;cursor:pointer">🔴대기</button>
         </div>
         <span id="inlineDateInfo" style="margin-left:auto;font-size:10px;color:var(--text-light)"></span>
       </div>
@@ -717,7 +717,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <span id="inlineDispatchModeLabel" style="font-size:11px;font-weight:500;color:#92400e">✏️ 편집 중:</span>
           <span id="inlineDispatchCodeLabel" style="font-size:12px;font-weight:600;color:var(--primary)"></span>
           <div style="margin-left:auto;display:flex;gap:4px">
-            <button id="btnSaveDispatch1" onclick="btnFeedback(this,'💾 저장 중...','✅ 저장완료','#059669',200);saveDispatch(true)" title="단축키: F8 (저장 후 폼 닫기)" style="padding:3px 10px;font-size:11px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer">💾 저장 후 닫기 <span style="background:rgba(255,255,255,0.25);padding:1px 4px;border-radius:3px;font-size:9px;font-weight:700;margin-left:2px">F8</span></button>
+            <button id="btnSaveDispatch1" onclick="btnFeedback(this,'💾 저장 중...','✅ 저장완료','#059669',200);saveDispatch(true)" title="단축키: F8 (저장 후 폼 닫기)" style="padding:3px 10px;font-size:11px;background:#059669;color:white;border:none;border-radius:4px;cursor:pointer">💾 저장 후 닫기 <span style="background:rgba(255,255,255,0.25);padding:1px 4px;border-radius:3px;font-size:10px;font-weight:700;margin-left:2px">F8</span></button>
             <button onclick="closeInlineDispatch()" style="padding:3px 10px;font-size:11px;background:white;border:0.5px solid #fcd34d;border-radius:4px;cursor:pointer;color:#92400e">✕ 닫기</button>
           </div>
         </div>
@@ -765,7 +765,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         </div>
         <textarea id="stickyMemo" placeholder="배차 건별 메모..." style="width:100%;height:150px;font-family:'Noto Sans KR',sans-serif;font-size:11px;line-height:1.5;padding:6px;border:1px solid #e5e2c8;border-radius:4px;resize:none;background:#fffef5;overflow-y:auto" oninput="onMemoInput()" onpaste="handleMemoPaste(event)"></textarea>
         <div id="memoImgArea" style="margin-top:4px;display:none;flex-wrap:wrap;gap:3px"></div>
-        <div style="font-size:9px;color:var(--text-light);margin-top:3px;text-align:center">📎 이미지: 메모장 안에서 Ctrl+V</div>
+        <div style="font-size:10px;color:var(--text-light);margin-top:3px;text-align:center">📎 이미지: 메모장 안에서 Ctrl+V</div>
       </div>
     </div>
 
@@ -787,9 +787,9 @@ body.hide-cost-col .col-sensitive { display: none !important; }
             <div class="card" style="margin-bottom:0">
               <div id="dispatchFormBody">
       <div style="display:flex;gap:4px;margin-bottom:10px;background:#f1f5f9;border-radius:6px;padding:2px;width:fit-content">
-        <button class="btn btn-sm" id="modeLocknlock" onclick="setDispatchMode('locknlock')" title="단축키: F3" style="padding:5px 14px;font-size:12px;background:var(--primary);color:white;border-radius:4px;font-weight:700">🔒 락앤락 <span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:800;margin-left:3px">F3</span></button>
-        <button class="btn btn-sm" id="modeLiquor" onclick="setDispatchMode('liquor')" title="단축키: F4" style="padding:5px 14px;font-size:12px;background:transparent;color:var(--text);border:none;border-radius:4px;font-weight:700">🍷 주류 <span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:800;margin-left:3px">F4</span></button>
-        <button class="btn btn-sm" id="modeGeneral" onclick="setDispatchMode('general')" title="단축키: F5" style="padding:5px 14px;font-size:12px;background:transparent;color:var(--text);border:none;border-radius:4px;font-weight:700">🏢 일반 <span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;font-size:9px;font-weight:800;margin-left:3px">F5</span></button>
+        <button class="btn btn-sm" id="modeLocknlock" onclick="setDispatchMode('locknlock')" title="단축키: F3" style="padding:5px 14px;font-size:12px;background:var(--primary);color:white;border-radius:4px;font-weight:700">🔒 락앤락 <span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:800;margin-left:3px">F3</span></button>
+        <button class="btn btn-sm" id="modeLiquor" onclick="setDispatchMode('liquor')" title="단축키: F4" style="padding:5px 14px;font-size:12px;background:transparent;color:var(--text);border:none;border-radius:4px;font-weight:700">🍷 주류 <span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:800;margin-left:3px">F4</span></button>
+        <button class="btn btn-sm" id="modeGeneral" onclick="setDispatchMode('general')" title="단축키: F5" style="padding:5px 14px;font-size:12px;background:transparent;color:var(--text);border:none;border-radius:4px;font-weight:700">🏢 일반 <span style="background:#fef3c7;color:#92400e;padding:1px 5px;border-radius:3px;font-size:10px;font-weight:800;margin-left:3px">F5</span></button>
       </div>
 
       <!-- 주류모드: 센터 선택 -->
@@ -843,11 +843,11 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
             <div>
-              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">📋 참조번호 <span style="font-size:9px;color:#6b7280">선택</span></label>
+              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">📋 참조번호 <span style="font-size:10px;color:#6b7280">선택</span></label>
               <input type="text" id="genRefNo" placeholder="딜리버리/롯트 넘버 등" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
             </div>
             <div>
-              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">배차코드 <span style="font-size:9px;color:#6b7280">선택</span></label>
+              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">배차코드 <span style="font-size:10px;color:#6b7280">선택</span></label>
               <input type="text" id="genDispatchCode" placeholder="미입력 시 자동생성 (GN- 접두사)" oninput="_syncGen(this);checkCodeDuplicate();onCoreFieldChange()" data-sync="dispatchCode" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
             </div>
           </div>
@@ -857,7 +857,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
               <input type="date" id="genDispatchDate" onchange="_syncGen(this);generateSMS()" data-sync="dispatchDate" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
             </div>
             <div>
-              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">배송일자 <span style="font-size:9px;color:var(--accent)">*SMS</span></label>
+              <label style="font-size:11px;font-weight:600;color:#059669;display:block;margin-bottom:3px">배송일자 <span style="font-size:10px;color:var(--accent)">*SMS</span></label>
               <input type="date" id="genDeliveryDate" onchange="_syncGen(this);generateSMS()" data-sync="deliveryDate" style="width:100%;padding:6px 8px;font-size:12px;border:1px solid #a7f3d0;border-radius:4px;box-sizing:border-box">
             </div>
             <div>
@@ -958,7 +958,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
               <option value="M짐">M짐</option>
               <option value="주류" id="optDispatchLiquor" style="display:none">주류</option>
             </select>
-            <label style="display:flex;align-items:center;gap:2px;font-size:9px;white-space:nowrap;cursor:pointer;color:#7c3aed" title="혼적(M짐) 요금 적용">
+            <label style="display:flex;align-items:center;gap:2px;font-size:10px;white-space:nowrap;cursor:pointer;color:#7c3aed" title="혼적(M짐) 요금 적용">
               <input type="checkbox" id="mixedCargoCheck" onchange="toggleMixedCargo()" style="width:14px;height:14px">혼적
             </label>
           </div>
@@ -1189,7 +1189,17 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <button class="btn btn-sm btn-primary" onclick="exportExcel()">📥 Excel</button>
         </div>
       </div>
-      <div class="table-wrap">
+      <!-- 통합 검색 (코드·거래처·주소·기사·차량번호 등) -->
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+        <span style="font-weight:600;color:var(--text-light);font-size:11px">검색:</span>
+        <input type="text" id="histSearchInput" placeholder="코드 · 거래처 · 상차지 · 하차지 · 세부주소 · 담당자 · 기사명 · 전화번호 · 차량번호 · 배차경로 · 비고"
+               oninput="filterHistory()" onkeydown="if(event.key==='Escape'){this.value='';filterHistory()}"
+               style="flex:1;min-width:220px;padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:4px">
+        <button onclick="document.getElementById('histSearchInput').value='';filterHistory()" title="검색어 지우기 (Esc)"
+                style="padding:3px 8px;font-size:10px;background:#f3f4f6;border:1px solid var(--border);border-radius:3px;cursor:pointer;color:#6b7280">✕ 지우기</button>
+        <span id="histCountInfo" style="font-size:10px;color:var(--text-light);font-weight:600"></span>
+      </div>
+      <div class="table-wrap" id="historyTableWrap" style="max-height:calc(100vh - 260px);overflow-y:auto">
         <table>
           <thead>
             <tr>
@@ -2361,9 +2371,9 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <!-- 엑셀 붙여넣기 -->
           <div style="margin-top:8px;padding-top:8px;border-top:1px dashed #86efac">
             <div style="font-size:11px;font-weight:700;color:#059669;margin-bottom:4px">📋 엑셀 데이터 붙여넣기</div>
-            <div style="font-size:9px;color:var(--text-light);margin-bottom:4px">칼럼순: NO | 날짜 | 차량번호 | 성명 | 전화번호 | 배차코드 | 배송처 | 지역 | 지불 | KCTC | 구분 | 비고<br>(NO/헤더 자동 제거, 거래처 코드로 자동 판별)</div>
+            <div style="font-size:10px;color:var(--text-light);margin-bottom:4px">칼럼순: NO | 날짜 | 차량번호 | 성명 | 전화번호 | 배차코드 | 배송처 | 지역 | 지불 | KCTC | 구분 | 비고<br>(NO/헤더 자동 제거, 거래처 코드로 자동 판별)</div>
             <div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
-              <span style="font-size:9px;color:var(--text-light)">날짜에 연도 없으면:</span>
+              <span style="font-size:10px;color:var(--text-light)">날짜에 연도 없으면:</span>
               <select id="stlPasteYear" style="padding:1px 4px;font-size:10px;border:1px solid #86efac;border-radius:3px">
                 <option value="2026">2026년</option>
                 <option value="2025">2025년</option>
@@ -3735,7 +3745,7 @@ function renderInlineHistory() {
       <td onclick="event.stopPropagation()"><input type="checkbox" class="inline-check" value="${r.id}" onchange="updateInlineDeleteBtn()"></td>
       <td style="font-size:11px">${filtered.length - i}</td>
       <td style="font-size:11px" title="배차일:${sanitizeDate(r.date||'').substring(5)} / 배송일:${sanitizeDate(r.deliveryDate||r.date||'').substring(5)}">${sanitizeDate(r.deliveryDate || r.date||'').substring(5)}</td>
-      <td style="font-weight:700;font-size:11px;overflow:hidden;text-overflow:ellipsis;${r.code?.startsWith('TEMP_')?'color:#d97706;background:#fef3c7':'color:var(--primary)'}">${r.code?.startsWith('TEMP_') ? '⏳미정' : (r.code || '-')}${r.hapjimGroup ? ' <span style="font-size:8px;background:#fbbf24;color:#78350f;padding:1px 3px;border-radius:2px;font-weight:700">합짐</span>' : ''}${isNew ? ' <span style="font-size:9px;background:#2563eb;color:white;padding:1px 4px;border-radius:3px;font-weight:700;vertical-align:middle">NEW</span>' : ''}</td>
+      <td style="font-weight:700;font-size:11px;overflow:hidden;text-overflow:ellipsis;${r.code?.startsWith('TEMP_')?'color:#d97706;background:#fef3c7':'color:var(--primary)'}">${r.code?.startsWith('TEMP_') ? '⏳미정' : (r.code || '-')}${r.hapjimGroup ? ' <span style="font-size:10px;background:#fbbf24;color:#78350f;padding:1px 3px;border-radius:2px;font-weight:700">합짐</span>' : ''}${isNew ? ' <span style="font-size:10px;background:#2563eb;color:white;padding:1px 4px;border-radius:3px;font-weight:700;vertical-align:middle">NEW</span>' : ''}</td>
       <td style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.clientName||''}">${r.clientName||'-'}</td>
       <td><span style="padding:1px 4px;border-radius:3px;font-size:10px;font-weight:600;${clientStyle}">${client}</span></td>
       <td style="text-align:center">${statusCell}</td>
@@ -5483,6 +5493,8 @@ function switchTab(name) {
   // 인수증 외 탭으로 가면 자동 pull 정지 (리소스/충돌 방지)
   if(name !== 'receipt' && typeof stopReceiptAutoPull === 'function') stopReceiptAutoPull();
   if(name === 'dispatch') updateTodayDashboard();
+  // 이력 탭: 진입 시 현재 검색/기간 조건으로 다시 렌더 (건수 표시 갱신)
+  if(name === 'history') { try { filterHistory(); } catch(e) {} }
   if(name === 'stats') initStats();
   if(name === 'rateRef') initRateRef();
   if(name === 'clpFixed') { try { renderClpFixedRates(); } catch(e) {} }
@@ -6162,7 +6174,7 @@ function renderAttendanceMonthly() {
     const dt = new Date(y, m-1, d);
     const dn = dayNames[dt.getDay()];
     const wkStyle = dt.getDay()===0 ? 'color:#fca5a5' : dt.getDay()===6 ? 'color:#93c5fd' : '';
-    headHtml += '<th style="padding:4px 2px;min-width:30px;' + wkStyle + '">' + d + '<br><span style="font-size:9px">' + dn + '</span></th>';
+    headHtml += '<th style="padding:4px 2px;min-width:30px;' + wkStyle + '">' + d + '<br><span style="font-size:10px">' + dn + '</span></th>';
   });
   headHtml += '<th style="padding:5px 4px;white-space:nowrap">출근</th><th style="padding:5px 4px;white-space:nowrap">결근</th><th style="padding:5px 4px;white-space:nowrap">지각</th></tr>';
   headEl.innerHTML = headHtml;
@@ -6187,7 +6199,7 @@ function renderAttendanceMonthly() {
         else if(rec.status==='지각') late++;
         const label = rec.in ? rec.in.substring(0,5) : rec.status;
         const tip = (rec.in||'-') + '~' + (rec.out||'-') + (rec.note?' / '+rec.note:'');
-        rowHtml += '<td style="padding:2px 1px;text-align:center" title="' + tip + '"><span style="padding:1px 2px;border-radius:3px;font-size:9px;white-space:nowrap;' + colorStyle + '">' + label + '</span></td>';
+        rowHtml += '<td style="padding:2px 1px;text-align:center" title="' + tip + '"><span style="padding:1px 2px;border-radius:3px;font-size:10px;white-space:nowrap;' + colorStyle + '">' + label + '</span></td>';
       }
     });
     rowHtml += '<td style="padding:5px 4px;text-align:center;font-weight:700;color:#059669;font-size:11px">' + normal + '</td>';
@@ -6650,9 +6662,17 @@ function renderHistory(data) {
   const list = data || dispatchLog;
   const body = document.getElementById('historyBody');
   const empty = document.getElementById('emptyHistory');
-  
+  const _sv = (document.getElementById('histSearchInput')?.value || '').trim();
+  updateHistCountInfo(list.length, _sv.toLowerCase());
+
   if(list.length === 0) {
     body.innerHTML = '';
+    // 검색/필터 때문에 0건인지, 데이터 자체가 없는지 구분 안내
+    const hasFilter = !!_sv || !!document.getElementById('filterDateFrom')?.value || !!document.getElementById('filterDateTo')?.value;
+    empty.innerHTML = hasFilter
+      ? '<div class="icon">🔍</div><p>검색 조건에 맞는 배차가 없습니다</p>' +
+        '<button class="btn btn-sm btn-outline" onclick="showAllHistory()" style="margin-top:6px">전체 보기로 돌아가기</button>'
+      : '<div class="icon">📭</div><p>저장된 배차 이력이 없습니다</p>';
     empty.style.display = 'block';
     return;
   }
@@ -6706,18 +6726,56 @@ function deleteRecord(id) {
 function filterHistory() {
   const from = document.getElementById('filterDateFrom').value;
   const to = document.getElementById('filterDateTo').value;
-  const filtered = dispatchLog.filter(r => {
+  let filtered = dispatchLog.filter(r => {
     if(from && r.date < from) return false;
     if(to && r.date > to) return false;
     return true;
   });
-  renderHistory(filtered);
+
+  // 통합 검색 (코드·거래처·상차지·하차지·세부주소·담당자·기사명·전화번호·차량번호·배차경로·비고)
+  const searchVal = (document.getElementById('histSearchInput')?.value || '').trim().toLowerCase();
+  if(searchVal) {
+    const searchDigits = searchVal.replace(/[^0-9]/g,'');
+    const FIELDS = ['code','clientName','pickup','delivery','deliveryAddr','deliveryContact',
+                    'driverName','vehicleNo','dispatchRoute','memo','createdBy'];
+    filtered = filtered.filter(r => {
+      for(const f of FIELDS) {
+        if(String(r[f] || '').toLowerCase().includes(searchVal)) return true;
+      }
+      // 전화번호: 숫자만 추출 후 비교 (숫자 4자리 이상일 때만)
+      if(searchDigits.length >= 4) {
+        const dp = String(r.deliveryPhone || '').replace(/[^0-9]/g,'');
+        if(dp && dp.includes(searchDigits)) return true;
+        const vp = String(r.driverPhone || '').replace(/[^0-9]/g,'');
+        if(vp && vp.includes(searchDigits)) return true;
+      }
+      return false;
+    });
+  }
+
+  renderHistory(filtered); // 건수 표시는 renderHistory 내부에서 처리
+}
+
+// 배차 이력 검색 결과 건수 표시
+function updateHistCountInfo(count, searchVal) {
+  const el = document.getElementById('histCountInfo');
+  if(!el) return;
+  if(searchVal) {
+    el.textContent = '🔍 ' + count + '건 검색됨 / 전체 ' + dispatchLog.length + '건';
+    el.style.color = count === 0 ? '#dc2626' : 'var(--accent)';
+  } else {
+    el.textContent = count + '건';
+    el.style.color = 'var(--text-light)';
+  }
 }
 
 function showAllHistory() {
   document.getElementById('filterDateFrom').value = '';
   document.getElementById('filterDateTo').value = '';
+  const s = document.getElementById('histSearchInput');
+  if(s) s.value = '';
   renderHistory();
+  updateHistCountInfo(dispatchLog.length, '');
 }
 
 // ============================================
@@ -7364,7 +7422,7 @@ function showToast(msg, duration) {
 // F2=신규배차, F3=락앤락, F4=주류, F8=저장후닫기, F9=배차저장(유지)
 // ============================================
 document.addEventListener('keydown', function(e) {
-  if(!['F2','F3','F4','F8','F9'].includes(e.key)) return;
+  if(!['F2','F3','F4','F5','F8','F9'].includes(e.key)) return;
   // 배차 등록 탭이 활성화된 상태에서만 작동
   const dispatchPanel = document.getElementById('panel-dispatch');
   if(!dispatchPanel || !dispatchPanel.classList.contains('active')) return;
@@ -8236,9 +8294,9 @@ function renderLiquorStops() {
   const _mainIsBase = !!(bd && bd.base && bd.base.isMain);
   html += `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;padding:4px 6px;background:${_mainIsBase?'#ede9fe':'#f8fafc'};border:1px solid ${_mainIsBase?'#c4b5fd':'#e2e8f0'};border-radius:5px">
     <span style="font-size:10px;font-weight:700;color:#7c3aed;min-width:28px">1착</span>
-    <span style="flex:1;font-size:11px;color:#374151"><b>${_mainDest}</b> <span style="color:#9ca3af">(${_mainRegion})</span> <span style="font-size:9px;color:#94a3b8">← 위 메인 폼에서 입력</span></span>
+    <span style="flex:1;font-size:11px;color:#374151"><b>${_mainDest}</b> <span style="color:#9ca3af">(${_mainRegion})</span> <span style="font-size:10px;color:#94a3b8">← 위 메인 폼에서 입력</span></span>
     ${_mainIsBase ? '<span style="font-size:10px;font-weight:700;color:#6d28d9;background:#ede9fe;padding:3px 6px;border-radius:4px;white-space:nowrap">🏁 기본요율</span>' : ''}
-    <button onclick="swapMainWithStop(0)" title="2착과 순서 교체 (1착을 아래로 내림)" style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:9px;padding:1px 6px;color:#7c3aed">▼ 아래로</button>
+    <button onclick="swapMainWithStop(0)" title="2착과 순서 교체 (1착을 아래로 내림)" style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:10px;padding:1px 6px;color:#7c3aed">▼ 아래로</button>
   </div>`;
   liquorStops.forEach((s, i) => {
     const isBase = !!(bd && bd.base && !bd.base.isMain && bd.base.idx === i);
@@ -8264,8 +8322,8 @@ function renderLiquorStops() {
       <input type="text" value="${s.phone}" placeholder="연락처" oninput="updateLiquorStop(${i},'phone',this.value)" style="width:85px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
       ${statusCell}
       <div style="display:flex;flex-direction:column;gap:1px">
-        <button onclick="${i===0?'swapMainWithStop(0)':`moveLiquorStop(${i},-1)`}" style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:9px;padding:0 4px;color:#7c3aed;line-height:14px" title="${i===0?'1착(메인)과 순서 교체':'위로'}">▲</button>
-        <button onclick="moveLiquorStop(${i},1)" ${i===liquorStops.length-1?'disabled':''} style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:9px;padding:0 4px;color:#7c3aed;line-height:14px;${i===liquorStops.length-1?'opacity:0.3;cursor:default':''}" title="아래로">▼</button>
+        <button onclick="${i===0?'swapMainWithStop(0)':`moveLiquorStop(${i},-1)`}" style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:10px;padding:0 4px;color:#7c3aed;line-height:14px" title="${i===0?'1착(메인)과 순서 교체':'위로'}">▲</button>
+        <button onclick="moveLiquorStop(${i},1)" ${i===liquorStops.length-1?'disabled':''} style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:10px;padding:0 4px;color:#7c3aed;line-height:14px;${i===liquorStops.length-1?'opacity:0.3;cursor:default':''}" title="아래로">▼</button>
       </div>
       <button onclick="removeLiquorStop(${i})" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px;padding:2px 4px" title="삭제">✕</button>
     </div>`;
@@ -9639,22 +9697,22 @@ function parseBulkOrders() {
     let dateBadge = '';
     if(o._dateWarn === 'danger') {
       dateCellStyle += 'color:#dc2626;';
-      dateBadge = ' <span style="font-size:9px;background:#fca5a5;color:#7f1d1d;padding:1px 3px;border-radius:2px">⚠과거</span>';
+      dateBadge = ' <span style="font-size:10px;background:#fca5a5;color:#7f1d1d;padding:1px 3px;border-radius:2px">⚠과거</span>';
     } else if(o._dateWarn === 'warn') {
       dateCellStyle += 'color:#d97706;';
-      dateBadge = ' <span style="font-size:9px;background:#fde68a;color:#78350f;padding:1px 3px;border-radius:2px">⚠먼미래</span>';
+      dateBadge = ' <span style="font-size:10px;background:#fde68a;color:#78350f;padding:1px 3px;border-radius:2px">⚠먼미래</span>';
     } else if(o._dateSource === 'col_a') {
       dateCellStyle += 'color:#7c3aed;'; // A열 추출 - 보라색 (특판)
-      dateBadge = ' <span style="font-size:9px;background:#ede9fe;color:#5b21b6;padding:1px 3px;border-radius:2px">특판</span>';
+      dateBadge = ' <span style="font-size:10px;background:#ede9fe;color:#5b21b6;padding:1px 3px;border-radius:2px">특판</span>';
     } else if(o._dateSource === 'memo') {
       dateCellStyle += 'color:#059669;'; // 비고 추출 - 초록색 (일반)
-      dateBadge = ' <span style="font-size:9px;background:#d1fae5;color:#065f46;padding:1px 3px;border-radius:2px">비고</span>';
+      dateBadge = ' <span style="font-size:10px;background:#d1fae5;color:#065f46;padding:1px 3px;border-radius:2px">비고</span>';
     } else if(o._dateSource === 'col_date') {
       dateCellStyle += 'color:#2563eb;'; // 배송일자 열에서 추출 - 파란색
-      dateBadge = ' <span style="font-size:9px;background:#dbeafe;color:#1e40af;padding:1px 3px;border-radius:2px">배송일</span>';
+      dateBadge = ' <span style="font-size:10px;background:#dbeafe;color:#1e40af;padding:1px 3px;border-radius:2px">배송일</span>';
     } else {
       dateCellStyle += 'color:var(--text-light);'; // 기본(익일) - 회색
-      dateBadge = ' <span style="font-size:9px;color:#9ca3af">기본</span>';
+      dateBadge = ' <span style="font-size:10px;color:#9ca3af">기본</span>';
     }
     return `<tr style="${hasCode}">
       <td style="padding:4px;text-align:center">${i+1}</td>
@@ -14653,7 +14711,7 @@ function parseStlPaste() {
   
   let previewHtml = '';
   if(preview.length > 0) {
-    previewHtml = '<div style="margin-top:4px;font-size:9px;color:#374151;background:#f9fafb;padding:4px;border-radius:3px">';
+    previewHtml = '<div style="margin-top:4px;font-size:10px;color:#374151;background:#f9fafb;padding:4px;border-radius:3px">';
     previewHtml += '<b>미리보기:</b><br>';
     preview.forEach((p,i) => {
       previewHtml += `${i+1}. ${p.date} ${p.name} ${p.dispCode} 지불:${p.payment.toLocaleString()} KCTC:${p.kctc.toLocaleString()}<br>`;
@@ -14996,7 +15054,7 @@ function updateReceiptStatus(idx, value) {
   // 전체 재렌더 대신 해당 select 셀 색상만 업데이트 (스크롤 유지)
   const sel = document.querySelector(`.stl-check[value="${idx}"]`)?.closest('tr')?.querySelector('select');
   if(sel) {
-    sel.style.cssText = `font-size:9px;padding:1px 2px;border:1px solid #e2e8f0;border-radius:3px;${
+    sel.style.cssText = `font-size:10px;padding:1px 2px;border:1px solid #e2e8f0;border-radius:3px;${
       value==='완료' ? 'background:#dcfce7;color:#166534' :
       value==='미완료' ? 'background:#fee2e2;color:#dc2626' :
       'background:#f3f4f6;color:#6b7280'
@@ -16037,7 +16095,7 @@ function renderCalDetail(filtered, dateStr) {
         
         // 다중 차량 그룹 표시
         const groupBg = isMulti ? 'background:#fefce8;' : '';
-        const codeDisplay = isMulti ? d.dispCode + ' <span style="font-size:8px;color:var(--accent)">(' + (gi+1) + '/' + group.length + ')</span>' : (d.dispCode||'');
+        const codeDisplay = isMulti ? d.dispCode + ' <span style="font-size:10px;color:var(--accent)">(' + (gi+1) + '/' + group.length + ')</span>' : (d.dispCode||'');
         
         totalPay += pay;
         if(gi === 0) totalKctc += kctc; // KCTC는 그룹당 1번만
@@ -16052,7 +16110,7 @@ function renderCalDetail(filtered, dateStr) {
           <td style="font-size:10px;max-width:80px;overflow:hidden;text-overflow:ellipsis">${d.dest||'-'}</td>
           <td>${d.area||''}</td>
           <td style="text-align:right"><input type="text" value="${pay?pay.toLocaleString():''}" placeholder="-" onfocus="this.value=this.value.replace(/,/g,'')" onblur="this.value=this.value?parseInt(this.value).toLocaleString():''" onchange="updateCalField(${globalIdx},'payment',this.value,'${dateStr}')" style="width:70px;text-align:right;font-size:11px;font-weight:700;padding:2px 4px;border:1px solid #e2e8f0;border-radius:3px;color:var(--accent)"></td>
-          <td style="text-align:right;font-weight:600">${displayKctc?displayKctc.toLocaleString():(isMulti && gi > 0 ? '<span style="font-size:9px;color:#9ca3af">-</span>' : '-')}</td>
+          <td style="text-align:right;font-weight:600">${displayKctc?displayKctc.toLocaleString():(isMulti && gi > 0 ? '<span style="font-size:10px;color:#9ca3af">-</span>' : '-')}</td>
           <td style="text-align:right;font-weight:600;${marginColor}">${pay > 0 ? margin.toLocaleString() : '-'}</td>
           <td style="text-align:center;font-size:10px;${marginColor}">${pay > 0 ? marginRate : '-'}</td>
           <td style="text-align:center">${receiptIcon}</td>
@@ -16599,7 +16657,7 @@ function renderSettlementList(data) {
     const isMulti = groupSize > 1;
     const multiSuffix = (d.dispCode||'').match(/-(\d+)$/);
     const isFirstInGroup = !isMulti || !multiSuffix || multiSuffix[1] === '1';
-    const multiLabel = isMulti && multiSuffix ? ` <span style="font-size:8px;color:var(--accent);font-weight:400">(${multiSuffix[1]}/${groupSize})</span>` : '';
+    const multiLabel = isMulti && multiSuffix ? ` <span style="font-size:10px;color:var(--accent);font-weight:400">(${multiSuffix[1]}/${groupSize})</span>` : '';
     const multiBg = isMulti ? 'background:#fffbeb;' : '';
     
     // KCTC: 다중 차량은 첫 번째만 합계에 포함
@@ -16617,7 +16675,7 @@ function renderSettlementList(data) {
       <td>${dateNo}</td>
       <td style="font-size:11px">${d.date ? d.date.substring(0,10).substring(5) : '-'}</td>
       <td style="font-size:11px;font-weight:700;color:var(--primary);cursor:pointer" onclick="copyCell(this,event)" title="클릭하여 복사">${d.dispCode||'-'}${multiLabel}</td>
-      <td style="font-size:10px"><select onchange="updateStlFieldQuiet(${globalIdx},'client',this.value,this)" style="font-size:9px;padding:1px 2px;border:1px solid #e2e8f0;border-radius:3px;background:${d.client==='기타'?'#ecfdf5':d.client==='락앤락'?'#dbeafe':d.client==='KCTC여주'?'#f3e8ff':d.client==='KCTC덕평'?'#fce7f3':'#f3f4f6'}"><option value="락앤락" ${d.client==='락앤락'?'selected':''}>락앤락</option><option value="KCTC여주" ${d.client==='KCTC여주'?'selected':''}>KCTC여주</option><option value="KCTC덕평" ${d.client==='KCTC덕평'?'selected':''}>KCTC덕평</option><option value="씨엘피" ${d.client==='씨엘피'?'selected':''}>씨엘피</option><option value="기타" ${d.client==='기타'?'selected':''}>기타</option></select></td>
+      <td style="font-size:10px"><select onchange="updateStlFieldQuiet(${globalIdx},'client',this.value,this)" style="font-size:10px;padding:1px 2px;border:1px solid #e2e8f0;border-radius:3px;background:${d.client==='기타'?'#ecfdf5':d.client==='락앤락'?'#dbeafe':d.client==='KCTC여주'?'#f3e8ff':d.client==='KCTC덕평'?'#fce7f3':'#f3f4f6'}"><option value="락앤락" ${d.client==='락앤락'?'selected':''}>락앤락</option><option value="KCTC여주" ${d.client==='KCTC여주'?'selected':''}>KCTC여주</option><option value="KCTC덕평" ${d.client==='KCTC덕평'?'selected':''}>KCTC덕평</option><option value="씨엘피" ${d.client==='씨엘피'?'selected':''}>씨엘피</option><option value="기타" ${d.client==='기타'?'selected':''}>기타</option></select></td>
       <td style="font-size:11px;cursor:pointer" onclick="copyCell(this,event)" title="클릭하여 복사">${d.vehicle||''}</td>
       <td style="font-weight:600;cursor:pointer" onclick="copyCell(this,event)" title="클릭하여 복사">${d.name||'-'}</td>
       <td style="font-size:11px;cursor:pointer" onclick="copyCell(this,event)" title="클릭하여 복사">${d.phone||''}</td>
@@ -16627,11 +16685,11 @@ function renderSettlementList(data) {
       <td style="text-align:right"><input type="text" value="${isFirstInGroup ? (kctc ? kctc.toLocaleString() : '') : ''}" placeholder="${isMulti && !isFirstInGroup ? '-' : '-'}" onfocus="this.value=this.value.replace(/,/g,'')" onblur="this.value=this.value?parseInt(this.value).toLocaleString():''" onchange="updateStlFieldInline(this,${globalIdx},'kctcAmount')" onkeydown="stlKeyNav(event,this)" style="width:75px;text-align:right;font-size:11px;font-weight:600;padding:2px 4px;border:1px solid #e2e8f0;border-radius:3px;${isMulti && !isFirstInGroup ? 'background:#f3f4f6;' : ''}" ${isMulti && !isFirstInGroup ? 'readonly' : ''}></td>
       <td style="text-align:right;font-weight:600;${marginColor}" class="stl-margin-cell">${margin ? margin.toLocaleString() : '-'}</td>
       <td style="text-align:center;font-size:10px;${marginColor}">${effectiveKctc > 0 ? ((margin/effectiveKctc)*100).toFixed(1)+'%' : '-'}</td>
-      <td style="text-align:center"><select onchange="updateReceiptStatus(${globalIdx},this.value)" onkeydown="stlKeyNav(event,this)" style="font-size:9px;padding:1px 2px;border:1px solid #e2e8f0;border-radius:3px;${d.receipt==='완료'?'background:#dcfce7;color:#166534':d.receipt==='미완료'?'background:#fee2e2;color:#dc2626':'background:#f3f4f6;color:#6b7280'}">
+      <td style="text-align:center"><select onchange="updateReceiptStatus(${globalIdx},this.value)" onkeydown="stlKeyNav(event,this)" style="font-size:10px;padding:1px 2px;border:1px solid #e2e8f0;border-radius:3px;${d.receipt==='완료'?'background:#dcfce7;color:#166534':d.receipt==='미완료'?'background:#fee2e2;color:#dc2626':'background:#f3f4f6;color:#6b7280'}">
         <option value="" ${!d.receipt?'selected':''}>-</option>
         <option value="완료" ${d.receipt==='완료'?'selected':''}>완료</option>
         <option value="미완료" ${d.receipt==='미완료'?'selected':''}>미완료</option>
-      </select>${d.receipt==='미완료'?`<input type="text" value="${String(d.receiptReason||'').replace(/"/g,'&quot;')}" placeholder="사유" oninput="updateStlFieldQuiet(${globalIdx},'receiptReason',this.value,this)" style="width:70px;font-size:9px;padding:1px 3px;border:1px solid #fca5a5;border-radius:3px;margin-top:2px;display:block;color:#dc2626" list="receiptReasonList">`:''}</td>
+      </select>${d.receipt==='미완료'?`<input type="text" value="${String(d.receiptReason||'').replace(/"/g,'&quot;')}" placeholder="사유" oninput="updateStlFieldQuiet(${globalIdx},'receiptReason',this.value,this)" style="width:70px;font-size:10px;padding:1px 3px;border:1px solid #fca5a5;border-radius:3px;margin-top:2px;display:block;color:#dc2626" list="receiptReasonList">`:''}</td>
       <td><input type="text" value="${d.category||''}" placeholder="-" list="stlCategoryList" oninput="updateStlFieldQuiet(${globalIdx},'category',this.value,this);this.style.cssText='width:65px;font-size:10px;font-weight:700;padding:2px 4px;border:1px solid;border-radius:3px;'+getStlCategoryStyle(this.value)" onkeydown="stlKeyNav(event,this)" style="width:65px;font-size:10px;font-weight:700;padding:2px 4px;border:1px solid;border-radius:3px;${getStlCategoryStyle(d.category||'')}"></td>
       <td><input type="text" value="${String(d.note||'').replace(/"/g,'&quot;')}" placeholder="비고 입력" oninput="updateStlFieldQuiet(${globalIdx},'note',this.value,this)" onkeydown="stlKeyNav(event,this)" style="width:120px;font-size:10px;padding:2px 4px;border:1px solid #e2e8f0;border-radius:3px"></td>
     </tr>`;
@@ -18835,7 +18893,7 @@ function renderRateRef() {
       const avg = Math.round(vd.total / vd.count);
       const tooltip = `건수: ${vd.count}\\n최소: ${vd.min.toLocaleString()}원\\n평균: ${avg.toLocaleString()}원\\n최대: ${vd.max.toLocaleString()}원`;
       const bg = vd.count >= 5 ? '#f0fdf4' : vd.count >= 2 ? '#fffbeb' : '';
-      return `<td style="text-align:right;font-size:11px;padding:5px 8px;cursor:pointer;font-weight:600;background:${bg}" title="${tooltip}" onclick="showRateRefDetail('${area.replace(/'/g,"\\'")}','${v}')">${vd.min.toLocaleString()}<span style="font-size:9px;color:var(--text-light);font-weight:400"> (${vd.count})</span></td>`;
+      return `<td style="text-align:right;font-size:11px;padding:5px 8px;cursor:pointer;font-weight:600;background:${bg}" title="${tooltip}" onclick="showRateRefDetail('${area.replace(/'/g,"\\'")}','${v}')">${vd.min.toLocaleString()}<span style="font-size:10px;color:var(--text-light);font-weight:400"> (${vd.count})</span></td>`;
     }).join('');
 
     return `<tr style="border-bottom:1px solid var(--border)">
@@ -19600,10 +19658,10 @@ function renderConcentration(data) {
       <span style="font-size:11px;font-weight:600;width:60px;text-align:right">${name}</span>
       <div style="flex:1;height:18px;background:#f1f5f9;border-radius:4px;overflow:hidden">
         <div style="height:100%;width:${pct}%;background:${barColor};border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:4px">
-          ${parseFloat(pct) >= 10 ? `<span style="font-size:9px;color:white;font-weight:700">${pct}%</span>` : ''}
+          ${parseFloat(pct) >= 10 ? `<span style="font-size:10px;color:white;font-weight:700">${pct}%</span>` : ''}
         </div>
       </div>
-      ${parseFloat(pct) < 10 ? `<span style="font-size:9px;color:var(--text-light);font-weight:600">${pct}%</span>` : ''}
+      ${parseFloat(pct) < 10 ? `<span style="font-size:10px;color:var(--text-light);font-weight:600">${pct}%</span>` : ''}
     </div>`;
   });
   html += '</div>';
@@ -20000,10 +20058,10 @@ function renderDriverConcentration(data) {
       <span style="font-size:11px;font-weight:600;width:50px;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
       <div style="flex:1;height:16px;background:#f1f5f9;border-radius:4px;overflow:hidden">
         <div style="height:100%;width:${pct}%;background:${barColor};border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:4px">
-          ${parseFloat(pct) >= 12 ? `<span style="font-size:9px;color:white;font-weight:700">${pct}%</span>` : ''}
+          ${parseFloat(pct) >= 12 ? `<span style="font-size:10px;color:white;font-weight:700">${pct}%</span>` : ''}
         </div>
       </div>
-      ${parseFloat(pct) < 12 ? `<span style="font-size:9px;color:var(--text-light)">${pct}%</span>` : ''}
+      ${parseFloat(pct) < 12 ? `<span style="font-size:10px;color:var(--text-light)">${pct}%</span>` : ''}
     </div>`;
   });
 
@@ -20074,10 +20132,10 @@ function renderNewRepeat(data) {
   // 비율 바
   html += `<div style="height:20px;border-radius:6px;overflow:hidden;display:flex;margin-bottom:8px">
     <div style="width:${newPct}%;background:#0891b2;display:flex;align-items:center;justify-content:center">
-      ${parseFloat(newPct) >= 15 ? `<span style="font-size:9px;color:white;font-weight:700">신규 ${newPct}%</span>` : ''}
+      ${parseFloat(newPct) >= 15 ? `<span style="font-size:10px;color:white;font-weight:700">신규 ${newPct}%</span>` : ''}
     </div>
     <div style="width:${repeatPct}%;background:#059669;display:flex;align-items:center;justify-content:center">
-      ${parseFloat(repeatPct) >= 15 ? `<span style="font-size:9px;color:white;font-weight:700">재방문 ${repeatPct}%</span>` : ''}
+      ${parseFloat(repeatPct) >= 15 ? `<span style="font-size:10px;color:white;font-weight:700">재방문 ${repeatPct}%</span>` : ''}
     </div>
   </div>`;
 
@@ -20263,7 +20321,7 @@ function updateDriverRecommend() {
       <span style="color:var(--text-light);min-width:60px">${d.vehicle || '-'}</span>
       <span style="color:var(--text-light)">${d.phone || '-'}</span>
       <span style="color:var(--primary);font-weight:600">${d.count}건</span>
-      <span style="color:var(--text-light);font-size:9px">최근 ${d.lastDate.substring(5) || '-'}</span>
+      <span style="color:var(--text-light);font-size:10px">최근 ${d.lastDate.substring(5) || '-'}</span>
     </div>`;
   }).join('');
 }
