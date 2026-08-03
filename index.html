@@ -5050,6 +5050,24 @@ function _formatLoginTs(d) {
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
+// 타임스탬프 형식 정규화 → 항상 'YYYY-MM-DD HH:mm:ss' (로컬/KST)
+// 시트 왕복 시 '2026-08-03 14:30:00' 문자열이 시트에서 날짜값으로 인식되어
+// Date → JSON ISO('...T05:30:00.000Z')로 돌아옴. 그대로 문자열 비교하면
+// 'T'(0x54) > ' '(0x20) 이라 시트 데이터가 항상 최신으로 판정되어
+// 방금 체크한 로컬 데이터를 옛 데이터가 덮어쓰는 문제 발생.
+function _normReceiptTs(v) {
+  if(v == null || v === '') return '';
+  if(v instanceof Date) return isNaN(v.getTime()) ? '' : _formatLoginTs(v);
+  const s = String(v).trim();
+  if(!s) return '';
+  // ISO(UTC) 형태만 로컬 시각으로 환산, 이미 로컬 형식이면 그대로
+  if(/^\d{4}-\d{2}-\d{2}T/.test(s)) {
+    const d = new Date(s);
+    if(!isNaN(d.getTime())) return _formatLoginTs(d);
+  }
+  return s;
+}
+
 function _shortUserAgent(ua) {
   if(!ua) return '';
   // 브라우저 + OS 단순화
@@ -5804,9 +5822,9 @@ function searchDriverHistory() {
   const seen = new Map(); // name+vehicle 중복 제거
   dispatchLog.forEach(d => {
     if(!d.driverName) return;
-    const nameMatch = d.driverName.toLowerCase().includes(q);
-    const vehicleMatch = (d.vehicleNo || '').toLowerCase().includes(q);
-    const phoneDigits = (d.driverPhone || '').replace(/[^0-9]/g, '');
+    const nameMatch = String(d.driverName).toLowerCase().includes(q);
+    const vehicleMatch = String(d.vehicleNo || '').toLowerCase().includes(q);
+    const phoneDigits = String(d.driverPhone || '').replace(/[^0-9]/g, '');
     const phoneMatch = qDigits.length >= 4 && phoneDigits && phoneDigits.includes(qDigits);
     if(!nameMatch && !vehicleMatch && !phoneMatch) return;
     const key = d.driverName + '|' + (d.vehicleNo || '');
@@ -6723,9 +6741,11 @@ function deleteRecord(id) {
   }
 }
 
-function filterHistory() {
-  const from = document.getElementById('filterDateFrom').value;
-  const to = document.getElementById('filterDateTo').value;
+// 배차 이력 현재 화면 조건(기간 + 통합검색)으로 걸러진 목록 반환
+// renderHistory / exportExcel 이 같은 결과를 쓰도록 단일화
+function getFilteredHistory() {
+  const from = document.getElementById('filterDateFrom')?.value || '';
+  const to = document.getElementById('filterDateTo')?.value || '';
   let filtered = dispatchLog.filter(r => {
     if(from && r.date < from) return false;
     if(to && r.date > to) return false;
@@ -6753,7 +6773,18 @@ function filterHistory() {
     });
   }
 
-  renderHistory(filtered); // 건수 표시는 renderHistory 내부에서 처리
+  return filtered;
+}
+
+// 배차 이력에 기간/검색 필터가 하나라도 걸려 있는지
+function isHistoryFiltered() {
+  return !!(document.getElementById('filterDateFrom')?.value ||
+            document.getElementById('filterDateTo')?.value ||
+            (document.getElementById('histSearchInput')?.value || '').trim());
+}
+
+function filterHistory() {
+  renderHistory(getFilteredHistory()); // 건수 표시는 renderHistory 내부에서 처리
 }
 
 // 배차 이력 검색 결과 건수 표시
@@ -6948,31 +6979,43 @@ function renderClpFixedRates() {
 // ============================================
 // Excel 내보내기
 // ============================================
-async function exportExcel() {
-  if(dispatchLog.length === 0) { showToast('내보낼 데이터가 없습니다'); return; }
+async function exportExcel(forceAll) {
+  // 화면에 보이는 결과(기간+검색 필터 적용)를 그대로 내보냄
+  const filtered = forceAll ? [...dispatchLog] : getFilteredHistory();
+  const isFiltered = !forceAll && isHistoryFiltered();
+
+  if(filtered.length === 0) {
+    showToast(isFiltered ? '검색 결과가 없어 내보낼 데이터가 없습니다' : '내보낼 데이터가 없습니다');
+    return;
+  }
 
   // 다운로드 사전 체크 (비관리자는 사유 입력 필수)
-  const ok = await preDownloadCheck('배차이력', dispatchLog.length);
+  const ok = await preDownloadCheck(isFiltered ? '배차이력(검색결과)' : '배차이력', filtered.length);
   if(!ok) return;
 
   let csv = '\uFEFF'; // BOM for Korean
   csv += 'No,배차코드,배차일,유형,거래처명,상차지,하차지,세부주소,담당자,연락처,차량,파레트,박스,원청단가,수작업비,대기료,총매출,기사지급,마진,배차경로,기사명,차량번호,비고\n';
   
-  dispatchLog.forEach((r,i) => {
-    csv += `${dispatchLog.length-i},"${r.code||''}",${sanitizeDate(r.date)},${r.type},"${r.clientName||''}","${r.pickup}",${r.delivery},"${r.deliveryAddr||''}","${r.deliveryContact||''}","${r.deliveryPhone||''}",${r.vehicle},${r.pallet},${r.boxes},${r.baseRate},${r.manualFee||0},${r.waitFee||0},${r.total},${r.driverPay||0},${r.margin||0},"${r.dispatchRoute||''}","${r.driverName||''}","${r.vehicleNo||''}","${r.memo||''}"\n`;
+  filtered.forEach((r,i) => {
+    csv += `${filtered.length-i},"${r.code||''}",${sanitizeDate(r.date)},${r.type},"${r.clientName||''}","${r.pickup}",${r.delivery},"${r.deliveryAddr||''}","${r.deliveryContact||''}","${r.deliveryPhone||''}",${r.vehicle},${r.pallet},${r.boxes},${r.baseRate},${r.manualFee||0},${r.waitFee||0},${r.total},${r.driverPay||0},${r.margin||0},"${r.dispatchRoute||''}","${r.driverName||''}","${r.vehicleNo||''}","${r.memo||''}"\n`;
   });
   
   const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `배차이력_${new Date().getFullYear()}-${String(new Date().getMonth()+1).padStart(2,'0')}-${String(new Date().getDate()).padStart(2,'0')}.csv`;
+  const _d = new Date();
+  const _stamp = `${_d.getFullYear()}-${String(_d.getMonth()+1).padStart(2,'0')}-${String(_d.getDate()).padStart(2,'0')}`;
+  a.download = `배차이력${isFiltered ? '_검색결과' : ''}_${_stamp}.csv`;
   a.click();
   URL.revokeObjectURL(url);
-  showToast('Excel(CSV) 다운로드 완료');
+  showToast(isFiltered
+    ? `📥 검색결과 ${filtered.length}건 다운로드 완료 (전체 ${dispatchLog.length}건 중)`
+    : `📥 전체 ${filtered.length}건 다운로드 완료`);
 }
 
-function exportAllExcel() { exportExcel(); }
+// 필터 무시하고 전체 내보내기 (기존 호출부 호환)
+function exportAllExcel() { exportExcel(true); }
 
 // ============================================
 // 초기화
@@ -12455,15 +12498,21 @@ async function pullReceiptCheckFromSheet() {
         scanned: sample.scanned
       });
     }
-    let _normDate = 0, _normCode = 0;
+    let _normDate = 0, _normCode = 0, _normTsCnt = 0;
     data.records.forEach(r => {
       if(r && r.date && typeof sanitizeDate === 'function') {
         const fixed = sanitizeDate(r.date);
         if(fixed !== r.date) { r.date = fixed; _normDate++; }
       }
       if(r && r.code != null && typeof r.code !== 'string') { r.code = String(r.code); _normCode++; }
+      // updatedAt: 시트가 Date로 돌려주면 ISO(UTC) → 로컬 형식으로 환산해야
+      // 아래 최신 판정(문자열 비교)이 뒤집히지 않음
+      if(r) {
+        const nt = _normReceiptTs(r.updatedAt);
+        if(nt !== r.updatedAt) { r.updatedAt = nt; _normTsCnt++; }
+      }
     });
-    console.log(`[인수증 pull] 정규화: date ${_normDate}건 / code ${_normCode}건 / 총 ${data.records.length}건`);
+    console.log(`[인수증 pull] 정규화: date ${_normDate}건 / code ${_normCode}건 / updatedAt ${_normTsCnt}건 / 총 ${data.records.length}건`);
 
     // 머지: 시트의 데이터 + 본 PC의 미push분 (updatedAt 기준 최신 우선)
     const localMap = new Map();
@@ -12480,15 +12529,16 @@ async function pullReceiptCheckFromSheet() {
         changed = true;
       } else {
         // updatedAt 기반 충돌 해소 (큰 게 더 최신)
-        const remoteTs = String(r.updatedAt || '');
-        const localTs = String(local.updatedAt || '');
+        // 양쪽 모두 정규화 후 비교 — 로컬에 옛 ISO 형식이 남아있을 수 있음
+        const remoteTs = _normReceiptTs(r.updatedAt);
+        const localTs = _normReceiptTs(local.updatedAt);
         if(remoteTs && remoteTs > localTs) {
           local.received = r.received;
           local.scanned = r.scanned;
           local.memo = r.memo;
           local.manual = !!r.manual;
           local.updatedBy = r.updatedBy;
-          local.updatedAt = r.updatedAt;
+          local.updatedAt = remoteTs; // 정규화된 형식으로 저장 (형식 혼재 방지)
           changed = true;
         }
       }
