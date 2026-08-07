@@ -8578,25 +8578,10 @@ function updatePendingBar() {
   codesEl.textContent = codes + more;
 }
 
+// 기사명 입력 → 추천 목록(datalist)만 갱신. 연락처/차량번호/배차경로 자동 채움 없음
+// (동명이인 시 엉뚱한 기사 정보가 들어가는 문제로 자동완성 제거)
 function showDriverSuggest(inputEl) {
   buildDriverDatalist();
-  const name = inputEl.value.trim();
-  if(!name) return;
-  
-  const db = getDriverDB();
-  if(db[name]) {
-    const row = inputEl.closest('.driver-row');
-    if(!row) return;
-    const info = db[name];
-    // 연락처/차량번호/배차경로가 비어있으면 자동 채움
-    const phoneEl = row.querySelector('.drv-phone');
-    const vnoEl = row.querySelector('.drv-vehicleNo');
-    const routeEl = row.querySelector('.drv-route');
-    if(phoneEl && !phoneEl.value && info.phone) phoneEl.value = info.phone;
-    if(vnoEl && !vnoEl.value && info.vehicleNo) vnoEl.value = info.vehicleNo;
-    if(routeEl && !routeEl.value && info.route) routeEl.value = info.route;
-    checkDriverAssignBadge();
-  }
 }
 
 function syncDriverHidden() {
