@@ -2521,6 +2521,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <button class="btn btn-sm" id="stlCodeYJ" onclick="setStlCodeFilter('ECLP')" style="padding:4px 11px;font-size:11px;background:transparent;color:var(--text);border:none;border-radius:3px">ECLP</button>
           <button class="btn btn-sm" id="stlCodeDP" onclick="setStlCodeFilter('ACLP')" style="padding:4px 11px;font-size:11px;background:transparent;color:var(--text);border:none;border-radius:3px">ACLP</button>
           <button class="btn btn-sm" id="stlCodeLK" onclick="setStlCodeFilter('P')" style="padding:4px 11px;font-size:11px;background:transparent;color:var(--text);border:none;border-radius:3px">P(락앤락)</button>
+          <button class="btn btn-sm" id="stlCodeHJ" onclick="setStlCodeFilter('HJ')" style="padding:4px 11px;font-size:11px;background:transparent;color:var(--text);border:none;border-radius:3px">HJ로지스</button>
           <button class="btn btn-sm" id="stlCodeGN" onclick="setStlCodeFilter('GN')" style="padding:4px 11px;font-size:11px;background:transparent;color:var(--text);border:none;border-radius:3px">GN(일반)</button>
         </div>
         <div id="settlementDriverFilter" style="display:none;margin-left:8px;gap:6px;align-items:center;flex-wrap:wrap">
@@ -15726,7 +15727,7 @@ let stlCodeFilterMode = 'all';
 
 function setStlCodeFilter(mode) {
   stlCodeFilterMode = mode;
-  const buttons = {'all':'stlCodeAll','ECLP':'stlCodeYJ','ACLP':'stlCodeDP','P':'stlCodeLK','GN':'stlCodeGN'};
+  const buttons = {'all':'stlCodeAll','ECLP':'stlCodeYJ','ACLP':'stlCodeDP','P':'stlCodeLK','HJ':'stlCodeHJ','GN':'stlCodeGN'};
   Object.entries(buttons).forEach(([key, id]) => {
     const el = document.getElementById(id);
     if(key === mode) {
