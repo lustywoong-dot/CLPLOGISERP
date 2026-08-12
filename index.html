@@ -8008,6 +8008,9 @@ function validateCodeMode(showAlert) {
       msg = '⚠ ECLP는 주류(여주) 코드 — 🍷 주류 모드로 전환하세요';
     } else if(firstCode.startsWith('ACLP')) {
       msg = '⚠ ACLP는 주류(덕평) 코드 — 🍷 주류 모드로 전환하세요';
+    } else if(firstCode.startsWith('HJ')) {
+      // 락앤락 요율로 계산되면서 거래처만 HJ로지스로 잡히는 금액 사고 차단
+      msg = '⚠ HJ는 HJ로지스 코드 — 🍷 주류 모드 + 상차센터 HJ로지스로 전환하세요';
     }
   } else if(dispatchMode === 'liquor') {
     // 주류 모드: P 차단 (ECLP/ACLP는 'E'/'A'로 시작하므로 안전)
