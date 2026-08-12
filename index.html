@@ -2347,7 +2347,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         </div>
         <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap" id="stlClientBar">
         </div>
-        <div style="margin-left:auto;display:flex;gap:6px">
+        <div style="margin-left:auto;display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
           <button class="btn btn-outline" id="btnClearStlData" onclick="clearSettlementData()" style="font-size:11px;padding:6px 10px;display:none">🗑 데이터 초기화</button>
           <button class="btn" onclick="saveSettlementBackupToSheet()" style="font-size:11px;padding:6px 10px;background:#1a365d;color:white;font-weight:700" title="현재 정산 데이터를 구글시트 [정산백업] 탭에 저장 (덮어쓰기)">📸 백업 저장</button>
           <button class="btn" onclick="openSnapshotRestoreModal()" style="font-size:11px;padding:6px 10px;background:#0f766e;color:white;font-weight:700" title="시점 자동 백업에서 정산 데이터 복구 (변경 시 즉시 + 30분 자동 백업)">🕐 시점 복구</button>
@@ -2361,7 +2361,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <button class="btn" onclick="restoreSettlementFromSheet()" style="font-size:11px;padding:6px 10px;background:#7c3aed;color:white" title="구글시트에서 정산 데이터 복구">🔄 시트 복구</button>
           <button class="btn btn-secondary" onclick="exportSettlement()" style="font-size:11px;padding:6px 10px">📥 엑셀 다운로드</button>
           <button class="btn" onclick="exportReceiptChecklist()" style="font-size:11px;padding:6px 10px;background:#7c3aed;color:white">📋 인수증 체크리스트</button>
-          <button class="btn" onclick="downloadHJSettlement()" title="HJ로지스 청구 내역서 — 청구 금액(매출)만 표기, 기사 지급액·손익은 포함되지 않습니다" style="font-size:11px;padding:6px 10px;background:#b45309;color:white;font-weight:700">🚚 HJ 정산서</button>
+          <button class="btn" onclick="downloadHJSettlement()" title="HJ로지스 월 청구 내역서 — 선택한 정산월의 배송일 기준 전체. 청구 금액(매출)만 표기되며 기사 지급액·손익은 포함되지 않습니다" style="font-size:11px;padding:6px 10px;background:#b45309;color:white;font-weight:700">🚚 HJ 정산서</button>
         </div>
       </div>
 
@@ -14930,13 +14930,14 @@ function syncHJToSettlement(records) {
 
   let added = 0, updated = 0;
   targets.forEach(r => {
-    const dateStr = sanitizeDate(r.date || r.deliveryDate || '');
+    // HJ는 월 단위 청구 → 실제 운송이 일어난 '배송일' 기준으로 귀속월 결정
+    // (배차일로 잡으면 월말에 배차·배송이 갈릴 때 청구월이 밀림)
+    const dateStr = sanitizeDate(r.deliveryDate || r.date || '');
     const code = String(r.code || '');
     if(!dateStr || !code) return;
-    // 키: 배차일 + 배차코드 (autoImportFromDispatch·saveSettlementLocal 머지와 동일 기준)
-    const idx = settlementData.findIndex(d =>
-      String(d.dispCode || '') === code && sanitizeDate(d.date || '') === dateStr
-    );
+    // 키: 배차코드 단독. HJ 코드(HJ-날짜-일련[-기사])는 그 자체로 고유하므로
+    // 날짜를 키에 넣지 않아야 배송일 정정 시 중복 행이 생기지 않는다.
+    const idx = settlementData.findIndex(d => String(d.dispCode || '') === code);
     // 멀티기사 서브코드(HJ-날짜-일련-1, -2)는 각 레코드에 total 전액이 복제돼 있음
     // → 매출(KCTC)은 첫 기사 행에만 넣어 합계 부풀림 차단. 지급액은 기사별 실제 금액.
     const _parts = code.split('-');
@@ -14981,7 +14982,7 @@ function importAllHJFromDispatch() {
   if(!month) { showToast('⚠ 정산월을 선택하세요'); return; }
   const targets = dispatchLog.filter(d =>
     /^HJ/i.test(String(d.code || '')) &&
-    sanitizeDate(d.date || d.deliveryDate || '').startsWith(month)
+    sanitizeDate(d.deliveryDate || d.date || '').startsWith(month)   // 배송일 기준 (월 청구)
   );
   if(targets.length === 0) {
     if(resEl) resEl.innerHTML = '<span style="color:var(--text-light)">' + month + ' HJ로지스 배차 없음</span>';
@@ -15005,8 +15006,14 @@ function autoImportFromDispatch() {
     return;
   }
   
+  // HJ로지스는 배송일 기준 월 청구라 날짜 기준이 다름 → 전용 동기화에 위임
+  // (여기서 배차일로 또 넣으면 같은 코드가 날짜만 다르게 두 줄 생김)
+  const hjTargets = filtered.filter(d => /^HJ/i.test(String(d.code || '')));
+  if(hjTargets.length > 0) { try { syncHJToSettlement(hjTargets); } catch(e) {} }
+
   let addCount = 0;
   filtered.forEach(d => {
+    if(/^HJ/i.test(String(d.code || ''))) return;   // 위에서 처리됨
     // 중복 체크
     const isDup = settlementData.some(e => e.dispCode === d.code && e.name === d.driverName && d.code);
     if(isDup) return;
@@ -17553,7 +17560,7 @@ async function downloadHJSettlement() {
 
   ws.mergeCells('B3:H3');
   const subCell = ws.getCell('B3');
-  subCell.value = monthLabel + '  |  HJ로지스 (KCTC 요율 적용)';
+  subCell.value = monthLabel + ' 월 정산  |  HJ로지스 (KCTC 요율 적용)';
   subCell.font = {size:10, color:GRAY};
   subCell.alignment = {horizontal:'center', vertical:'middle'};
   ws.getRow(3).height = 20;
