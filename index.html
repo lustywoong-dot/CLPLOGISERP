@@ -2372,6 +2372,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <div style="font-size:10px;color:var(--text-light);margin-bottom:6px">ERP 엑셀 업로드 또는 수동 등록으로 정산 데이터를 등록합니다</div>
           <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
             <button class="btn btn-sm" onclick="autoImportFromDispatch()" style="background:#059669;color:white;padding:5px 12px;font-size:11px">🔄 가져오기</button>
+            <button class="btn btn-sm" onclick="importAllHJFromDispatch()" title="HJ로지스는 원청 WMS 실적 엑셀이 없어 배차 등록이 유일한 정산 근거입니다. 저장 시 자동 반영되며, 이 버튼은 과거 건을 채워 넣을 때 사용합니다." style="background:#b45309;color:white;padding:5px 12px;font-size:11px">🚚 HJ 배차 반영</button>
             <span id="stlImportResult" style="font-size:11px"></span>
           </div>
           <!-- 엑셀 붙여넣기 -->
@@ -14915,6 +14916,82 @@ function parseFlexDate(val) {
   return sanitizeDate(val);
 }
 
+// ─── HJ로지스 배차 → 정산 자동 반영 ─────────────────────────────
+// HJ 건은 원청(KCTC) WMS 실적 엑셀을 받을 수 없어 배차 등록이 유일한 정산 근거.
+// 그래서 배차를 저장하면 정산에 바로 올린다. (다른 거래처는 기존대로 ERP 업로드 / 🔄 가져오기 사용)
+// 규칙: 같은 (배차일 + 배차코드) 행이 없으면 추가, 있으면 배차 기준으로 갱신.
+//       단 비고(note)·인수증(receipt)은 직원이 정산에서 직접 넣는 값이라 절대 덮어쓰지 않음.
+// ※ 배차를 삭제해도 정산 행은 자동으로 지우지 않는다 (수동 입력분 손상 방지) — 정산에서 직접 삭제
+function syncHJToSettlement(records) {
+  if(!Array.isArray(records) || records.length === 0) return 0;
+  const targets = records.filter(r => /^HJ/i.test(String(r.code || '')));
+  if(targets.length === 0) return 0;
+
+  let added = 0, updated = 0;
+  targets.forEach(r => {
+    const dateStr = sanitizeDate(r.date || r.deliveryDate || '');
+    const code = String(r.code || '');
+    if(!dateStr || !code) return;
+    // 키: 배차일 + 배차코드 (autoImportFromDispatch·saveSettlementLocal 머지와 동일 기준)
+    const idx = settlementData.findIndex(d =>
+      String(d.dispCode || '') === code && sanitizeDate(d.date || '') === dateStr
+    );
+    // 멀티기사 서브코드(HJ-날짜-일련-1, -2)는 각 레코드에 total 전액이 복제돼 있음
+    // → 매출(KCTC)은 첫 기사 행에만 넣어 합계 부풀림 차단. 지급액은 기사별 실제 금액.
+    const _parts = code.split('-');
+    const _isSub = _parts.length > 3;
+    const _subIdx = _isSub ? (parseInt(_parts[3], 10) || 1) : 1;
+    const base = {
+      client: 'HJ로지스',
+      date: dateStr,
+      vehicle: r.vehicleNo || '',
+      name: r.driverName || '',
+      phone: r.driverPhone || '',
+      dispCode: code,
+      dest: r.clientName || '',
+      area: r.delivery || '',
+      payment: parseInt(r.driverPay) || 0,
+      kctcAmount: (!_isSub || _subIdx === 1) ? (parseInt(r.total) || 0) : 0,
+      category: r.dispatchRoute || ''
+    };
+    if(idx < 0) {
+      settlementData.push(Object.assign({}, base, { note: '', receipt: '' }));
+      added++;
+    } else {
+      Object.assign(settlementData[idx], base);   // note·receipt 보존
+      updated++;
+    }
+  });
+
+  if(added || updated) {
+    saveSettlementLocal();
+    try { if(typeof updateDriverFilter === 'function') updateDriverFilter(); } catch(e) {}
+    try { if(typeof renderSettlement === 'function') renderSettlement(); } catch(e) {}
+    showToast('💰 HJ로지스 정산 반영 — ' + (added ? '신규 ' + added + '건' : '') + (added && updated ? ' / ' : '') + (updated ? '갱신 ' + updated + '건' : ''));
+  }
+  return added + updated;
+}
+
+// 선택한 정산월의 HJ로지스 배차를 전부 정산에 반영
+// (자동 반영 기능 추가 이전에 등록된 과거 건을 채워 넣을 때 사용)
+function importAllHJFromDispatch() {
+  const month = document.getElementById('settlementMonth').value;
+  const resEl = document.getElementById('stlImportResult');
+  if(!month) { showToast('⚠ 정산월을 선택하세요'); return; }
+  const targets = dispatchLog.filter(d =>
+    /^HJ/i.test(String(d.code || '')) &&
+    sanitizeDate(d.date || d.deliveryDate || '').startsWith(month)
+  );
+  if(targets.length === 0) {
+    if(resEl) resEl.innerHTML = '<span style="color:var(--text-light)">' + month + ' HJ로지스 배차 없음</span>';
+    showToast('ℹ 해당 월 HJ로지스 배차가 없습니다');
+    return;
+  }
+  const n = syncHJToSettlement(targets);
+  if(resEl) resEl.innerHTML = '<span style="color:var(--success);font-weight:600">✅ HJ로지스 ' + targets.length + '건 반영 완료</span>';
+  if(n === 0) showToast('ℹ 이미 모두 반영되어 있습니다');
+}
+
 function autoImportFromDispatch() {
   const month = document.getElementById('settlementMonth').value;
   if(!month) { showToast('⚠ 정산월을 선택하세요'); return; }
@@ -18699,7 +18776,10 @@ async function saveDispatch(closeAfter) {
       }
 
       saveDispatchHistory();
-      
+
+      // HJ로지스 건은 WMS 실적 엑셀이 없으므로 배차 수정 내용을 정산에도 반영
+      try { syncHJToSettlement([existing].concat(addedRecords)); } catch(e) { console.warn('HJ 정산 반영 실패:', e.message); }
+
       // 수정된 배송일이 필터 범위 밖이면 자동 확장
       autoExpandDateRange(existing.deliveryDate || existing.date || '');
 
@@ -18752,6 +18832,9 @@ async function saveDispatch(closeAfter) {
   // 신규 등록 모드
   records.forEach(r => dispatchLog.unshift(r));
   saveDispatchHistory();
+
+  // HJ로지스 건은 WMS 실적 엑셀이 없으므로 배차 저장 시 정산에 바로 반영
+  try { syncHJToSettlement(records); } catch(e) { console.warn('HJ 정산 반영 실패:', e.message); }
 
   // 메모장 내용도 배차코드에 연결 저장
   saveMemoForCode(code, document.getElementById('stickyMemo').value);
