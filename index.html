@@ -1104,6 +1104,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
             </div>
           </div>
           <button id="btnAddDriverRow" class="btn btn-sm" onclick="addDriverRow()" style="margin-top:2px;background:#059669;color:white;padding:2px 8px;font-size:10px;border:none;border-radius:3px">+ 차량 추가</button>
+          <button id="btnClearDriverAssign" class="btn btn-sm" onclick="clearDriverAssign()" title="배차 취소 시 — 배차경로·기사명·연락처·차량번호·지급액·입차시간 한번에 지우기 (저장된 배차·정산 데이터는 그대로)" style="margin-top:2px;margin-left:4px;background:#fff;color:#dc2626;padding:2px 8px;font-size:10px;border:1px solid #fca5a5;border-radius:3px">🧹 기사정보 초기화</button>
           <!-- 기사 추천 (접이식) -->
           <div id="driverRecommendArea" style="margin-top:4px;display:none">
             <div onclick="toggleDriverRecommend()" style="cursor:pointer;font-size:10px;color:#7c3aed;text-decoration:underline;user-select:none;display:inline-block">💡 이 지역 배차 실적 기사 ▼</div>
@@ -8656,6 +8657,19 @@ function resetDriverRows() {
     first.querySelectorAll('input').forEach(inp => inp.value = '');
   }
   checkDriverAssignBadge();
+}
+
+// 기사 배정 전체 초기화 (배차 취소 시 한번에 지우기)
+// ※ 화면 입력값만 초기화 — dispatchLog·settlementData 등 저장 데이터는 일절 건드리지 않음
+function clearDriverAssign() {
+  const rows = getDriverRows();
+  const hasData = rows.some(r => r.route || r.name || r.phone || r.vehicleNo || r.pay || r.arrivalTime);
+  if(!hasData) { showToast('ℹ 기사 정보가 이미 비어 있습니다'); return; }
+  if(!confirm('기사 배정 정보를 모두 지울까요?\n\n· 배차경로 · 기사명 · 기사 연락처\n· 차량번호 · 지급액 · 입차시간\n\n※ 화면 입력값만 지워집니다.\n※ 저장된 배차 이력·정산 데이터는 변경되지 않습니다.')) return;
+  resetDriverRows();          // 추가 행 제거 + 첫 행 입력값 초기화 + checkDriverAssignBadge
+  syncDriverHidden();         // SMS용 hidden 필드(dispatchRoute/driverName/...) 동기화
+  if(typeof generateSMS === 'function') generateSMS();
+  showToast('🧹 기사 배정 정보를 초기화했습니다');
 }
 
 function restoreDriverRows(drvData) {
