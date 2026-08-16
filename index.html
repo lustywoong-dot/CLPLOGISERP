@@ -5251,7 +5251,7 @@ function clearAllMemos() {
 
 async function doLogin() {
   const id = document.getElementById('loginId').value.trim();
-  const pw = document.getElementById('loginPw').value;
+  const pw = document.getElementById('loginPw').value.trim();
   if(!id || !pw) { showLoginError('아이디와 비밀번호를 입력하세요'); return; }
   
   // 로그인 화면에서 URL 입력한 경우 저장
@@ -5288,7 +5288,21 @@ async function doLogin() {
     if(defaultUser) user = defaultUser;
   }
   
-  if(!user) { showLoginError('아이디 또는 비밀번호가 틀렸습니다'); return; }
+  if(!user) {
+    // 진단 로그 — 비밀번호 값은 남기지 않고 특징만 기록 (F12 콘솔에서 확인)
+    try {
+      const idExists = users.some(u => u.id === id) || DEFAULT_USERS.some(u => u.id === id);
+      console.warn('[로그인 실패] 입력ID=' + id
+        + ' / 시트에 해당ID 존재=' + idExists
+        + ' / 비번길이=' + pw.length
+        + ' / 한글포함=' + /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(pw)
+        + ' / 대문자포함=' + /[A-Z]/.test(pw)
+        + ' / 불러온계정수=' + users.length
+        + ' / 계정목록=' + users.map(u => u.id).join(','));
+    } catch(e) {}
+    showLoginError('아이디 또는 비밀번호가 틀렸습니다');
+    return;
+  }
   sessionStorage.setItem('clp_session', JSON.stringify({ id: user.id, name: user.name, role: user.role }));
   // 로그인 이력 기록 (백그라운드 — await 하지 않음)
   try { recordLoginEvent(user.id, user.role); } catch(e) {}
