@@ -2428,7 +2428,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
               <input type="text" class="stl-drv-phone" placeholder="전화번호" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">
               <input type="text" class="stl-drv-vehicle" placeholder="차량번호" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">
               <input type="number" class="stl-drv-pay" placeholder="지불(매입)" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">
-              <input type="text" class="stl-drv-category" placeholder="구분" list="stlCategoryList" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">
+              <select class="stl-drv-category stl-category-select" data-empty-label="구분" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px"><option value="">구분</option></select>
               <span></span>
             </div>
           </div>
@@ -15086,7 +15086,7 @@ function addStlDriverRow() {
     <input type="text" class="stl-drv-phone" placeholder="전화번호" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">
     <input type="text" class="stl-drv-vehicle" placeholder="차량번호" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">
     <input type="number" class="stl-drv-pay" placeholder="지불(매입)" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">
-    <input type="text" class="stl-drv-category" placeholder="구분" list="stlCategoryList" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">
+    <select class="stl-drv-category stl-category-select" data-empty-label="구분" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">${buildStlCategoryOptions('', '구분')}</select>
     <button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;color:var(--danger);font-size:14px" title="삭제">✕</button>`;
   container.appendChild(row);
 }
@@ -15109,7 +15109,7 @@ function resetStlDriverRows() {
     <input type="text" class="stl-drv-phone" placeholder="전화번호" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">
     <input type="text" class="stl-drv-vehicle" placeholder="차량번호" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">
     <input type="number" class="stl-drv-pay" placeholder="지불(매입)" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">
-    <input type="text" class="stl-drv-category" placeholder="구분" list="stlCategoryList" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">
+    <select class="stl-drv-category stl-category-select" data-empty-label="구분" style="padding:3px 6px;font-size:11px;border:1px solid var(--border);border-radius:4px">${buildStlCategoryOptions('', '구분')}</select>
     <span></span>
   </div>`;
 }
@@ -15181,7 +15181,12 @@ function loadStlRecord(idx) {
     firstRow.querySelector('.stl-drv-phone').value = d.phone || '';
     firstRow.querySelector('.stl-drv-vehicle').value = d.vehicle || '';
     firstRow.querySelector('.stl-drv-pay').value = d.payment || '';
-    firstRow.querySelector('.stl-drv-category').value = d.category || '';
+    // 구분: 드롭다운에 없는 기존 값도 옵션으로 살려서 선택 (값 유실 방지)
+    const catSel = firstRow.querySelector('.stl-drv-category');
+    if(catSel) {
+      catSel.innerHTML = buildStlCategoryOptions(d.category || '', '구분');
+      catSel.value = String(d.category == null ? '' : d.category).trim();
+    }
   }
   
   // 버튼 전환
@@ -15575,11 +15580,38 @@ function getAllStlCategories() {
 
 function refreshStlCategoryLists() {
   const all = getAllStlCategories();
-  const html = all.map(c => `<option value="${c.replace(/"/g,'&quot;')}">`).join('');
+  const html = all.map(c => `<option value="${String(c).replace(/"/g,'&quot;')}">`).join('');
   ['routeList', 'stlCategoryList'].forEach(id => {
     const dl = document.getElementById(id);
     if(dl) dl.innerHTML = html;
   });
+  // 구분 드롭다운(select)도 현재 선택값 유지한 채 옵션 갱신
+  document.querySelectorAll('select.stl-category-select').forEach(sel => {
+    const cur = sel.value;
+    sel.innerHTML = buildStlCategoryOptions(cur, sel.dataset.emptyLabel || '-');
+    sel.value = cur;
+  });
+}
+
+// 구분 드롭다운 옵션 HTML 생성
+// current 값이 목록에 없어도 옵션으로 추가해 기존 데이터를 절대 잃지 않음
+function buildStlCategoryOptions(current, emptyLabel) {
+  const cur = String(current == null ? '' : current).trim();
+  const all = getAllStlCategories();
+  let html = '<option value="">' + String(emptyLabel == null ? '-' : emptyLabel) + '</option>';
+  let matched = false;
+  all.forEach(c => {
+    const s = String(c);
+    const v = s.replace(/"/g,'&quot;');
+    const sel = (s === cur) ? ' selected' : '';
+    if(sel) matched = true;
+    html += `<option value="${v}"${sel}>${v}</option>`;
+  });
+  if(cur && !matched) {
+    const v = cur.replace(/"/g,'&quot;');
+    html += `<option value="${v}" selected>${v}</option>`;
+  }
+  return html;
 }
 
 function _saveUserStlCategories() {
@@ -16948,7 +16980,7 @@ function renderSettlementList(data) {
         <option value="완료" ${d.receipt==='완료'?'selected':''}>완료</option>
         <option value="미완료" ${d.receipt==='미완료'?'selected':''}>미완료</option>
       </select>${d.receipt==='미완료'?`<input type="text" value="${String(d.receiptReason||'').replace(/"/g,'&quot;')}" placeholder="사유" oninput="updateStlFieldQuiet(${globalIdx},'receiptReason',this.value,this)" style="width:70px;font-size:10px;padding:1px 3px;border:1px solid #fca5a5;border-radius:3px;margin-top:2px;display:block;color:#dc2626" list="receiptReasonList">`:''}</td>
-      <td><input type="text" value="${d.category||''}" placeholder="-" list="stlCategoryList" oninput="updateStlFieldQuiet(${globalIdx},'category',this.value,this);this.style.cssText='width:65px;font-size:10px;font-weight:700;padding:2px 4px;border:1px solid;border-radius:3px;'+getStlCategoryStyle(this.value)" onkeydown="stlKeyNav(event,this)" style="width:65px;font-size:10px;font-weight:700;padding:2px 4px;border:1px solid;border-radius:3px;${getStlCategoryStyle(d.category||'')}"></td>
+      <td><select class="stl-category-select" onchange="updateStlFieldQuiet(${globalIdx},'category',this.value,this);this.style.cssText='width:65px;font-size:10px;font-weight:700;padding:2px 4px;border:1px solid;border-radius:3px;'+getStlCategoryStyle(this.value)" onkeydown="stlKeyNav(event,this)" style="width:65px;font-size:10px;font-weight:700;padding:2px 4px;border:1px solid;border-radius:3px;${getStlCategoryStyle(d.category||'')}">${buildStlCategoryOptions(d.category||'')}</select></td>
       <td><input type="text" value="${String(d.note||'').replace(/"/g,'&quot;')}" placeholder="비고 입력" oninput="updateStlFieldQuiet(${globalIdx},'note',this.value,this)" onkeydown="stlKeyNav(event,this)" style="width:120px;font-size:10px;padding:2px 4px;border:1px solid #e2e8f0;border-radius:3px"></td>
     </tr>`;
   });
