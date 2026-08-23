@@ -15687,9 +15687,11 @@ function getStlCategoryStyle(cat) {
     '원콜':   'background:#dcfce7;color:#166534;border-color:#86efac',
     '화물맨': 'background:#fef3c7;color:#92400e;border-color:#fcd34d',
     '태영GLS':'background:#cffafe;color:#155e75;border-color:#67e8f9',
-    '고정':   'background:#f3e8ff;color:#6b21a8;border-color:#d8b4fe',
-    '반고창': 'background:#fee2e2;color:#991b1b;border-color:#fca5a5',
-    '고창':   'background:#ffedd5;color:#9a3412;border-color:#fdba74',
+    '고정':     'background:#f3e8ff;color:#6b21a8;border-color:#d8b4fe',  // 보라
+    '반고정':   'background:#fee2e2;color:#991b1b;border-color:#fca5a5',  // 빨강
+    '지역고정': 'background:#ffedd5;color:#9a3412;border-color:#fdba74',  // 주황
+    '업체오더': 'background:#e0e7ff;color:#3730a3;border-color:#a5b4fc',  // 인디고
+    '기사오더': 'background:#ccfbf1;color:#115e59;border-color:#5eead4',  // 민트
   };
   if(map[cat]) return map[cat];
   // 사용자 추가 구분 — 이름 해시로 자동 색상 할당 (같은 이름은 항상 같은 색)
