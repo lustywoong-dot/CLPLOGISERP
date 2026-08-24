@@ -1076,7 +1076,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
               <span style="font-size:10px;font-weight:700;color:#059669;text-align:center;padding-bottom:4px">#1</span>
               <div class="form-group" style="margin:0">
                 <label style="font-size:10px">배차경로</label>
-                <input type="text" class="drv-route" list="routeList" placeholder="경로" style="font-size:11px;padding:3px 5px">
+                <select class="drv-route stl-category-select" data-empty-label="경로" style="font-size:11px;padding:3px 5px"><option value="">경로</option></select>
                 <datalist id="routeList">
                   <option value="24콜"><option value="원콜"><option value="화물맨"><option value="태영GLS"><option value="고정">
                   <option value="반고정"><option value="지역고정"><option value="업체오더"><option value="기사오더">
@@ -3833,7 +3833,7 @@ function loadRecord(id) {
   resetDriverRows();
   const firstRow = document.querySelector('#driverRows .driver-row');
   if(firstRow) {
-    const setVal = (cls, val) => { const el = firstRow.querySelector('.'+cls); if(el) el.value = val || ''; };
+    const setVal = (cls, val) => { const el = firstRow.querySelector('.'+cls); if(!el) return; if(el.tagName === 'SELECT') setCategoryFieldValue(el, val); else el.value = val || ''; };
     setVal('drv-route', r.dispatchRoute);
     setVal('drv-name', r.driverName);
     setVal('drv-phone', r.driverPhone);
@@ -8717,7 +8717,7 @@ function addDriverRow() {
   div.innerHTML = `
     <span style="font-size:10px;font-weight:700;color:#059669;text-align:center;padding-bottom:6px">#${idx+1}</span>
     <div class="form-group" style="margin:0">
-      <input type="text" class="drv-route" list="routeList" placeholder="배차경로" style="font-size:11px;padding:4px 6px">
+      <select class="drv-route stl-category-select" data-empty-label="배차경로" style="font-size:11px;padding:4px 6px">${buildStlCategoryOptions('', '배차경로')}</select>
     </div>
     <div class="form-group" style="margin:0">
       <input type="text" class="drv-name" placeholder="기사명" oninput="checkDriverAssignBadge();showDriverSuggest(this)" onfocus="showDriverSuggest(this)" onchange="showDriverSuggest(this)" list="driverHistoryList" style="font-size:11px;padding:4px 6px">
@@ -8762,6 +8762,8 @@ function resetDriverRows() {
   const first = container.querySelector('.driver-row');
   if(first) {
     first.querySelectorAll('input').forEach(inp => inp.value = '');
+    // 배차경로는 select라 위 input 루프에 안 잡힘 — 별도 초기화 필요
+    first.querySelectorAll('select').forEach(sel => sel.value = '');
   }
   checkDriverAssignBadge();
 }
@@ -8786,7 +8788,7 @@ function restoreDriverRows(drvData) {
   const firstRow = container.querySelector('.driver-row');
   if(firstRow && drvData[0]) {
     const d = drvData[0];
-    const set = (cls, val) => { const el = firstRow.querySelector('.'+cls); if(el) el.value = val || ''; };
+    const set = (cls, val) => { const el = firstRow.querySelector('.'+cls); if(!el) return; if(el.tagName === 'SELECT') setCategoryFieldValue(el, val); else el.value = val || ''; };
     set('drv-route', d.route); set('drv-name', d.name); set('drv-phone', d.phone);
     set('drv-vehicleNo', d.vehicleNo); set('drv-pay', d.pay);
   }
@@ -8796,7 +8798,7 @@ function restoreDriverRows(drvData) {
     const row = rows[rows.length - 1];
     if(row && drvData[i]) {
       const d = drvData[i];
-      const set = (cls, val) => { const el = row.querySelector('.'+cls); if(el) el.value = val || ''; };
+      const set = (cls, val) => { const el = row.querySelector('.'+cls); if(!el) return; if(el.tagName === 'SELECT') setCategoryFieldValue(el, val); else el.value = val || ''; };
       set('drv-route', d.route); set('drv-name', d.name); set('drv-phone', d.phone);
       set('drv-vehicleNo', d.vehicleNo); set('drv-pay', d.pay);
     }
@@ -15591,6 +15593,20 @@ function refreshStlCategoryLists() {
     sel.innerHTML = buildStlCategoryOptions(cur, sel.dataset.emptyLabel || '-');
     sel.value = cur;
   });
+}
+
+// 구분/배차경로 입력요소에 값 설정
+// select인 경우 목록에 없는 값도 옵션으로 만들어 선택 → 기존 데이터 유실 방지
+// (input에 그냥 value를 넣던 기존 코드를 그대로 대체할 수 있게 input/select 모두 처리)
+function setCategoryFieldValue(el, val) {
+  if(!el) return;
+  const v = String(val == null ? '' : val).trim();
+  if(el.tagName === 'SELECT') {
+    el.innerHTML = buildStlCategoryOptions(v, el.dataset.emptyLabel || '-');
+    el.value = v;
+  } else {
+    el.value = v;
+  }
 }
 
 // 구분 드롭다운 옵션 HTML 생성
