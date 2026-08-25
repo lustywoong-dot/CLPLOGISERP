@@ -3530,6 +3530,29 @@ const LIQUOR_RATES_YJ = {
 "횡성-CVS":{"1톤":110000,"2.5톤":136000,"3.5톤":160000,"5톤":174000,"5톤축":212000,"11톤":260000,"18톤":297000},
 };
 
+// ─── 권역 별칭 ─────────────────────────────────────────────
+// 덕평 주류 단가표는 '원주,문막' '대전,신탄진'처럼 여러 지명을 한 키에 묶어둠.
+// 직원이 '원주'만 입력하면 키를 못 찾아 "해당 권역/차량의 단가가 없습니다"가 떴음.
+// → 조각 이름('원주','문막')으로도 같은 단가를 찾도록 별칭을 건다.
+// enumerable:false 로 넣기 때문에 Object.keys/for..in 에는 안 잡힘
+//   = 단가표 조회 화면·권역 목록에 중복 행이 생기지 않음. 금액은 같은 객체를 가리켜 항상 일치.
+function _addRegionAliases(table) {
+  if(!table) return;
+  Object.keys(table).forEach(k => {
+    if(k.indexOf(',') < 0) return;
+    k.split(',').forEach(p => {
+      const alias = p.trim();
+      if(!alias || (alias in table)) return;
+      Object.defineProperty(table, alias, {
+        value: table[k], enumerable: false, configurable: true, writable: true
+      });
+    });
+  });
+}
+_addRegionAliases(LIQUOR_RATES_DP);
+_addRegionAliases(LIQUOR_RATES_YJ);
+_addRegionAliases(RATES);
+
 // 주류 경유비 (동일권역/타권역)
 const LIQUOR_WAYPOINT_FEE = {
   same: {"1톤":10000,"2.5톤":10000,"3.5톤":10000,"5톤":15000,"5톤축":20000,"11톤":20000,"18톤":30000},
