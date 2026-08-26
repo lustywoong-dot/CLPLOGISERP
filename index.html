@@ -3977,7 +3977,7 @@ function loadRecord(id) {
   //    → smsManualMode 강제 해제 후 현재 레코드 기준으로 SMS 재생성
   forceRegenerateSMS();
   // 저장된 SMS가 있으면 불러오기 (있을 때만 수동 모드로 재진입)
-  loadSavedSMS(r.code);
+  loadSavedSMS(r.code, r.deliveryDate || r.date);
   // 해당 배차의 메모 불러오기 (레코드에 저장된 메모 우선)
   if(r.stickyMemo) {
     currentMemoCode = r.code;
@@ -10551,8 +10551,13 @@ function unlockSMS() {
   if(code) {
     try {
       const savedSMS = JSON.parse(localStorage.getItem('clp_saved_sms') || '{}');
-      if(savedSMS[code]) {
-        delete savedSMS[code];
+      const delivDate = sanitizeDate(document.getElementById('deliveryDate').value || '');
+      const key = _smsKey(code, delivDate);
+      let removed = false;
+      if(savedSMS[key]) { delete savedSMS[key]; removed = true; }
+      // 구버전(코드만) 키도 함께 정리
+      if(key !== code && savedSMS[code]) { delete savedSMS[code]; removed = true; }
+      if(removed) {
         localStorage.setItem('clp_saved_sms', JSON.stringify(savedSMS));
         showToast('🗑 저장된 수동 문자 삭제 → 자동 생성으로 복원');
       }
@@ -10639,17 +10644,30 @@ function updateSMSFieldInPlace() {
   document.getElementById('smsContent').value = sms;
 }
 
+// 수기 저장 문자 키 — 배차코드는 날짜마다 재사용되므로(P_006_01 한 코드에 82건)
+// 코드만으로 키를 잡으면 다른 날짜 배차끼리 문자가 섞여 엉뚱한 내용이 뜸.
+// → 코드+배송일로 구분. 배송일이 없으면 기존처럼 코드만 사용.
+function _smsKey(code, deliveryDate) {
+  const c = String(code == null ? '' : code).trim();
+  if(!c) return '';
+  const d = sanitizeDate(deliveryDate || '');
+  return d ? (c + '|' + d) : c;
+}
+
 function saveSMSContent() {
   const code = document.getElementById('dispatchCode').value.trim();
   const content = document.getElementById('smsContent').value;
   if(!content) { showToast('⚠ 저장할 문자 내용이 없습니다'); return; }
-  
+
+  const delivDate = sanitizeDate(document.getElementById('deliveryDate').value || '');
   const savedSMS = JSON.parse(localStorage.getItem('clp_saved_sms') || '{}');
-  const key = code || ('tmp_' + dispatchMode + '_' + Date.now());
-  savedSMS[key] = { content, mode: dispatchMode, savedAt: new Date().toISOString() };
+  const key = _smsKey(code, delivDate) || ('tmp_' + dispatchMode + '_' + Date.now());
+  savedSMS[key] = { content, mode: dispatchMode, code: code, deliveryDate: delivDate, savedAt: new Date().toISOString() };
+  // 같은 건의 구버전(코드만) 키가 남아 있으면 정리 — 다른 날짜 건에 다시 끼어드는 것 차단
+  if(code && key !== code && savedSMS[code]) delete savedSMS[code];
   localStorage.setItem('clp_saved_sms', JSON.stringify(savedSMS));
-  
-  showToast('✅ 문자 내용 저장 완료' + (code ? ' (코드: ' + code + ')' : ''));
+
+  showToast('✅ 문자 내용 저장 완료' + (code ? ' (' + code + (delivDate ? ' / ' + delivDate : '') + ')' : ''));
   // 저장 후 표시 변경
   document.getElementById('smsManualLabel').innerHTML = '💾 저장됨';
   document.getElementById('smsManualLabel').style.color = '#059669';
@@ -10661,15 +10679,21 @@ function saveSMSContent() {
   }, 2000);
 }
 
-function loadSavedSMS(code) {
+function loadSavedSMS(code, deliveryDate) {
   if(!code) return false;
   const savedSMS = JSON.parse(localStorage.getItem('clp_saved_sms') || '{}');
-  if(savedSMS[code]) {
-    document.getElementById('smsContent').value = savedSMS[code].content;
+  const key = _smsKey(code, deliveryDate);
+  let entry = savedSMS[key];
+  let isLegacy = false;
+  // 구버전(코드만) 키 폴백 — 이전에 저장해둔 문자를 잃지 않도록 유지.
+  // 이 항목은 다시 저장하는 순간 코드+배송일 키로 옮겨지고 구키는 삭제됨.
+  if(!entry && key !== code && savedSMS[code]) { entry = savedSMS[code]; isLegacy = true; }
+  if(entry) {
+    document.getElementById('smsContent').value = entry.content;
     smsManualMode = true;
     document.getElementById('smsAutoLabel').style.display = 'none';
     document.getElementById('smsManualLabel').style.display = '';
-    document.getElementById('smsManualLabel').innerHTML = '💾 저장된 문자';
+    document.getElementById('smsManualLabel').innerHTML = isLegacy ? '💾 저장된 문자 (이전 방식)' : '💾 저장된 문자';
     document.getElementById('smsManualLabel').style.color = '#059669';
     document.getElementById('smsSaveBtn').style.display = '';
     document.getElementById('smsRegenBtn').style.display = '';
