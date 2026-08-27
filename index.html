@@ -10865,20 +10865,27 @@ function generateSMS() {
     const _officeWhere = _floorLabel ? (_floorLabel + ' 사무실') : '사무실';
     // 서류 매수 — 차량 1대가 코드 여러 개를 배송할 때만(2가지 이상) 안내 줄 추가
     const _docCount = parseInt(document.getElementById('lqDocCount')?.value) || 1;
-    const _docCountMsg = _docCount > 1 ? `\n→ 서류 ${_docCount}가지 수령하셔야 합니다.` : '';
+
+    // 안내문 조립 — 필요한 줄만 모아 붙임 (빈 줄은 자동 제외)
+    const _L = arr => arr.filter(Boolean).join('\n');
+    const _docCountLine = _docCount > 1 ? `→ 서류 ${_docCount}가지 수령하셔야 합니다.` : '';
+    const _officeLine = `→ 서류 ${_officeWhere}에서 수령하시면 됩니다.`;
+    const _carryLine = '→ 서류 꼭 지참하셔야 합니다.';
+    const _dpSafety = '→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행';
 
     // 센터별 키오스크 안내 vs 사무실 수령 안내
     const kioskMsg = isOfficeDoc ? {
-      'yj': `→ 서류 ${_officeWhere}에서 수령하시면 됩니다.${_docCountMsg}\n→ 서류 꼭 지참하셔야 합니다.`,
-      'dp1': `→ 서류 ${_officeWhere}에서 수령하시면 됩니다.${_docCountMsg}\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
-      'dp2': `→ 서류 ${_officeWhere}에서 수령하시면 됩니다.${_docCountMsg}\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
-      'hj': `→ 서류 ${_officeWhere}에서 수령하시면 됩니다.${_docCountMsg}\n→ 서류 꼭 지참하셔야 합니다.`
+      'yj':  _L([_officeLine, _docCountLine, _carryLine]),
+      // 덕평1·2는 사무실 서류수령이 거의 없어 수령 안내문은 넣지 않음 (보스 확인)
+      'dp1': _L([_docCountLine, _dpSafety]),
+      'dp2': _L([_docCountLine, _dpSafety]),
+      'hj':  _L([_officeLine, _docCountLine, _carryLine])
     } : {
-      'yj': `→ 키오스크 단말기는 1층 우측 현관 안쪽에 있습니다.${_docCountMsg}\n→ 서류 꼭 지참하셔야 합니다.`,
-      'dp1': `→ 키오스크 단말기는 2층 중앙 현관 안쪽에 있습니다.${_docCountMsg}\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
-      'dp2': `→ 키오스크 단말기는 B동 1층 우측 현관 내부에 있습니다.${_docCountMsg}\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
+      'yj':  _L(['→ 키오스크 단말기는 1층 우측 현관 안쪽에 있습니다.', _docCountLine, _carryLine]),
+      'dp1': _L(['→ 키오스크 단말기는 2층 중앙 현관 안쪽에 있습니다.', _docCountLine, _dpSafety]),
+      'dp2': _L(['→ 키오스크 단말기는 B동 1층 우측 현관 내부에 있습니다.', _docCountLine, _dpSafety]),
       // HJ로지스는 여주센터 상차 → 여주와 같은 안내 (키가 없어 안내문이 통째로 빠져 있었음)
-      'hj': `→ 키오스크 단말기는 1층 우측 현관 안쪽에 있습니다.${_docCountMsg}\n→ 서류 꼭 지참하셔야 합니다.`
+      'hj':  _L(['→ 키오스크 단말기는 1층 우측 현관 안쪽에 있습니다.', _docCountLine, _carryLine])
     };
     
     const hasStops = liquorStops.length > 0;
