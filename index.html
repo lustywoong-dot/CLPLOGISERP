@@ -7895,6 +7895,14 @@ function autoDetectCenter() {
 
 // 센터별 건물 층수 — 덕평1·2는 1~3층, 여주(HJ 포함)는 1~4층
 const _LQ_CENTER_FLOORS = { dp1: 3, dp2: 3, yj: 4, hj: 4 };
+// 층 앞에 붙는 동(棟) 표기 — 덕평2센터는 B동 건물
+const _LQ_CENTER_FLOOR_PREFIX = { dp2: 'B동 ' };
+
+// 문자·드롭다운에 쓸 층 표기 만들기 ('3' + dp2 → 'B동 3층')
+function lqFloorLabel(center, floor) {
+  if(!floor) return '';
+  return (_LQ_CENTER_FLOOR_PREFIX[center] || '') + floor + '층';
+}
 
 // 상차 층 드롭다운 옵션을 현재 센터에 맞춰 다시 채움
 // 이전 선택값이 새 센터에도 있는 층이면 유지 (여주 3층 → 덕평 전환 시 3층 그대로)
@@ -7905,7 +7913,8 @@ function refreshLqFloorOptions() {
   const max = _LQ_CENTER_FLOORS[center] || 3;
   const prev = sel.value;
   let html = '<option value="">-</option>';
-  for(let f = 1; f <= max; f++) html += '<option value="' + f + '">' + f + '층</option>';
+  // 값은 숫자만 저장하고 보이는 라벨에만 동 표기를 붙임 (저장된 옛 데이터와 호환)
+  for(let f = 1; f <= max; f++) html += '<option value="' + f + '">' + lqFloorLabel(center, f) + '</option>';
   sel.innerHTML = html;
   sel.value = (prev && Number(prev) <= max) ? String(prev) : '';
 }
@@ -10837,14 +10846,15 @@ function generateSMS() {
     // 상차 층 (직원이 선택). 사무실 수령이면 체크 시 3층으로 자동 지정되지만,
     // 층을 비워둔 채 저장된 옛 건도 있으므로 안내문은 3층으로 폴백.
     const _lqFloor = document.getElementById('lqFloor')?.value || '';
-    const _docFloor = _lqFloor || '3';
+    const _docFloor = lqFloorLabel(center, _lqFloor || '3');   // 덕평2는 'B동 3층'
+    const _floorLabel = lqFloorLabel(center, _lqFloor);        // 미선택이면 빈 문자열
 
     // 센터별 키오스크 안내 vs 사무실 수령 안내
     const kioskMsg = isOfficeDoc ? {
-      'yj': `→ 서류 ${_docFloor}층 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 서류 꼭 지참하셔야 합니다.`,
-      'dp1': `→ 서류 ${_docFloor}층 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
-      'dp2': `→ 서류 ${_docFloor}층 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
-      'hj': `→ 서류 ${_docFloor}층 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 서류 꼭 지참하셔야 합니다.`
+      'yj': `→ 서류 ${_docFloor} 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 서류 꼭 지참하셔야 합니다.`,
+      'dp1': `→ 서류 ${_docFloor} 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
+      'dp2': `→ 서류 ${_docFloor} 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
+      'hj': `→ 서류 ${_docFloor} 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 서류 꼭 지참하셔야 합니다.`
     } : {
       'yj': '→ 키오스크 단말기는 1층 우측 현관 안쪽에 있습니다.\n→ 서류 꼭 지참하셔야 합니다.',
       'dp1': '→ 키오스크 단말기는 2층 중앙 현관 안쪽에 있습니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행',
@@ -10866,8 +10876,8 @@ function generateSMS() {
       _liquorPickupBlock = pickup || '-';
       // 선택한 상차 층을 문자에만 덧붙임 (덕평1·2 1~3층 / 여주 1~4층 건물이라 기사 혼선 방지)
       // 저장되는 상차지(pickup) 값은 건드리지 않음. 이미 층 표기가 있으면 그대로 둬 중복 방지.
-      if(_lqFloor) {
-        _liquorPickupBlock = _liquorPickupBlock.replace(/\(([^)]*센터)\)(\s*)$/, '($1 ' + _lqFloor + '층)');
+      if(_floorLabel) {
+        _liquorPickupBlock = _liquorPickupBlock.replace(/\(([^)]*센터)\)(\s*)$/, '($1 ' + _floorLabel + ')');
       }
     }
 
