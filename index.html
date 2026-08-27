@@ -795,7 +795,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
 
       <!-- 주류모드: 센터 선택 -->
       <div id="lqCenterRow" style="display:none;margin-bottom:6px">
-        <div class="form-grid" style="grid-template-columns:150px 1fr">
+        <div class="form-grid" style="grid-template-columns:150px 90px 1fr">
           <div class="form-group">
             <label>🍷 상차 센터</label>
             <select id="lqCenter" onchange="onCenterChange()" style="font-size:12px;border-color:#7c3aed;font-weight:600">
@@ -803,6 +803,12 @@ body.hide-cost-col .col-sensitive { display: none !important; }
               <option value="dp2">KCTC덕평2센터</option>
               <option value="yj">KCTC여주센터</option>
               <option value="hj">HJ로지스 (여주센터 상차)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>🏢 상차 층</label>
+            <select id="lqFloor" onchange="onCoreFieldChange()" style="font-size:12px;border-color:#7c3aed;font-weight:600">
+              <option value="">-</option>
             </select>
           </div>
           <div style="font-size:11px;color:#7c3aed;line-height:28px;padding-top:18px">※ 배차코드 ECLP→여주 / ACLP→덕평 / HJ-→HJ로지스 자동 감지</div>
@@ -902,7 +908,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       <!-- 서류 수령 방식 (락앤락/주류 공통) -->
       <div id="stdDocRow" style="margin-top:5px;display:flex;align-items:center;gap:8px">
         <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;padding:3px 10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px" title="체크하면 SMS에 '사무실에서 서류 수령' 안내가 표시됩니다">
-          <input type="checkbox" id="lqOfficeDoc" onchange="onCoreFieldChange()" style="width:14px;height:14px">
+          <input type="checkbox" id="lqOfficeDoc" onchange="onOfficeDocChange()" style="width:14px;height:14px">
           <span style="font-weight:600;color:#374151">📋 사무실 서류수령</span>
           <span style="font-size:10px;color:var(--text-light)">(미체크 시 키오스크 안내)</span>
         </label>
@@ -3927,6 +3933,13 @@ function loadRecord(id) {
   // (이전 코드: 주류 블록 안에 있어 락앤락 row 로드 시 체크박스가 이전 상태로 남아 SMS 임의 변동 버그)
   const _officeDocEl = document.getElementById('lqOfficeDoc');
   if(_officeDocEl) _officeDocEl.checked = !!r.lqOfficeDoc;
+
+  // 상차 층 복원 — 센터가 먼저 세팅된 뒤라야 옵션 개수(덕평3·여주4)가 맞으므로 옵션 재생성 후 대입
+  const _floorEl = document.getElementById('lqFloor');
+  if(_floorEl) {
+    refreshLqFloorOptions();
+    _floorEl.value = String(r.lqFloor || '');
+  }
 
   // 혼적(M짐) 정보 복원 — 수정 모드에서 단가 손상 방지
   const _mixedCheck = document.getElementById('mixedCargoCheck');
@@ -7352,6 +7365,8 @@ function resetForm() {
   document.getElementById('lqWaypointFee').value = '0';
   const _odEl = document.getElementById('lqOfficeDoc');
   if(_odEl) _odEl.checked = false;
+  const _flEl = document.getElementById('lqFloor');
+  if(_flEl) _flEl.value = '';
   document.getElementById('memo').value = '';
   document.getElementById('deliveryDetailAddr').value = '';
   document.getElementById('deliveryContact').value = '';
@@ -7606,6 +7621,7 @@ function saveCurrentModeData() {
   data._liquorStops = JSON.parse(JSON.stringify(liquorStops));
   data._lqExtraVehicles = JSON.parse(JSON.stringify(lqExtraVehicles));
   data._lqVehicleCount = parseInt(document.getElementById('lqVehicleCount')?.value) || 1;
+  data._lqFloor = document.getElementById('lqFloor')?.value || '';
   data._smsContent = document.getElementById('smsContent').value;
   data._smsManual = smsManualMode;
   // 오더 붙여넣기 상태 저장
@@ -7631,6 +7647,9 @@ function restoreModeData(mode) {
     lqExtraVehicles = data._lqExtraVehicles || [];
     const _vc = document.getElementById('lqVehicleCount');
     if(_vc) _vc.value = data._lqVehicleCount || 1;
+    // 상차 층 — 센터에 맞춰 옵션을 만든 뒤 값 복원
+    const _fl = document.getElementById('lqFloor');
+    if(_fl) { refreshLqFloorOptions(); _fl.value = String(data._lqFloor || ''); }
     renderLiquorStops();
     renderLqExtraVehicles();
     calcLiquorTotal();
@@ -7706,6 +7725,8 @@ function setDispatchMode(mode) {
   });
   // 센터 선택 + 경유지 영역 표시/숨김
   document.getElementById('lqCenterRow').style.display = mode === 'liquor' ? '' : 'none';
+  // 상차 층 목록은 센터에 따라 달라지므로 주류 모드 진입 때 채워둠 (선택값은 유지)
+  if(mode === 'liquor') refreshLqFloorOptions();
   document.getElementById('lqWaypointSection').style.display = mode === 'liquor' ? '' : 'none';
   const _lqVehSec = document.getElementById('lqVehicleSection');
   if(_lqVehSec) _lqVehSec.style.display = mode === 'liquor' ? '' : 'none';
@@ -7872,9 +7893,37 @@ function autoDetectCenter() {
   }
 }
 
+// 센터별 건물 층수 — 덕평1·2는 1~3층, 여주(HJ 포함)는 1~4층
+const _LQ_CENTER_FLOORS = { dp1: 3, dp2: 3, yj: 4, hj: 4 };
+
+// 상차 층 드롭다운 옵션을 현재 센터에 맞춰 다시 채움
+// 이전 선택값이 새 센터에도 있는 층이면 유지 (여주 3층 → 덕평 전환 시 3층 그대로)
+function refreshLqFloorOptions() {
+  const sel = document.getElementById('lqFloor');
+  if(!sel) return;
+  const center = document.getElementById('lqCenter')?.value || '';
+  const max = _LQ_CENTER_FLOORS[center] || 3;
+  const prev = sel.value;
+  let html = '<option value="">-</option>';
+  for(let f = 1; f <= max; f++) html += '<option value="' + f + '">' + f + '층</option>';
+  sel.innerHTML = html;
+  sel.value = (prev && Number(prev) <= max) ? String(prev) : '';
+}
+
+// 사무실 서류수령 체크 → 서류는 3층에서 받으므로 상차 층을 3층으로 자동 지정
+function onOfficeDocChange() {
+  const checked = document.getElementById('lqOfficeDoc')?.checked;
+  if(checked) {
+    const sel = document.getElementById('lqFloor');
+    if(sel && sel.querySelector('option[value="3"]')) sel.value = '3';
+  }
+  onCoreFieldChange();
+}
+
 function onCenterChange() {
   if(dispatchMode !== 'liquor') return;
   const center = document.getElementById('lqCenter').value;
+  refreshLqFloorOptions();
   const centerPickup = {
     'dp1': '경기 이천시 마장면 서이천로 91 (KCTC덕평1센터)',
     'dp2': '경기 이천시 마장면 덕평로661번길87 (KCTC덕평2센터)',
@@ -10785,13 +10834,17 @@ function generateSMS() {
     
     // 서류 수령 방식 체크
     const isOfficeDoc = document.getElementById('lqOfficeDoc')?.checked;
+    // 상차 층 (직원이 선택). 사무실 수령이면 체크 시 3층으로 자동 지정되지만,
+    // 층을 비워둔 채 저장된 옛 건도 있으므로 안내문은 3층으로 폴백.
+    const _lqFloor = document.getElementById('lqFloor')?.value || '';
+    const _docFloor = _lqFloor || '3';
 
     // 센터별 키오스크 안내 vs 사무실 수령 안내
     const kioskMsg = isOfficeDoc ? {
-      'yj': '→ 서류 3층 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 서류 꼭 지참하셔야 합니다.',
-      'dp1': '→ 서류 3층 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행',
-      'dp2': '→ 서류 3층 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행',
-      'hj': '→ 서류 3층 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 서류 꼭 지참하셔야 합니다.'
+      'yj': `→ 서류 ${_docFloor}층 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 서류 꼭 지참하셔야 합니다.`,
+      'dp1': `→ 서류 ${_docFloor}층 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
+      'dp2': `→ 서류 ${_docFloor}층 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
+      'hj': `→ 서류 ${_docFloor}층 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 서류 꼭 지참하셔야 합니다.`
     } : {
       'yj': '→ 키오스크 단말기는 1층 우측 현관 안쪽에 있습니다.\n→ 서류 꼭 지참하셔야 합니다.',
       'dp1': '→ 키오스크 단말기는 2층 중앙 현관 안쪽에 있습니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행',
@@ -10811,11 +10864,10 @@ function generateSMS() {
       _liquorPickupBlock = _ret;
     } else {
       _liquorPickupBlock = pickup || '-';
-      // 사무실 수령이면 서류 받는 층을 상차지에 표기 (덕평1·2 1~3층 / 여주 1~4층 건물이라 기사 혼선 방지)
-      // 문자에만 덧붙이고 저장되는 상차지(pickup) 값은 건드리지 않음
-      // 이미 '층' 표기가 있으면 그대로 둠 → 중복 방지
-      if(isOfficeDoc) {
-        _liquorPickupBlock = _liquorPickupBlock.replace(/\(([^)]*센터)\)(\s*)$/, '($1 3층)');
+      // 선택한 상차 층을 문자에만 덧붙임 (덕평1·2 1~3층 / 여주 1~4층 건물이라 기사 혼선 방지)
+      // 저장되는 상차지(pickup) 값은 건드리지 않음. 이미 층 표기가 있으면 그대로 둬 중복 방지.
+      if(_lqFloor) {
+        _liquorPickupBlock = _liquorPickupBlock.replace(/\(([^)]*센터)\)(\s*)$/, '($1 ' + _lqFloor + '층)');
       }
     }
 
@@ -18474,7 +18526,7 @@ function _calcSyncHash(d) {
 }
 
 // 시트 동기화 시 로컬 전용 필드 보존 (시트에 없는 필드를 기존 로컬 데이터에서 병합)
-const _LOCAL_ONLY_FIELDS = ['lqWeight','lqCenter','lqOfficeDoc','lqWaypointFee','liquorStops','cargoWeight','isMixed','mixedMjimIdx','mixedMjimSize','hapjimGroup','stickyMemo','isReturn','customRate','refNo'];
+const _LOCAL_ONLY_FIELDS = ['lqWeight','lqCenter','lqFloor','lqOfficeDoc','lqWaypointFee','liquorStops','cargoWeight','isMixed','mixedMjimIdx','mixedMjimSize','hapjimGroup','stickyMemo','isReturn','customRate','refNo'];
 function _mergeLocalFields(sheetData) {
   const localMap = {};
   dispatchLog.forEach(r => { if(r.id) localMap[r.id] = r; });
@@ -18737,6 +18789,7 @@ async function saveDispatch(closeAfter) {
           lqWeight: dispatchMode === 'liquor' ? (document.getElementById('lqWeight').value || '') : '',
           lqCenter: dispatchMode === 'liquor' ? (document.getElementById('lqCenter').value || '') : '',
           lqOfficeDoc: !!document.getElementById('lqOfficeDoc')?.checked,
+          lqFloor: dispatchMode === 'liquor' ? (document.getElementById('lqFloor')?.value || '') : '',
           lqWaypointFee: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqWaypointFee')?.value) || 0) : 0,
           liquorStops: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(liquorStops)) : undefined,
           // 합짐은 혼적 옵션 사용 안 함 (코드별 금액 직접 입력)
@@ -19050,6 +19103,7 @@ async function saveDispatch(closeAfter) {
       lqWeight: dispatchMode === 'liquor' ? (document.getElementById('lqWeight').value || '') : '',
       lqCenter: dispatchMode === 'liquor' ? (document.getElementById('lqCenter').value || '') : '',
       lqOfficeDoc: !!document.getElementById('lqOfficeDoc')?.checked,
+      lqFloor: dispatchMode === 'liquor' ? (document.getElementById('lqFloor')?.value || '') : '',
       lqWaypointFee: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqWaypointFee')?.value) || 0) : 0,
       liquorStops: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(liquorStops)) : undefined,
       lqExtraVehicles: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(lqExtraVehicles)) : undefined,
