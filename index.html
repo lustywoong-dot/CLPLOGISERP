@@ -912,6 +912,16 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <span style="font-weight:600;color:#374151">📋 사무실 서류수령</span>
           <span style="font-size:10px;color:var(--text-light)">(미체크 시 키오스크 안내)</span>
         </label>
+        <label style="display:flex;align-items:center;gap:4px;font-size:11px;padding:3px 10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px" title="차량 1대가 코드 여러 개를 배송할 때 — 문자에 '서류 N가지 수령' 안내가 붙습니다">
+          <span style="font-weight:600;color:#374151">📄 서류</span>
+          <select id="lqDocCount" onchange="onCoreFieldChange()" style="font-size:11px;padding:1px 4px;border:1px solid var(--border);border-radius:4px">
+            <option value="1">1가지</option>
+            <option value="2">2가지</option>
+            <option value="3">3가지</option>
+            <option value="4">4가지</option>
+            <option value="5">5가지</option>
+          </select>
+        </label>
       </div>
 
       <!-- 2행: 담당자 -->
@@ -3940,6 +3950,9 @@ function loadRecord(id) {
     refreshLqFloorOptions();
     _floorEl.value = String(r.lqFloor || '');
   }
+  // 서류 매수 복원 (옛 건은 값이 없으므로 1가지)
+  const _dcEl = document.getElementById('lqDocCount');
+  if(_dcEl) _dcEl.value = String(r.lqDocCount || 1);
 
   // 혼적(M짐) 정보 복원 — 수정 모드에서 단가 손상 방지
   const _mixedCheck = document.getElementById('mixedCargoCheck');
@@ -7367,6 +7380,8 @@ function resetForm() {
   if(_odEl) _odEl.checked = false;
   const _flEl = document.getElementById('lqFloor');
   if(_flEl) _flEl.value = '';
+  const _dcResetEl = document.getElementById('lqDocCount');
+  if(_dcResetEl) _dcResetEl.value = '1';
   document.getElementById('memo').value = '';
   document.getElementById('deliveryDetailAddr').value = '';
   document.getElementById('deliveryContact').value = '';
@@ -7622,6 +7637,7 @@ function saveCurrentModeData() {
   data._lqExtraVehicles = JSON.parse(JSON.stringify(lqExtraVehicles));
   data._lqVehicleCount = parseInt(document.getElementById('lqVehicleCount')?.value) || 1;
   data._lqFloor = document.getElementById('lqFloor')?.value || '';
+  data._lqDocCount = document.getElementById('lqDocCount')?.value || '1';
   data._smsContent = document.getElementById('smsContent').value;
   data._smsManual = smsManualMode;
   // 오더 붙여넣기 상태 저장
@@ -7650,6 +7666,8 @@ function restoreModeData(mode) {
     // 상차 층 — 센터에 맞춰 옵션을 만든 뒤 값 복원
     const _fl = document.getElementById('lqFloor');
     if(_fl) { refreshLqFloorOptions(); _fl.value = String(data._lqFloor || ''); }
+    const _dc = document.getElementById('lqDocCount');
+    if(_dc) _dc.value = String(data._lqDocCount || '1');
     renderLiquorStops();
     renderLqExtraVehicles();
     calcLiquorTotal();
@@ -7919,13 +7937,9 @@ function refreshLqFloorOptions() {
   sel.value = (prev && Number(prev) <= max) ? String(prev) : '';
 }
 
-// 사무실 서류수령 체크 → 서류는 3층에서 받으므로 상차 층을 3층으로 자동 지정
+// 사무실 서류수령 체크 시 안내는 '선택한 상차 층의 사무실' 기준으로 나감.
+// (층을 3층으로 강제하지 않음 — 층마다 사무실이 있어 직원이 고른 층을 그대로 따름)
 function onOfficeDocChange() {
-  const checked = document.getElementById('lqOfficeDoc')?.checked;
-  if(checked) {
-    const sel = document.getElementById('lqFloor');
-    if(sel && sel.querySelector('option[value="3"]')) sel.value = '3';
-  }
   onCoreFieldChange();
 }
 
@@ -10846,21 +10860,25 @@ function generateSMS() {
     // 상차 층 (직원이 선택). 사무실 수령이면 체크 시 3층으로 자동 지정되지만,
     // 층을 비워둔 채 저장된 옛 건도 있으므로 안내문은 3층으로 폴백.
     const _lqFloor = document.getElementById('lqFloor')?.value || '';
-    const _docFloor = lqFloorLabel(center, _lqFloor || '3');   // 덕평2는 'B동 3층'
-    const _floorLabel = lqFloorLabel(center, _lqFloor);        // 미선택이면 빈 문자열
+    const _floorLabel = lqFloorLabel(center, _lqFloor);        // 미선택이면 빈 문자열 (덕평2는 'B동 3층')
+    // 선택한 층의 사무실로 안내. 층을 안 고른 경우엔 층 없이 '사무실에서 수령'
+    const _officeWhere = _floorLabel ? (_floorLabel + ' 사무실') : '사무실';
+    // 서류 매수 — 차량 1대가 코드 여러 개를 배송할 때만(2가지 이상) 안내 줄 추가
+    const _docCount = parseInt(document.getElementById('lqDocCount')?.value) || 1;
+    const _docCountMsg = _docCount > 1 ? `\n→ 서류 ${_docCount}가지 수령하셔야 합니다.` : '';
 
     // 센터별 키오스크 안내 vs 사무실 수령 안내
     const kioskMsg = isOfficeDoc ? {
-      'yj': `→ 서류 ${_docFloor} 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 서류 꼭 지참하셔야 합니다.`,
-      'dp1': `→ 서류 ${_docFloor} 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
-      'dp2': `→ 서류 ${_docFloor} 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
-      'hj': `→ 서류 ${_docFloor} 사무실에서 수령하시면 됩니다.\n→ 서류 2가지 수령하셔야 합니다.\n→ 서류 꼭 지참하셔야 합니다.`
+      'yj': `→ 서류 ${_officeWhere}에서 수령하시면 됩니다.${_docCountMsg}\n→ 서류 꼭 지참하셔야 합니다.`,
+      'dp1': `→ 서류 ${_officeWhere}에서 수령하시면 됩니다.${_docCountMsg}\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
+      'dp2': `→ 서류 ${_officeWhere}에서 수령하시면 됩니다.${_docCountMsg}\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
+      'hj': `→ 서류 ${_officeWhere}에서 수령하시면 됩니다.${_docCountMsg}\n→ 서류 꼭 지참하셔야 합니다.`
     } : {
-      'yj': '→ 키오스크 단말기는 1층 우측 현관 안쪽에 있습니다.\n→ 서류 꼭 지참하셔야 합니다.',
-      'dp1': '→ 키오스크 단말기는 2층 중앙 현관 안쪽에 있습니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행',
-      'dp2': '→ 키오스크 단말기는 B동 1층 우측 현관 내부에 있습니다.\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행',
+      'yj': `→ 키오스크 단말기는 1층 우측 현관 안쪽에 있습니다.${_docCountMsg}\n→ 서류 꼭 지참하셔야 합니다.`,
+      'dp1': `→ 키오스크 단말기는 2층 중앙 현관 안쪽에 있습니다.${_docCountMsg}\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
+      'dp2': `→ 키오스크 단말기는 B동 1층 우측 현관 내부에 있습니다.${_docCountMsg}\n→ 안전화 착용 필수/상차 전 대기실 또는 차량 내에서 대기\n→ 입차 순번에 따라 상차 진행`,
       // HJ로지스는 여주센터 상차 → 여주와 같은 안내 (키가 없어 안내문이 통째로 빠져 있었음)
-      'hj': '→ 키오스크 단말기는 1층 우측 현관 안쪽에 있습니다.\n→ 서류 꼭 지참하셔야 합니다.'
+      'hj': `→ 키오스크 단말기는 1층 우측 현관 안쪽에 있습니다.${_docCountMsg}\n→ 서류 꼭 지참하셔야 합니다.`
     };
     
     const hasStops = liquorStops.length > 0;
@@ -18536,7 +18554,7 @@ function _calcSyncHash(d) {
 }
 
 // 시트 동기화 시 로컬 전용 필드 보존 (시트에 없는 필드를 기존 로컬 데이터에서 병합)
-const _LOCAL_ONLY_FIELDS = ['lqWeight','lqCenter','lqFloor','lqOfficeDoc','lqWaypointFee','liquorStops','cargoWeight','isMixed','mixedMjimIdx','mixedMjimSize','hapjimGroup','stickyMemo','isReturn','customRate','refNo'];
+const _LOCAL_ONLY_FIELDS = ['lqWeight','lqCenter','lqFloor','lqDocCount','lqOfficeDoc','lqWaypointFee','liquorStops','cargoWeight','isMixed','mixedMjimIdx','mixedMjimSize','hapjimGroup','stickyMemo','isReturn','customRate','refNo'];
 function _mergeLocalFields(sheetData) {
   const localMap = {};
   dispatchLog.forEach(r => { if(r.id) localMap[r.id] = r; });
@@ -18800,6 +18818,7 @@ async function saveDispatch(closeAfter) {
           lqCenter: dispatchMode === 'liquor' ? (document.getElementById('lqCenter').value || '') : '',
           lqOfficeDoc: !!document.getElementById('lqOfficeDoc')?.checked,
           lqFloor: dispatchMode === 'liquor' ? (document.getElementById('lqFloor')?.value || '') : '',
+          lqDocCount: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqDocCount')?.value) || 1) : 1,
           lqWaypointFee: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqWaypointFee')?.value) || 0) : 0,
           liquorStops: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(liquorStops)) : undefined,
           // 합짐은 혼적 옵션 사용 안 함 (코드별 금액 직접 입력)
@@ -19114,6 +19133,7 @@ async function saveDispatch(closeAfter) {
       lqCenter: dispatchMode === 'liquor' ? (document.getElementById('lqCenter').value || '') : '',
       lqOfficeDoc: !!document.getElementById('lqOfficeDoc')?.checked,
       lqFloor: dispatchMode === 'liquor' ? (document.getElementById('lqFloor')?.value || '') : '',
+      lqDocCount: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqDocCount')?.value) || 1) : 1,
       lqWaypointFee: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqWaypointFee')?.value) || 0) : 0,
       liquorStops: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(liquorStops)) : undefined,
       lqExtraVehicles: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(lqExtraVehicles)) : undefined,
