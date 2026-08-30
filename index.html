@@ -906,13 +906,13 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       </div>
 
       <!-- 서류 수령 방식 (락앤락/주류 공통) -->
-      <div id="stdDocRow" style="margin-top:5px;display:flex;align-items:center;gap:8px">
-        <label style="display:flex;align-items:center;gap:4px;font-size:11px;cursor:pointer;padding:3px 10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px" title="체크하면 SMS에 '사무실에서 서류 수령' 안내가 표시됩니다">
+      <div id="stdDocRow" style="margin-top:5px;display:flex;flex-wrap:nowrap;align-items:center;gap:8px">
+        <label style="display:inline-flex;flex:0 0 auto;white-space:nowrap;align-items:center;gap:4px;font-size:11px;cursor:pointer;padding:3px 10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px" title="체크하면 SMS에 '사무실에서 서류 수령' 안내가 표시됩니다 (미체크 시 키오스크 안내)">
           <input type="checkbox" id="lqOfficeDoc" onchange="onOfficeDocChange()" style="width:14px;height:14px">
           <span style="font-weight:600;color:#374151">📋 사무실 서류수령</span>
-          <span style="font-size:10px;color:var(--text-light)">(미체크 시 키오스크 안내)</span>
+          <span style="font-size:10px;color:var(--text-light)">(미체크=키오스크)</span>
         </label>
-        <label style="display:flex;align-items:center;gap:4px;font-size:11px;padding:3px 10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px" title="차량 1대가 코드 여러 개를 배송할 때 — 문자에 '서류 N가지 수령' 안내가 붙습니다">
+        <label id="lqDocCountWrap" style="display:inline-flex;flex:0 0 auto;white-space:nowrap;align-items:center;gap:4px;font-size:11px;padding:3px 10px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px" title="차량 1대가 코드 여러 개를 배송할 때 — 문자에 '서류 N가지 수령' 안내가 붙습니다">
           <span style="font-weight:600;color:#374151">📄 서류</span>
           <select id="lqDocCount" onchange="onCoreFieldChange()" style="font-size:11px;padding:1px 4px;border:1px solid var(--border);border-radius:4px">
             <option value="1">1가지</option>
@@ -7745,6 +7745,10 @@ function setDispatchMode(mode) {
   document.getElementById('lqCenterRow').style.display = mode === 'liquor' ? '' : 'none';
   // 상차 층 목록은 센터에 따라 달라지므로 주류 모드 진입 때 채워둠 (선택값은 유지)
   if(mode === 'liquor') refreshLqFloorOptions();
+  // 서류 매수는 주류 문자에만 반영되므로 다른 모드에선 숨김
+  // (인라인 style로 display를 지정했으므로 복원 시 값을 명시해야 함)
+  const _dcWrap = document.getElementById('lqDocCountWrap');
+  if(_dcWrap) _dcWrap.style.display = mode === 'liquor' ? 'inline-flex' : 'none';
   document.getElementById('lqWaypointSection').style.display = mode === 'liquor' ? '' : 'none';
   const _lqVehSec = document.getElementById('lqVehicleSection');
   if(_lqVehSec) _lqVehSec.style.display = mode === 'liquor' ? '' : 'none';
@@ -7789,7 +7793,9 @@ function setDispatchMode(mode) {
   const isGeneral = mode === 'general';
   document.getElementById('generalFormArea').style.display = isGeneral ? '' : 'none';
   document.getElementById('stdFormRow1').style.display = isGeneral ? 'none' : '';
-  document.getElementById('stdDocRow').style.display = isGeneral ? 'none' : '';
+  // stdDocRow는 인라인 style로 flex를 지정하므로 복원 시 'flex'를 명시해야 함
+  // ('' 로 두면 flex가 지워져 블록이 되고, 안쪽 첫 항목이 폭을 다 차지해 서류칸이 아래줄로 밀림)
+  document.getElementById('stdDocRow').style.display = isGeneral ? 'none' : 'flex';
   document.getElementById('stdFormRow2').style.display = isGeneral ? 'none' : '';
   document.getElementById('stdFormRow5').style.display = isGeneral ? 'none' : '';
   // 일반 모드: 단가 직접입력 자동 활성화
