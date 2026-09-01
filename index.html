@@ -803,6 +803,8 @@ body.hide-cost-col .col-sensitive { display: none !important; }
               <option value="dp2">KCTC덕평2센터</option>
               <option value="yj">KCTC여주센터</option>
               <option value="hj">HJ로지스 (여주센터 상차)</option>
+              <option value="db">KCTC동부센터 (HJ로지스)</option>
+              <option value="etc">기타 · 실비건 (직접입력)</option>
             </select>
           </div>
           <div class="form-group">
@@ -811,7 +813,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
               <option value="">-</option>
             </select>
           </div>
-          <div style="font-size:11px;color:#7c3aed;line-height:28px;padding-top:18px">※ 배차코드 ECLP→여주 / ACLP→덕평 / HJ-→HJ로지스 자동 감지</div>
+          <div style="font-size:11px;color:#7c3aed;line-height:28px;padding-top:18px">※ ECLP→여주 / ACLP→덕평 / HJ-→HJ로지스 / HJD-→동부센터 자동 감지</div>
         </div>
       </div>
       <!-- 일반 모드 전용 폼 (상차지→하차지→거래처 순서) -->
@@ -3546,6 +3548,38 @@ const LIQUOR_RATES_YJ = {
 "횡성-CVS":{"1톤":110000,"2.5톤":136000,"3.5톤":160000,"5톤":174000,"5톤축":212000,"11톤":260000,"18톤":297000},
 };
 
+// 🍷 KCTC 동부센터 권역별·톤수별 요율 (상차: 경기도 광주시 산수로 642-55)
+// 출처: KCTC동부센터운임요율표_20260729.xlsx
+// ※ '경기 광주'(경기도 광주시)와 '광주'(광주광역시)는 서로 다른 권역이므로 주의
+const LIQUOR_RATES_DB = {
+"강릉":{"1톤":190000,"2.5톤":238000,"3.5톤":249000,"5톤":272000,"5톤축":300000,"11톤":351000,"18톤":385000},
+"경기 광주":{"1톤":56000,"2.5톤":79000,"3.5톤":89000,"5톤":112000,"5톤축":130000,"11톤":146000,"18톤":180000},
+"경산":{"1톤":164000,"2.5톤":209000,"3.5톤":232000,"5톤":249000,"5톤축":288000,"11톤":309000,"18톤":355000},
+"공주":{"1톤":107000,"2.5톤":136000,"3.5톤":147000,"5톤":170000,"5톤축":203000,"11톤":226000,"18톤":261000},
+"광주":{"1톤":153000,"2.5톤":238000,"3.5톤":261000,"5톤":311000,"5톤축":316000,"11톤":351000,"18톤":395000},
+"김제":{"1톤":130000,"2.5톤":190000,"3.5톤":224000,"5톤":237000,"5톤축":260000,"11톤":271000,"18톤":358000},
+"나주":{"1톤":177000,"2.5톤":238000,"3.5톤":261000,"5톤":296000,"5톤축":316000,"11톤":339000,"18톤":427000},
+"대전,신탄진":{"1톤":114000,"2.5톤":136000,"3.5톤":148000,"5톤":168000,"5톤축":185000,"11톤":217000,"18톤":299000},
+"성남":{"1톤":56000,"2.5톤":79000,"3.5톤":89000,"5톤":112000,"5톤축":130000,"11톤":146000,"18톤":180000},
+"세종":{"1톤":107000,"2.5톤":136000,"3.5톤":147000,"5톤":170000,"5톤축":203000,"11톤":226000,"18톤":261000},
+"송파":{"1톤":63000,"2.5톤":79000,"3.5톤":89000,"5톤":112000,"5톤축":135000,"11톤":155000,"18톤":190000},
+"안성":{"1톤":77000,"2.5톤":110000,"3.5톤":121000,"5톤":132000,"5톤축":160000,"11톤":187000,"18톤":220000},
+"양주":{"1톤":112000,"2.5톤":124000,"3.5톤":135000,"5톤":157000,"5톤축":193000,"11톤":215000,"18톤":249000},
+"완주":{"1톤":130000,"2.5톤":190000,"3.5톤":213000,"5톤":213000,"5톤축":249000,"11톤":271000,"18톤":358000},
+"용인":{"1톤":56000,"2.5톤":79000,"3.5톤":89000,"5톤":112000,"5톤축":135000,"11톤":169000,"18톤":204000},
+"원주,문막":{"1톤":107000,"2.5톤":124000,"3.5톤":135000,"5톤":169000,"5톤축":193000,"11톤":212000,"18톤":246000},
+"의왕":{"1톤":67000,"2.5톤":89000,"3.5톤":101000,"5톤":124000,"5톤축":146000,"11톤":180000,"18톤":216000},
+"이천":{"1톤":56000,"2.5톤":79000,"3.5톤":89000,"5톤":112000,"5톤축":135000,"11톤":180000,"18톤":216000},
+"익산":{"1톤":130000,"2.5톤":190000,"3.5톤":213000,"5톤":213000,"5톤축":249000,"11톤":271000,"18톤":358000},
+"장성":{"1톤":177000,"2.5톤":238000,"3.5톤":249000,"5톤":311000,"5톤축":316000,"11톤":339000,"18톤":427000},
+"청주":{"1톤":104000,"2.5톤":132000,"3.5톤":141000,"5톤":162000,"5톤축":196000,"11톤":219000,"18톤":255000},
+"칠곡":{"1톤":157000,"2.5톤":202000,"3.5톤":215000,"5톤":238000,"5톤축":271000,"11톤":292000,"18톤":338000},
+"평택":{"1톤":77000,"2.5톤":110000,"3.5톤":121000,"5톤":132000,"5톤축":160000,"11톤":187000,"18톤":220000},
+"포항":{"1톤":202000,"2.5톤":274000,"3.5톤":287000,"5톤":311000,"5톤축":335000,"11톤":375000,"18톤":421000},
+"화성":{"1톤":88000,"2.5톤":121000,"3.5톤":132000,"5톤":154000,"5톤축":171000,"11톤":198000,"18톤":231000},
+"횡성":{"1톤":112000,"2.5톤":130000,"3.5톤":142000,"5톤":175000,"5톤축":198000,"11톤":218000,"18톤":252000}
+};
+
 // ─── 권역 별칭 ─────────────────────────────────────────────
 // 덕평 주류 단가표는 '원주,문막' '대전,신탄진'처럼 여러 지명을 한 키에 묶어둠.
 // 직원이 '원주'만 입력하면 키를 못 찾아 "해당 권역/차량의 단가가 없습니다"가 떴음.
@@ -3567,6 +3601,7 @@ function _addRegionAliases(table) {
 }
 _addRegionAliases(LIQUOR_RATES_DP);
 _addRegionAliases(LIQUOR_RATES_YJ);
+_addRegionAliases(LIQUOR_RATES_DB);
 _addRegionAliases(RATES);
 
 // 주류 경유비 (동일권역/타권역)
@@ -3635,7 +3670,8 @@ function getDispatchClient(code) {
   if(/^P[\d_]/i.test(checkCode)) return '락앤락';
   if(checkCode.startsWith('ECLP')) return 'KCTC여주';
   if(checkCode.startsWith('ACLP')) return 'KCTC덕평';
-  if(checkCode.startsWith('HJ')) return 'HJ로지스';   // 여주센터 도급사 직거래 (HJ-YYYYMMDD-NN)
+  // HJ-YYYYMMDD-NN(여주센터·실비건) / HJD-YYYYMMDD-NN(동부센터) — 청구처는 동일하게 HJ로지스
+  if(checkCode.startsWith('HJ')) return 'HJ로지스';
   if(checkCode.startsWith('CLP')) return '씨엘피';
   if(checkCode.startsWith('GN')) return '기타';
   return '기타';
@@ -3902,9 +3938,14 @@ function loadRecord(id) {
   document.getElementById('cargoWeight').value = r.cargoWeight || '';
   if(dispatchMode === 'liquor') {
     // lqCenter 필드가 있으면 그대로 복원, 없으면 상차지 주소 → 코드 순서로 감지
-    if(String(r.code || '').toUpperCase().startsWith('HJ')) {
+    const _codeUp = String(r.code || '').toUpperCase();
+    if(_codeUp.startsWith('HJD')) {
+      // HJD = 동부센터 (HJ 판정보다 먼저)
+      document.getElementById('lqCenter').value = 'db';
+    } else if(_codeUp.startsWith('HJ')) {
       // HJ 코드는 상차지가 여주센터와 같아 주소로는 구분 불가 → 코드 우선 판정
-      document.getElementById('lqCenter').value = 'hj';
+      // 단 저장된 lqCenter가 실비건(etc)이면 그대로 존중 (상차지가 센터가 아님)
+      document.getElementById('lqCenter').value = (r.lqCenter === 'etc') ? 'etc' : 'hj';
     } else if(r.lqCenter) {
       document.getElementById('lqCenter').value = r.lqCenter;
     } else {
@@ -6899,6 +6940,7 @@ const RATE_CLIENTS = [
   { id: 'locknlock', name: '🔒 락앤락 (부발)', table: 'RATES', tons: ['다마스','라보','1톤','2.5톤','3.5톤','5톤','5톤축','11톤'], info: '적용일: 2024-04-26 | 출발: 부발 Lock&Lock | 차량: 다마스~11톤 | 단위: 원' },
   { id: 'liquor_dp', name: '🍷 주류 덕평센터', table: 'LIQUOR_RATES_DP', tons: ['1톤','2.5톤','3.5톤','5톤','5톤축','11톤','18톤'], info: '적용일: 2024-11-04 | 출발: KCTC 덕평1/2센터 | 차량: 1톤~18톤 | 단위: 원' },
   { id: 'liquor_yj', name: '🍷 주류 여주센터', table: 'LIQUOR_RATES_YJ', tons: ['1톤','2.5톤','3.5톤','5톤','5톤축','11톤','18톤'], info: '적용일: 2024-11-04 | 출발: KCTC 여주센터 | 차량: 1톤~18톤 | 단위: 원\n경유비: 동일권역 1~3만 / 타권역 1.5~4만 | 작업비(50박스↑): 2~4만 | 대기료: 2시간 초과 시 2만/시간' },
+  { id: 'liquor_db', name: '🚚 주류 동부센터', table: 'LIQUOR_RATES_DB', tons: ['1톤','2.5톤','3.5톤','5톤','5톤축','11톤','18톤'], info: '적용일: 2026-07-29 | 출발: KCTC 동부센터 (경기도 광주시 산수로 642-55) | 차량: 1톤~18톤 | 단위: 원\n※ 배차코드 HJD- 사용 | \'경기 광주\'(경기도 광주시)와 \'광주\'(광주광역시)는 다른 권역입니다' },
 ];
 let activeRateClient = 'locknlock';
 
@@ -6921,7 +6963,7 @@ function setRateClient(id) {
 function getRateTableData() {
   const client = RATE_CLIENTS.find(c => c.id === activeRateClient);
   if(!client) return { data: {}, tons: [], info: '' };
-  const tableMap = { 'RATES': RATES, 'LIQUOR_RATES_DP': LIQUOR_RATES_DP, 'LIQUOR_RATES_YJ': LIQUOR_RATES_YJ };
+  const tableMap = { 'RATES': RATES, 'LIQUOR_RATES_DP': LIQUOR_RATES_DP, 'LIQUOR_RATES_YJ': LIQUOR_RATES_YJ, 'LIQUOR_RATES_DB': LIQUOR_RATES_DB };
   return { data: tableMap[client.table] || {}, tons: client.tons, info: client.info };
 }
 
@@ -7914,17 +7956,23 @@ function autoDetectCenter() {
       lqCenterEl.value = 'dp1';
       onCenterChange();
     }
+  } else if(code.startsWith('HJD')) {
+    // HJD-는 동부센터 상차 (HJ 판정보다 먼저 와야 함)
+    if(currentCenter !== 'db') {
+      lqCenterEl.value = 'db';
+      onCenterChange();
+    }
   } else if(code.startsWith('HJ')) {
-    // HJ-로 시작하면 무조건 HJ로지스 (상차지는 여주센터)
-    if(currentCenter !== 'hj') {
+    // HJ-로 시작하면 HJ로지스(여주센터 상차). 실비건(etc)으로 쓰던 중이면 그대로 둠
+    if(currentCenter !== 'hj' && currentCenter !== 'etc') {
       lqCenterEl.value = 'hj';
       onCenterChange();
     }
   }
 }
 
-// 센터별 건물 층수 — 덕평1·2는 1~3층, 여주(HJ 포함)는 1~4층
-const _LQ_CENTER_FLOORS = { dp1: 3, dp2: 3, yj: 4, hj: 4 };
+// 센터별 건물 층수 — 덕평1·2는 1~3층, 여주(HJ 포함)는 1~4층, 동부센터는 3층까지(확인 전 기본값)
+const _LQ_CENTER_FLOORS = { dp1: 3, dp2: 3, yj: 4, hj: 4, db: 3 };
 // 층 앞에 붙는 동(棟) 표기 — 덕평2센터는 B동 건물
 const _LQ_CENTER_FLOOR_PREFIX = { dp2: 'B동 ' };
 
@@ -7964,13 +8012,24 @@ function onCenterChange() {
     'dp1': '경기 이천시 마장면 서이천로 91 (KCTC덕평1센터)',
     'dp2': '경기 이천시 마장면 덕평로661번길87 (KCTC덕평2센터)',
     'yj': '경기 여주시 대신면 대신로 894-10 (KCTC여주센터)',
-    'hj': '경기 여주시 대신면 대신로 894-10 (KCTC여주센터)'   // HJ로지스 = 여주센터 상차 (도급사만 다름)
+    'hj': '경기 여주시 대신면 대신로 894-10 (KCTC여주센터)',  // HJ로지스 = 여주센터 상차 (도급사만 다름)
+    'db': '경기도 광주시 산수로 642-55 (KCTC동부센터)'
+    // 'etc'(실비·기타)는 상차지를 직원이 직접 입력하므로 자동 채우지 않음
   };
   if(centerPickup[center]) {
     document.getElementById('pickupAddr').value = centerPickup[center];
+  } else if(center === 'etc') {
+    // 실비·기타: 센터 고정 주소가 없음 → 이전 센터 주소가 남아있으면 비워 직접 입력 유도
+    const _pk = document.getElementById('pickupAddr');
+    if(_pk && /KCTC(여주|덕평1|덕평2|동부)센터/.test(_pk.value)) _pk.value = '';
+    // 요율표가 없으므로 금액 직접입력 모드가 아니면 켜준다
+    if(typeof customRateMode !== 'undefined' && !customRateMode && typeof toggleCustomRate === 'function') {
+      toggleCustomRate();
+      showToast('💡 실비건 — 상차지 주소와 금액을 직접 입력하세요');
+    }
   }
-  // HJ로지스: 배차코드를 우리가 부여 → 비어있으면 자동 채번 (HJ-배차일-일련번호)
-  if(center === 'hj') autoFillHJCode();
+  // HJ로지스·동부센터·실비건: 배차코드를 우리가 부여 → 비어있으면 자동 채번
+  if(center === 'hj' || center === 'db' || center === 'etc') autoFillHJCode();
   // 센터별 배차코드 플레이스홀더 갱신
   updateDispatchCodePlaceholder();
   // 센터-코드 일치 검증
@@ -7986,7 +8045,10 @@ function onCenterChange() {
 // 형식: HJ-YYYYMMDD-NN (예: HJ-20260812-01) — 여주센터 도급사 HJ로지스 직거래 오더용
 // ※ 멀티기사 서브코드(-1,-2)와 구분: HJ 본코드는 항상 3조각, 서브코드가 붙으면 4조각
 // ※ const가 아닌 함수로 둔 이유: extractSortKey 등 파일 앞쪽에서도 호출되므로 호이스팅 필요
-function _hjCodeMatch(s) { return /^HJ-(\d{8})-(\d+)$/i.exec(String(s || '')); }
+// HJD-YYYYMMDD-NN = KCTC 동부센터 상차 (거래처는 동일하게 HJ로지스, 상차지만 다름)
+function _hjCodeMatch(s) { return /^HJD?-(\d{8})-(\d+)$/i.exec(String(s || '')); }
+// 센터별 코드 접두어 — 동부센터만 HJD, 나머지 HJ 계열은 HJ
+function _hjPrefixOf(center) { return center === 'db' ? 'HJD' : 'HJ'; }
 
 // 현재 선택된 상차 센터 값 (요소 없으면 빈 문자열)
 function _lqCenterVal() {
@@ -8008,26 +8070,32 @@ function _hjDateStr() {
   return getTodayStr().replace(/-/g, '');
 }
 
-// 같은 배차일의 기존 HJ 코드를 훑어 다음 일련번호 생성
-function generateHJCode() {
+// 같은 배차일의 기존 코드를 훑어 다음 일련번호 생성
+// 접두어(HJ / HJD)별로 번호를 따로 매김 — 여주 건과 동부 건이 서로 번호를 잡아먹지 않도록
+function generateHJCode(prefix) {
+  const pfx = (prefix || 'HJ').toUpperCase();
   const ymd = _hjDateStr();
   let max = 0;
   dispatchLog.forEach(r => {
-    const m = _hjCodeMatch(_hjBaseCode(String(r.code || '').toUpperCase()));
-    if(m && m[1] === ymd) { const n = parseInt(m[2], 10) || 0; if(n > max) max = n; }
+    const base = _hjBaseCode(String(r.code || '').toUpperCase());
+    const m = _hjCodeMatch(base);
+    if(!m) return;
+    // 같은 접두어인지 확인 (HJ- 와 HJD- 구분)
+    if(base.split('-')[0] !== pfx) return;
+    if(m[1] === ymd) { const n = parseInt(m[2], 10) || 0; if(n > max) max = n; }
   });
-  return 'HJ-' + ymd + '-' + String(max + 1).padStart(2, '0');
+  return pfx + '-' + ymd + '-' + String(max + 1).padStart(2, '0');
 }
 
-// 상차센터가 HJ로지스이고 코드칸이 비어있을 때만 자동 채번
+// 상차센터가 HJ로지스/동부센터이고 코드칸이 비어있을 때만 자동 채번
 // ※ 직원이 입력한 코드는 절대 덮어쓰지 않음
 function autoFillHJCode() {
   if(dispatchMode !== 'liquor') return;
   const centerEl = document.getElementById('lqCenter');
-  if(!centerEl || centerEl.value !== 'hj') return;
+  if(!centerEl || (centerEl.value !== 'hj' && centerEl.value !== 'db' && centerEl.value !== 'etc')) return;
   const input = document.getElementById('dispatchCode');
   if(!input || input.value.trim()) return;
-  input.value = generateHJCode();
+  input.value = generateHJCode(_hjPrefixOf(centerEl.value));
   updateDispatchCodePlaceholder();
   validateLiquorCodeCenter();
   if(typeof checkCodeDuplicate === 'function') checkCodeDuplicate();
@@ -8040,7 +8108,9 @@ function updateDispatchCodePlaceholder() {
   if(!input) return;
   if(dispatchMode === 'liquor') {
     const center = document.getElementById('lqCenter').value;
-    input.placeholder = center === 'hj' ? 'HJ-20260101-01' : center === 'yj' ? 'ECLP00001' : 'ACLP00001';
+    input.placeholder = center === 'db' ? 'HJD-20260101-01'
+      : (center === 'hj' || center === 'etc') ? 'HJ-20260101-01'
+      : center === 'yj' ? 'ECLP00001' : 'ACLP00001';
   } else if(dispatchMode === 'general') {
     input.placeholder = '코드 입력 (자동 GN- 접두사)';
   } else {
@@ -8066,7 +8136,10 @@ function validateLiquorCodeCenter(showAlert) {
   const firstCode = rawCode.includes(',') ? rawCode.split(',')[0].trim() : rawCode;
   const center = document.getElementById('lqCenter').value;
 
-  // ECLP → 여주 (yj), ACLP → 덕평 (dp1/dp2), HJ- → HJ로지스 (hj)
+  // ECLP → 여주(yj) / ACLP → 덕평(dp1·dp2) / HJ- → HJ로지스(hj·etc) / HJD- → 동부센터(db)
+  // ※ HJD 는 HJ 로도 시작하므로 반드시 HJD 를 먼저 판정해야 함
+  const isHJD = firstCode.startsWith('HJD');
+  const isHJ = firstCode.startsWith('HJ') && !isHJD;
   let mismatch = false;
   let msg = '';
   if(firstCode.startsWith('ECLP') && center !== 'yj') {
@@ -8075,16 +8148,22 @@ function validateLiquorCodeCenter(showAlert) {
   } else if(firstCode.startsWith('ACLP') && center !== 'dp1' && center !== 'dp2') {
     mismatch = true;
     msg = '⚠ ACLP 코드는 덕평센터에서만 사용 가능합니다!';
-  } else if(firstCode.startsWith('HJ') && center !== 'hj') {
+  } else if(isHJD && center !== 'db') {
     mismatch = true;
-    msg = '⚠ HJ 코드는 HJ로지스에서만 사용 가능합니다!';
-  } else if(center === 'hj' && !firstCode.startsWith('HJ')) {
+    msg = '⚠ HJD 코드는 KCTC동부센터에서만 사용 가능합니다!';
+  } else if(isHJ && center !== 'hj' && center !== 'etc') {
+    mismatch = true;
+    msg = '⚠ HJ 코드는 HJ로지스 · 실비건에서만 사용 가능합니다!';
+  } else if(center === 'db' && !isHJD) {
+    mismatch = true;
+    msg = '⚠ 동부센터는 HJD- 코드만 사용 가능합니다! (정산 거래처 오분류 방지)';
+  } else if((center === 'hj' || center === 'etc') && !isHJ) {
     // 거래처 분류가 배차코드 기준이라, HJ센터인데 코드가 HJ-가 아니면 정산이 KCTC로 잘못 잡힘
     mismatch = true;
-    msg = '⚠ HJ로지스는 HJ- 코드만 사용 가능합니다! (정산 거래처 오분류 방지)';
-  } else if(center === 'hj' && !_hjCodeMatch(_hjBaseCode(firstCode))) {
+    msg = '⚠ HJ로지스 · 실비건은 HJ- 코드만 사용 가능합니다! (정산 거래처 오분류 방지)';
+  } else if((center === 'hj' || center === 'db' || center === 'etc') && !_hjCodeMatch(_hjBaseCode(firstCode))) {
     mismatch = true;
-    msg = '⚠ HJ 코드 형식이 올바르지 않습니다 (예: HJ-20260101-01)';
+    msg = '⚠ 코드 형식이 올바르지 않습니다 (예: ' + _hjPrefixOf(center) + '-20260101-01)';
   }
 
   if(mismatch) {
@@ -8435,7 +8514,9 @@ const _LQ_CENTER_ADDR = {
   dp1: '경기 이천시 마장면 서이천로 91',
   dp2: '경기 이천시 마장면 덕평로661번길 87',
   yj: '경기 여주시 대신면 대신로 894-10',
-  hj: '경기 여주시 대신면 대신로 894-10'   // HJ로지스 = 여주센터 상차
+  hj: '경기 여주시 대신면 대신로 894-10',   // HJ로지스 = 여주센터 상차
+  db: '경기도 광주시 산수로 642-55'          // KCTC 동부센터
+  // 'etc'는 고정 주소가 없어 지도 정렬 시 입력된 상차지 주소를 사용
 };
 
 async function autoSortLiquorStopsByMap() {
@@ -8494,6 +8575,9 @@ async function autoSortLiquorStopsByMap() {
 function getLiquorRateTable() {
   const center = document.getElementById('lqCenter').value;
   // HJ로지스(hj)는 여주센터 상차 → 여주 요율표 그대로 사용
+  // 동부센터(db)는 전용 요율표 / 기타·실비(etc)는 요율표가 없어 빈 표(금액 직접입력)
+  if(center === 'db') return LIQUOR_RATES_DB;
+  if(center === 'etc') return {};
   return (center === 'yj' || center === 'hj') ? LIQUOR_RATES_YJ : LIQUOR_RATES_DP;
 }
 
@@ -10061,7 +10145,7 @@ async function saveBulkOrders() {
     const orderDeliveryDate = o.deliveryDate || today;
     // 임시 코드도 현재 모드 prefix 적용 → 거래처 분류 보존 (락앤락/주류/일반)
     const _tempPrefix = dispatchMode === 'liquor'
-      ? (_lqCenterVal() === 'hj' ? 'HJ' : _lqCenterVal() === 'yj' ? 'ECLP' : 'ACLP')
+      ? (_lqCenterVal() === 'db' ? 'HJD' : (_lqCenterVal() === 'hj' || _lqCenterVal() === 'etc') ? 'HJ' : _lqCenterVal() === 'yj' ? 'ECLP' : 'ACLP')
       : dispatchMode === 'general' ? 'GN' : 'P';
     let code = o.code || ('TEMP_' + _tempPrefix + '_' + today.replace(/-/g,'') + '_' + String(Date.now()).slice(-4) + '_' + i);
     
@@ -10921,13 +11005,19 @@ function generateSMS() {
       // 덕평1·2는 사무실 서류수령이 거의 없어 수령 안내문은 넣지 않음 (보스 확인)
       'dp1': _L([_docCountLine, _dpSafety]),
       'dp2': _L([_docCountLine, _dpSafety]),
-      'hj':  _L([_officeLine, _docCountLine, _carryLine])
+      'hj':  _L([_officeLine, _docCountLine, _carryLine]),
+      // 동부센터·실비건은 현장 안내 문구가 아직 없어 수령/지참 안내만
+      'db':  _L([_officeLine, _docCountLine, _carryLine]),
+      'etc': _L([_officeLine, _docCountLine, _carryLine])
     } : {
       'yj':  _L(['→ 키오스크 단말기는 1층 우측 현관 안쪽에 있습니다.', _docCountLine, _carryLine]),
       'dp1': _L(['→ 키오스크 단말기는 2층 중앙 현관 안쪽에 있습니다.', _docCountLine, _dpSafety]),
       'dp2': _L(['→ 키오스크 단말기는 B동 1층 우측 현관 내부에 있습니다.', _docCountLine, _dpSafety]),
       // HJ로지스는 여주센터 상차 → 여주와 같은 안내 (키가 없어 안내문이 통째로 빠져 있었음)
-      'hj':  _L(['→ 키오스크 단말기는 1층 우측 현관 안쪽에 있습니다.', _docCountLine, _carryLine])
+      'hj':  _L(['→ 키오스크 단말기는 1층 우측 현관 안쪽에 있습니다.', _docCountLine, _carryLine]),
+      // 동부센터·실비건은 키오스크 위치 정보가 없어 서류 지참 안내만 (확인되면 문구 추가)
+      'db':  _L([_docCountLine, _carryLine]),
+      'etc': _L([_docCountLine, _carryLine])
     };
     
     const hasStops = liquorStops.length > 0;
@@ -17840,7 +17930,11 @@ async function downloadHJSettlement() {
   infoS('A6',true).value = '정산기간';
   infoS('B6',false).value = month+'-01 ~ '+month+'-'+lastDay;
   infoS('D6',true).value = '상차지';
-  infoS('E6',false).value = 'KCTC 여주센터';
+  // 상차지는 코드로 판별 — HJD-는 동부센터, HJ-는 여주센터(실비건 포함). 섞이면 둘 다 표기
+  const _hasDB = list.some(d => /^HJD/i.test(String(d.code || '')));
+  const _hasYJ = list.some(d => !/^HJD/i.test(String(d.code || '')));
+  infoS('E6',false).value = (_hasDB && _hasYJ) ? 'KCTC 여주센터 · 동부센터'
+    : _hasDB ? 'KCTC 동부센터' : 'KCTC 여주센터';
   infoS('G6',true).value = '';
   infoS('H6',false).value = '';
   ws.getRow(6).height = 26;
@@ -19021,7 +19115,7 @@ async function saveDispatch(closeAfter) {
   if(!code) {
     const today = getTodayStr().replace(/-/g,'');
     const _tempPrefix = dispatchMode === 'liquor'
-      ? (_lqCenterVal() === 'hj' ? 'HJ' : _lqCenterVal() === 'yj' ? 'ECLP' : 'ACLP')
+      ? (_lqCenterVal() === 'db' ? 'HJD' : (_lqCenterVal() === 'hj' || _lqCenterVal() === 'etc') ? 'HJ' : _lqCenterVal() === 'yj' ? 'ECLP' : 'ACLP')
       : dispatchMode === 'general' ? 'GN' : 'P';
     code = 'TEMP_' + _tempPrefix + '_' + today + '_' + String(Date.now()).slice(-4);
     document.getElementById('dispatchCode').value = code;
