@@ -896,12 +896,12 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         </div>
         <div class="form-group">
           <label>하차지 <button onclick="openNaverRoute()" title="네이버 길찾기 (상차지→하차지)" style="background:none;border:none;cursor:pointer;font-size:13px;padding:0;vertical-align:middle">🗺</button></label>
-          <input type="text" id="deliveryRegion" list="regionList" placeholder="권역" onchange="calculate();onCoreFieldChange();updateDriverRecommend()" oninput="calculate();onCoreFieldChange()">
+          <input type="text" id="deliveryRegion" list="regionList" placeholder="권역" onchange="_clearLqLegKm();calculate();onCoreFieldChange();updateDriverRecommend()" oninput="_clearLqLegKm();calculate();onCoreFieldChange()">
           <datalist id="regionList"></datalist>
         </div>
         <div class="form-group">
           <label>세부주소</label>
-          <input type="text" id="deliveryDetailAddr" placeholder="상세 주소 입력" oninput="onCoreFieldChange()">
+          <input type="text" id="deliveryDetailAddr" placeholder="상세 주소 입력" oninput="_clearLqLegKm();onCoreFieldChange()">
         </div>
       </div>
 
@@ -3923,7 +3923,8 @@ function loadRecord(id) {
     }
     const _wpFeeEl = document.getElementById('lqWaypointFee');
     if(_wpFeeEl) _wpFeeEl.value = r.lqWaypointFee || 0;
-    // 경유지(2착 이후) 복원
+    // 경유지(2착 이후) 복원 — 다른 건을 열었으므로 이전 건의 구간거리는 버림
+    _clearLqLegKm();
     if(r.liquorStops && Array.isArray(r.liquorStops) && r.liquorStops.length > 0) {
       liquorStops = JSON.parse(JSON.stringify(r.liquorStops));
       renderLiquorStops();
@@ -7448,6 +7449,7 @@ function resetForm() {
   resetDriverRows();
   // 주류 모드 초기화
   liquorStops = [];
+  _clearLqLegKm();
   lqExtraVehicles = [];
   const _vcReset = document.getElementById('lqVehicleCount');
   if(_vcReset) _vcReset.value = 1;
@@ -7612,6 +7614,10 @@ document.addEventListener('keydown', function(e) {
 // ============================================
 let dispatchMode = 'locknlock'; // 'locknlock', 'liquor', or 'general'
 let liquorStops = []; // 경유지 배열
+// 지도 자동정렬 시 계산된 구간 거리(km) — [0]=센터→1착, [1]=1착→2착, [i+1]=(i+1)착→(i+2)착
+// 착지가 바뀌면 값이 실제와 어긋나므로 즉시 비움 (틀린 거리를 보여주지 않기 위함)
+let _lqLegKm = [];
+function _clearLqLegKm() { _lqLegKm = []; }
 let lqExtraVehicles = []; // 주류 추가 차량 [{ton, count}] — 대표차량(vehicleTon)+대수 외 다른 톤수
 
 // 모드별 임시 저장소
@@ -7952,6 +7958,7 @@ function onOfficeDocChange() {
 function onCenterChange() {
   if(dispatchMode !== 'liquor') return;
   const center = document.getElementById('lqCenter').value;
+  _clearLqLegKm();   // 출발 센터가 바뀌면 구간거리 무효
   refreshLqFloorOptions();
   const centerPickup = {
     'dp1': '경기 이천시 마장면 서이천로 91 (KCTC덕평1센터)',
@@ -8209,6 +8216,7 @@ function swapMainWithStop(stopIdx) {
     dest: main.dest, area: main.area, addr: main.addr, contact: main.contact, phone: main.phone,
     qty: '', weight: '', rate: 0, feeType: ''
   };
+  _clearLqLegKm();   // 1착이 바뀌면 구간거리가 달라짐
   renderLiquorStops();
   calculate();
   generateSMS();
@@ -8308,12 +8316,14 @@ function renderLqExtraVehicles() {
 
 function addLiquorStop() {
   liquorStops.push({ dest:'', area:'', addr:'', contact:'', phone:'', qty:'', weight:'', rate:0, feeType:'' });
+  _clearLqLegKm();   // 착지가 늘면 기존 구간거리는 더 이상 맞지 않음
   renderLiquorStops();
   calculate();
 }
 
 function removeLiquorStop(idx) {
   liquorStops.splice(idx, 1);
+  _clearLqLegKm();
   renderLiquorStops();
   calculate();
   onCoreFieldChange();
@@ -8325,6 +8335,7 @@ function moveLiquorStop(idx, dir) {
   const temp = liquorStops[idx];
   liquorStops[idx] = liquorStops[newIdx];
   liquorStops[newIdx] = temp;
+  _clearLqLegKm();   // 순서를 바꾸면 구간이 달라짐
   renderLiquorStops();
   onCoreFieldChange();
   showToast('📍 경유지 순서 변경: ' + (idx+2) + '착 ↔ ' + (newIdx+2) + '착');
@@ -8371,6 +8382,7 @@ function autoSortLiquorStops() {
     dest: d.dest||'', area: d.area||'', addr: d.addr||'', contact: d.contact||'', phone: d.phone||'',
     qty: d.qty||'', weight: d.weight||'', rate: rateOf(d.area), feeType: d.feeType||''
   }));
+  _clearLqLegKm();   // 요율 기준 정렬은 실제 거리를 모름 → 이전 km 표시 제거
   renderLiquorStops();
   calculate();
   generateSMS();
@@ -8452,13 +8464,16 @@ async function autoSortLiquorStopsByMap() {
     // 센터에서 출발하는 최근접 이웃 정렬
     const pool = all.map((d, i) => ({ d, coord: coords[i] }));
     const ordered = [];
+    const legKm = [];   // 이동 순서대로 구간 거리 기록 (센터→1착, 1착→2착, ...)
     let cur = centerCoord;
     while(pool.length) {
       let bi = 0, best = Infinity;
       pool.forEach((it, idx) => { const dist = _haversine(cur, it.coord); if(dist < best) { best = dist; bi = idx; } });
       const next = pool.splice(bi, 1)[0];
+      legKm.push(best);
       ordered.push(next); cur = next.coord;
     }
+    _lqLegKm = legKm;
     const f = ordered[0].d;
     g('clientName').value = f.dest || ''; g('deliveryRegion').value = f.area || '';
     g('deliveryDetailAddr').value = f.addr || ''; g('deliveryContact').value = f.contact || ''; g('deliveryPhone').value = f.phone || '';
@@ -8467,8 +8482,10 @@ async function autoSortLiquorStopsByMap() {
     calculate();
     generateSMS();
     onCoreFieldChange();
-    showToast('🗺️ 지도 기준 가까운 곳 → 먼 곳 순으로 정렬 완료');
+    const _totalKm = legKm.reduce((a, b) => a + b, 0);
+    showToast('🗺️ 가까운 곳 → 먼 곳 순 정렬 완료 (센터부터 총 ' + _totalKm.toFixed(1) + 'km)');
   } catch(e) {
+    _clearLqLegKm();
     showToast('⚠ 지도 정렬 오류 — 요율 기준으로 정렬합니다');
     autoSortLiquorStops();
   }
@@ -8495,6 +8512,8 @@ function updateLiquorStop(idx, field, value) {
       liquorStops[idx].rate = rateData[vehicle];
     }
   }
+  // 위치가 바뀌면 지도로 잰 구간거리는 무효 — 틀린 km를 남겨두지 않음
+  if(field === 'area' || field === 'addr' || field === 'dest') _clearLqLegKm();
   // 재렌더는 calculate() 안에서 포커스 가드로 처리 (경유지 칸 타이핑 중 커서 튕김 방지)
   calculate();
   generateSMS();
@@ -8540,6 +8559,17 @@ function renderLiquorStops() {
   }
 
   let html = summary;
+  // 지도 정렬로 구한 구간 거리 배지 (정렬 전이거나 착지를 손대면 표시 안 함)
+  const _legBadge = (km, fromLabel) => (typeof km === 'number' && isFinite(km))
+    ? `<span style="font-size:10px;font-weight:700;color:#0369a1;background:#e0f2fe;border:1px solid #bae6fd;padding:2px 5px;border-radius:4px;white-space:nowrap" title="${fromLabel}에서 직선거리 (지도 좌표 기준)">📍 ${km.toFixed(1)}km</span>`
+    : '';
+  // 총 주행거리 요약 (센터 출발 → 마지막 착지)
+  if(_lqLegKm.length) {
+    const _tot = _lqLegKm.reduce((a, b) => a + b, 0);
+    html += `<div style="padding:5px 8px;margin-bottom:6px;background:#e0f2fe;border:1px solid #bae6fd;border-radius:5px;font-size:11px;color:#0c4a6e">
+      📍 <b>총 이동거리</b> 약 <b>${_tot.toFixed(1)}km</b> <span style="color:#0369a1;font-size:10px">(센터 출발 → 마지막 착지, 직선거리 합)</span>
+    </div>`;
+  }
   // [1착] = 메인 폼 목적지. ▼로 경유지와 순서 교체 가능 (요율로 순서를 못 정하는 경우 수동 배치)
   const _mainDest = document.getElementById('clientName').value || '-';
   const _mainRegion = getSelectedRegion() || '-';
@@ -8547,6 +8577,7 @@ function renderLiquorStops() {
   html += `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;padding:4px 6px;background:${_mainIsBase?'#ede9fe':'#f8fafc'};border:1px solid ${_mainIsBase?'#c4b5fd':'#e2e8f0'};border-radius:5px">
     <span style="font-size:10px;font-weight:700;color:#7c3aed;min-width:28px">1착</span>
     <span style="flex:1;font-size:11px;color:#374151"><b>${_mainDest}</b> <span style="color:#9ca3af">(${_mainRegion})</span> <span style="font-size:10px;color:#94a3b8">← 위 메인 폼에서 입력</span></span>
+    ${_legBadge(_lqLegKm[0], '상차 센터')}
     ${_mainIsBase ? '<span style="font-size:10px;font-weight:700;color:#6d28d9;background:#ede9fe;padding:3px 6px;border-radius:4px;white-space:nowrap">🏁 기본요율</span>' : ''}
     <button onclick="swapMainWithStop(0)" title="2착과 순서 교체 (1착을 아래로 내림)" style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:10px;padding:1px 6px;color:#7c3aed">▼ 아래로</button>
   </div>`;
@@ -8567,6 +8598,7 @@ function renderLiquorStops() {
     }
     html += `<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;padding:4px 6px;background:${isBase?'#ede9fe':'#faf5ff'};border:1px solid ${isBase?'#c4b5fd':'#e9d5ff'};border-radius:5px">
       <span style="font-size:10px;font-weight:700;color:#7c3aed;min-width:28px">${i+2}착</span>
+      ${_legBadge(_lqLegKm[i+1], (i+1) + '착')}
       <input type="text" value="${s.dest}" placeholder="배송처" oninput="updateLiquorStop(${i},'dest',this.value)" style="width:90px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
       <input type="text" value="${s.area}" list="regionList" placeholder="권역" oninput="updateLiquorStop(${i},'area',this.value)" style="width:60px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
       <input type="text" value="${s.addr}" placeholder="주소" oninput="updateLiquorStop(${i},'addr',this.value)" style="flex:1;min-width:80px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
@@ -10738,6 +10770,12 @@ function saveSMSContent() {
   if(!content) { showToast('⚠ 저장할 문자 내용이 없습니다'); return; }
 
   const delivDate = sanitizeDate(document.getElementById('deliveryDate').value || '');
+  // 배송일자 없이 저장하면 코드만으로 키가 만들어지고, 배차코드는 날짜마다 재사용되므로
+  // 이후 같은 코드의 다른 배차건이 이 문자를 불러오게 됨 → 코드가 있으면 배송일자 필수
+  if(code && !delivDate) {
+    showToast('⚠ 배송일자를 먼저 입력하세요 — 날짜 없이 저장하면 같은 코드의 다른 배차건에 문자가 섞입니다', 5000);
+    return;
+  }
   const savedSMS = JSON.parse(localStorage.getItem('clp_saved_sms') || '{}');
   const key = _smsKey(code, delivDate) || ('tmp_' + dispatchMode + '_' + Date.now());
   savedSMS[key] = { content, mode: dispatchMode, code: code, deliveryDate: delivDate, savedAt: new Date().toISOString() };
@@ -10760,18 +10798,16 @@ function saveSMSContent() {
 function loadSavedSMS(code, deliveryDate) {
   if(!code) return false;
   const savedSMS = JSON.parse(localStorage.getItem('clp_saved_sms') || '{}');
-  const key = _smsKey(code, deliveryDate);
-  let entry = savedSMS[key];
-  let isLegacy = false;
-  // 구버전(코드만) 키 폴백 — 이전에 저장해둔 문자를 잃지 않도록 유지.
-  // 이 항목은 다시 저장하는 순간 코드+배송일 키로 옮겨지고 구키는 삭제됨.
-  if(!entry && key !== code && savedSMS[code]) { entry = savedSMS[code]; isLegacy = true; }
+  // 구버전(코드만) 키 폴백 제거 — 배차코드는 날짜마다 재사용되므로(한 코드에 82건)
+  // 폴백이 걸리면 같은 코드의 모든 날짜 배차건이 옛 문자를 불러오는 버그가 발생함.
+  // 배송일이 없는 건은 _smsKey가 코드만 반환하므로 아래 조회로 이미 처리됨.
+  const entry = savedSMS[_smsKey(code, deliveryDate)];
   if(entry) {
     document.getElementById('smsContent').value = entry.content;
     smsManualMode = true;
     document.getElementById('smsAutoLabel').style.display = 'none';
     document.getElementById('smsManualLabel').style.display = '';
-    document.getElementById('smsManualLabel').innerHTML = isLegacy ? '💾 저장된 문자 (이전 방식)' : '💾 저장된 문자';
+    document.getElementById('smsManualLabel').innerHTML = '💾 저장된 문자';
     document.getElementById('smsManualLabel').style.color = '#059669';
     document.getElementById('smsSaveBtn').style.display = '';
     document.getElementById('smsRegenBtn').style.display = '';
