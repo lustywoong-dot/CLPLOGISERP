@@ -10916,7 +10916,13 @@ function loadSavedSMS(code, deliveryDate) {
   // 구버전(코드만) 키 폴백 제거 — 배차코드는 날짜마다 재사용되므로(한 코드에 82건)
   // 폴백이 걸리면 같은 코드의 모든 날짜 배차건이 옛 문자를 불러오는 버그가 발생함.
   // 배송일이 없는 건은 _smsKey가 코드만 반환하므로 아래 조회로 이미 처리됨.
-  const entry = savedSMS[_smsKey(code, deliveryDate)];
+  let entry = savedSMS[_smsKey(code, deliveryDate)];
+  // 기사 여러 명으로 저장하면 레코드 코드에 서브코드(-1,-2)가 붙는다.
+  // 문자는 화면에 입력한 본코드로 저장돼 있으므로 본코드 키로도 찾아본다.
+  if(!entry) {
+    const _base = _getBaseCode(String(code));
+    if(_base && _base !== String(code)) entry = savedSMS[_smsKey(_base, deliveryDate)];
+  }
   if(entry) {
     document.getElementById('smsContent').value = entry.content;
     smsManualMode = true;
@@ -11333,7 +11339,7 @@ function initSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName('배차데이터');
   if (!sheet) sheet = ss.insertSheet('배차데이터');
-  const headers = ['ID','배차코드','배차일','배송일','유형','거래처명','상차지','하차지','세부주소','담당자','연락처','차량','파레트','박스','원청단가','수작업비','대기료','왕복할증','총매출','기사지급','마진','배차경로','기사명','기사전화','차량번호','비고','수작업비추가','메모장','등록시간','등록자'];
+  const headers = ['ID','배차코드','배차일','배송일','유형','거래처명','상차지','하차지','세부주소','담당자','연락처','차량','파레트','박스','원청단가','수작업비','대기료','왕복할증','총매출','기사지급','마진','배차경로','기사명','기사전화','차량번호','비고','수작업비추가','메모장','등록시간','등록자','입차시간'];
   const lastCol = headers.length;
   // 기존 헤더 있으면 업데이트, 없으면 생성
   sheet.getRange(1,1,1,lastCol).setValues([headers]).setBackground('#1a365d').setFontColor('white').setFontWeight('bold');
@@ -11419,7 +11425,7 @@ function saveUsers(users) {
 }
 
 // ===== 배차 데이터 =====
-var COL_COUNT = 30; // 칼럼 수
+var COL_COUNT = 31; // 칼럼 수 (v4: 맨 끝에 '입차시간' 추가 — 기존 컬럼 순서 유지)
 
 function getAllRecords() {
   const sheet = getSheet(); const lastRow = sheet.getLastRow();
@@ -11492,6 +11498,7 @@ function getAllRecords() {
       memo: g(r,['비고']),
       extraWorkFee: g(r,['수작업비추가'],0),
       stickyMemo: g(r,['메모장'],''),
+      arrivalTime: g(r,['입차시간'],''),
       createdAt: g(r,['등록시간']),
       createdBy: g(r,['등록자'])
     };
@@ -11513,7 +11520,7 @@ function saveRecord(record) {
   // v2→v3 헤더 자동 업그레이드 (칼럼 부족하면 확장)
   var lastCol = sheet.getLastColumn();
   if(lastCol < COL_COUNT) {
-    var v3Headers = ['ID','배차코드','배차일','배송일','유형','거래처명','상차지','하차지','세부주소','담당자','연락처','차량','파레트','박스','원청단가','수작업비','대기료','왕복할증','총매출','기사지급','마진','배차경로','기사명','기사전화','차량번호','비고','수작업비추가','메모장','등록시간','등록자'];
+    var v3Headers = ['ID','배차코드','배차일','배송일','유형','거래처명','상차지','하차지','세부주소','담당자','연락처','차량','파레트','박스','원청단가','수작업비','대기료','왕복할증','총매출','기사지급','마진','배차경로','기사명','기사전화','차량번호','비고','수작업비추가','메모장','등록시간','등록자','입차시간'];
     sheet.getRange(1,1,1,COL_COUNT).setValues([v3Headers]).setBackground('#1a365d').setFontColor('white').setFontWeight('bold');
   }
   
@@ -11545,7 +11552,8 @@ function makeRow(r) {
     r.margin||0, r.dispatchRoute||'', r.driverName||'',
     r.driverPhone||'', r.vehicleNo||'', r.memo||'',
     r.extraWorkFee||0, r.stickyMemo||'',
-    new Date().toLocaleString('ko-KR'), r.userName||r.createdBy||'미지정'
+    new Date().toLocaleString('ko-KR'), r.userName||r.createdBy||'미지정',
+    r.arrivalTime||''
   ];
 }
 
@@ -11554,7 +11562,7 @@ function saveAllRecords(records) {
   var sheet = getSheet();
   
   // v3 헤더 강제 적용
-  var v3Headers = ['ID','배차코드','배차일','배송일','유형','거래처명','상차지','하차지','세부주소','담당자','연락처','차량','파레트','박스','원청단가','수작업비','대기료','왕복할증','총매출','기사지급','마진','배차경로','기사명','기사전화','차량번호','비고','수작업비추가','메모장','등록시간','등록자'];
+  var v3Headers = ['ID','배차코드','배차일','배송일','유형','거래처명','상차지','하차지','세부주소','담당자','연락처','차량','파레트','박스','원청단가','수작업비','대기료','왕복할증','총매출','기사지급','마진','배차경로','기사명','기사전화','차량번호','비고','수작업비추가','메모장','등록시간','등록자','입차시간'];
   sheet.getRange(1,1,1,v3Headers.length).setValues([v3Headers]).setBackground('#1a365d').setFontColor('white').setFontWeight('bold');
   
   var lastRow = sheet.getLastRow();
@@ -14321,9 +14329,9 @@ function onReceiptResetClick(el) {
 function _getBaseCode(code) {
   const c = String(code || '');
   if(/^(GN-|TEMP_GN)/i.test(c)) return c;
-  // HJ-YYYYMMDD-NN 은 본코드 자체가 3조각 → 4조각일 때만 서브코드 제거
+  // HJ-YYYYMMDD-NN / HJD-YYYYMMDD-NN 은 본코드 자체가 3조각 → 4조각일 때만 서브코드 제거
   // (안 그러면 일련번호를 서브코드로 오인해 하루치가 한 코드로 뭉침)
-  if(/^HJ-/i.test(c)) return _hjBaseCode(c);
+  if(/^HJD?-/i.test(c)) return _hjBaseCode(c);
   return c.replace(/-\d+$/, '');
 }
 function _normalizeReceiptCode(code) {
@@ -18728,7 +18736,9 @@ function _calcSyncHash(d) {
 }
 
 // 시트 동기화 시 로컬 전용 필드 보존 (시트에 없는 필드를 기존 로컬 데이터에서 병합)
-const _LOCAL_ONLY_FIELDS = ['lqWeight','lqCenter','lqFloor','lqDocCount','lqOfficeDoc','lqWaypointFee','liquorStops','cargoWeight','isMixed','mixedMjimIdx','mixedMjimSize','hapjimGroup','stickyMemo','isReturn','customRate','refNo'];
+// ⚠ arrivalTime(입차시간)은 시트 컬럼에 없어 pull 시 사라지던 값 → 로컬 보존 대상에 포함.
+//    시트 Apps Script를 '입차시간' 컬럼이 있는 최신본으로 교체하면 다른 PC와도 공유됨.
+const _LOCAL_ONLY_FIELDS = ['arrivalTime','lqWeight','lqCenter','lqFloor','lqDocCount','lqOfficeDoc','lqWaypointFee','liquorStops','cargoWeight','isMixed','mixedMjimIdx','mixedMjimSize','hapjimGroup','stickyMemo','isReturn','customRate','refNo'];
 function _mergeLocalFields(sheetData) {
   const localMap = {};
   dispatchLog.forEach(r => { if(r.id) localMap[r.id] = r; });
@@ -19262,7 +19272,7 @@ async function saveDispatch(closeAfter) {
   const mainDeliveryDate = sanitizeDate(document.getElementById('deliveryDate').value);
   // 다중 기사 서브코드 생성 시 이중 접미사 방지 (예: ACLP_180_01-1 → ACLP_180_01)
   // HJ-YYYYMMDD-NN은 본코드가 3조각이라 일련번호를 서브코드로 오인하면 안 됨 (다른 오더끼리 코드 충돌 → 정산 혼선)
-  const baseCode = /^HJ-/i.test(code) ? _hjBaseCode(code) : code.replace(/-\d+$/, '');
+  const baseCode = /^HJD?-/i.test(code) ? _hjBaseCode(code) : code.replace(/-\d+$/, '');
   driverList.forEach((drv, di) => {
     const recCode = driverList.length > 1 ? `${baseCode}-${di+1}` : code;
     const driverPay = drv.pay || 0;
