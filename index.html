@@ -1154,6 +1154,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
             <option value="경기 여주시 대신면 대신로 894-10 (KCTC여주센터)">KCTC여주센터</option>
             <option value="경기 이천시 마장면 덕평로661번길87 (KCTC덕평2센터)">KCTC덕평2센터</option>
             <option value="경기 이천시 마장면 서이천로 91 (KCTC덕평1센터)">KCTC덕평1센터</option>
+            <option value="경기도 광주시 산수로 642-55 (KCTC동부센터)">KCTC동부센터</option>
           </select>
         </div>
         <div class="form-group">
@@ -3962,6 +3963,13 @@ function loadRecord(id) {
         else if(_cu.startsWith('ACLP')) document.getElementById('lqCenter').value = 'dp1';
       }
     }
+    // 상차지 입력요소 정리 — 실비건이면 드롭다운을 입력칸으로 바꾸고 저장된 주소를 다시 채움
+    // (위에서 pickupAddr 에 값을 넣는 시점엔 아직 select 라 목록에 없는 주소가 유실됨)
+    const _isEtcCenter = document.getElementById('lqCenter').value === 'etc';
+    _setPickupFreeInput(_isEtcCenter);
+    const _pkEl = document.getElementById('pickupAddr');
+    if(_pkEl && r.pickup) _pkEl.value = r.pickup;
+
     const _wpFeeEl = document.getElementById('lqWaypointFee');
     if(_wpFeeEl) _wpFeeEl.value = r.lqWaypointFee || 0;
     // 경유지(2착 이후) 복원 — 다른 건을 열었으므로 이전 건의 구간거리는 버림
@@ -7831,6 +7839,7 @@ function setDispatchMode(mode) {
   if(mode === 'liquor') {
     onCenterChange();
   } else if(mode === 'locknlock') {
+    _setPickupFreeInput(false);   // 실비건에서 넘어왔으면 상차지 드롭다운 복원
     document.getElementById('pickupAddr').value = '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
     forceRegenerateSMS();
   } else if(mode === 'general') {
@@ -8003,11 +8012,33 @@ function onOfficeDocChange() {
   onCoreFieldChange();
 }
 
+// 실비·기타 건은 상차지가 고정 센터가 아니므로 드롭다운을 입력칸으로 교체해 직접 입력 가능하게 함
+// (주류/락앤락 모드의 pickupAddr 은 select 라서, 목록에 없는 주소는 값을 넣어도 빈 값이 됨)
+let _pickupSelectBackupLq = null;
+function _setPickupFreeInput(enable) {
+  const cur = document.getElementById('pickupAddr');
+  if(!cur) return;
+  if(enable && cur.tagName === 'SELECT') {
+    _pickupSelectBackupLq = cur;
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.id = 'pickupAddr';
+    inp.placeholder = '상차지 주소 직접 입력 (실비건)';
+    inp.style.cssText = 'font-size:12px;padding:6px 8px;border:1px solid #7c3aed;border-radius:4px;width:100%;box-sizing:border-box';
+    inp.onchange = function(){ if(typeof forceRegenerateSMS === 'function') forceRegenerateSMS(); };
+    cur.parentElement.replaceChild(inp, cur);
+  } else if(!enable && cur.tagName === 'INPUT' && _pickupSelectBackupLq) {
+    cur.parentElement.replaceChild(_pickupSelectBackupLq, cur);
+    _pickupSelectBackupLq = null;
+  }
+}
+
 function onCenterChange() {
   if(dispatchMode !== 'liquor') return;
   const center = document.getElementById('lqCenter').value;
   _clearLqLegKm();   // 출발 센터가 바뀌면 구간거리 무효
   refreshLqFloorOptions();
+  _setPickupFreeInput(center === 'etc');   // 값 설정 전에 요소부터 교체
   const centerPickup = {
     'dp1': '경기 이천시 마장면 서이천로 91 (KCTC덕평1센터)',
     'dp2': '경기 이천시 마장면 덕평로661번길87 (KCTC덕평2센터)',
@@ -8021,7 +8052,7 @@ function onCenterChange() {
   } else if(center === 'etc') {
     // 실비·기타: 센터 고정 주소가 없음 → 이전 센터 주소가 남아있으면 비워 직접 입력 유도
     const _pk = document.getElementById('pickupAddr');
-    if(_pk && /KCTC(여주|덕평1|덕평2|동부)센터/.test(_pk.value)) _pk.value = '';
+    if(_pk && /KCTC|락앤락|풀필먼트/.test(_pk.value)) _pk.value = '';
     // 요율표가 없으므로 금액 직접입력 모드가 아니면 켜준다
     if(typeof customRateMode !== 'undefined' && !customRateMode && typeof toggleCustomRate === 'function') {
       toggleCustomRate();
