@@ -4002,12 +4002,12 @@ function loadRecord(id) {
     if(_wpEl) _wpEl.value = r.lqWaypointFee || 0;
     // 저장된 상차지가 드롭다운 목록에 없는 주소면 '출발지 직접 입력' 건으로 복원한다.
     // (select 상태에서 목록에 없는 주소를 넣으면 조용히 빈 값이 됨 — 동부센터 때 겪은 함정)
-    const _freeLnl = _isLnlFreePickupAddr(r.pickup);
+    const _freeLnl = _isLnlFreePickupAddr(_pickupRaw);
     _setPickupFreeInput(_freeLnl);
     const _pkLnl = document.getElementById('pickupAddr');
-    if(_pkLnl) _pkLnl.value = r.pickup || LNL_PICKUP_DEFAULT;
+    if(_pkLnl) _pkLnl.value = _pickupRaw || LNL_PICKUP_DEFAULT;
     const _inpLnl = document.getElementById('lnlPickupInput');
-    if(_inpLnl) _inpLnl.value = _freeLnl ? (r.pickup || '') : '';
+    if(_inpLnl) _inpLnl.value = _freeLnl ? (_pickupRaw || '') : '';
     _applyLnlPickupUI(_freeLnl);
     _applyStopsUIMode();
     renderLiquorStops();
@@ -11203,8 +11203,9 @@ function generateSMS() {
   const clientName = document.getElementById('clientName').value || '';
   let pickup = document.getElementById('pickupAddr').value || '';
   // 락앤락 모드인데 상차지 값이 비어 있으면(옛 옵션 불일치 등) 기본값 보정
-  if(!pickup && dispatchMode === 'locknlock') {
-    pickup = '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
+  // 단 '출발지 직접 입력' 건은 부발 출발이 아니므로 절대 메우지 않는다
+  if(!pickup && dispatchMode === 'locknlock' && !document.getElementById('lnlFreePickupChk')?.checked) {
+    pickup = LNL_PICKUP_DEFAULT;
   }
   const code = document.getElementById('dispatchCode').value.trim() || '';
   const plt = document.getElementById('palletCount').value || '0';
@@ -19223,6 +19224,14 @@ async function saveDispatch(closeAfter) {
     // ─── 모드 ↔ 배차코드 prefix 일치 검증 (락앤락=P / 주류=ECLP·ACLP) ───
     if(!validateCodeMode(true)) {
       return; // 불일치 시 저장 차단
+    }
+    // ─── 락앤락 '출발지 직접 입력' 건: 출발지를 비운 채 저장하면 상차지가 빈 값으로 남는다 ───
+    if(dispatchMode === 'locknlock' && document.getElementById('lnlFreePickupChk')?.checked
+       && !(document.getElementById('pickupAddr')?.value || '').trim()) {
+      showToast('⚠ 출발지 주소를 입력하세요 — 경유지 박스 맨 위 🚚 출발지 칸', 5000);
+      const _fp = document.getElementById('lnlPickupInput');
+      if(_fp) _fp.focus();
+      return; // 빈 상차지 저장 차단
     }
     let code = document.getElementById('dispatchCode').value.trim();
   
