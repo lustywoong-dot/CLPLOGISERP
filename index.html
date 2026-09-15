@@ -8172,6 +8172,8 @@ function onLnlPickupInput() {
 function _isLnlFreePickupAddr(addr) {
   const v = String(addr == null ? '' : addr).trim();
   if(!v) return false;
+  // 구버전 표기('… (락앤락)')는 드롭다운 목록에 없지만 부발 출발이 맞다 → 직접입력으로 오판 금지
+  if(_LNL_PICKUP_RE.test(v)) return false;
   const sel = _pickupSelectBackupLq || document.getElementById('pickupAddr');
   if(sel && sel.tagName === 'SELECT') {
     for(const o of sel.options) { if(o.value === v) return false; }
