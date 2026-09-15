@@ -1064,16 +1064,16 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       <!-- 주류 경유지 (주류 모드에서만 표시) -->
       <div id="lqWaypointSection" style="display:none;margin-top:8px;border:1px solid #c4b5fd;border-radius:6px;overflow:hidden">
         <div style="display:flex;align-items:center;padding:6px 10px;background:#f5f3ff;gap:8px;flex-wrap:wrap">
-          <span style="font-size:12px;font-weight:700;color:#7c3aed">📍 경유지 (2착 이후)</span>
+          <span id="lqWaypointTitle" style="font-size:12px;font-weight:700;color:#7c3aed">📍 경유지 (2착 이후)</span>
           <span id="lqStopCount" style="font-size:11px;color:var(--text-light)">0건</span>
           <div style="display:flex;align-items:center;gap:4px;margin-left:8px">
-            <label style="font-size:10px;font-weight:600;color:#7c3aed">경유비(자동):</label>
-            <input type="number" id="lqWaypointFee" min="0" value="0" placeholder="0" readonly title="경유비는 착지 권역에 따라 자동 계산됩니다 (경유지별 동일/타권역으로 조정)" style="width:90px;padding:3px 6px;font-size:12px;font-weight:700;color:#7c3aed;border:1px solid #c4b5fd;border-radius:4px;text-align:right;background:#f5f3ff">
+            <label id="lqWaypointFeeLabel" style="font-size:10px;font-weight:600;color:#7c3aed">경유비(자동):</label>
+            <input type="number" id="lqWaypointFee" min="0" value="0" placeholder="0" readonly oninput="onWaypointFeeInput()" onchange="onWaypointFeeInput()" title="경유비는 착지 권역에 따라 자동 계산됩니다 (경유지별 동일/타권역으로 조정)" style="width:90px;padding:3px 6px;font-size:12px;font-weight:700;color:#7c3aed;border:1px solid #c4b5fd;border-radius:4px;text-align:right;background:#f5f3ff">
             <span style="font-size:10px;color:var(--text-light)">원</span>
           </div>
           <span id="lqWaypointTotal" style="font-size:11px;font-weight:700;color:#7c3aed"></span>
-          <button class="btn btn-sm" onclick="autoSortLiquorStopsByMap()" title="가까운 곳 → 먼 곳 순으로 착지 자동 정렬 (카카오맵 실제 좌표 기준, 1착 포함 재배치). 지도 사용 불가 시 요율 기준으로 폴백." style="margin-left:auto;background:#fff;color:#7c3aed;border:1px solid #7c3aed;padding:4px 10px;font-size:11px;font-weight:600">🔀 자동정렬</button>
-          <button class="btn btn-sm" onclick="addLiquorStop()" style="background:#7c3aed;color:white;padding:4px 10px;font-size:11px">+ 경유지 추가</button>
+          <button id="lqSortBtn" class="btn btn-sm" onclick="autoSortLiquorStopsByMap()" title="가까운 곳 → 먼 곳 순으로 착지 자동 정렬 (카카오맵 실제 좌표 기준, 1착 포함 재배치). 지도 사용 불가 시 요율 기준으로 폴백." style="margin-left:auto;background:#fff;color:#7c3aed;border:1px solid #7c3aed;padding:4px 10px;font-size:11px;font-weight:600">🔀 자동정렬</button>
+          <button id="lqAddStopBtn" class="btn btn-sm" onclick="addLiquorStop()" style="background:#7c3aed;color:white;padding:4px 10px;font-size:11px">+ 경유지 추가</button>
         </div>
         <div id="lqStopsArea" style="padding:8px;background:white;max-height:400px;overflow-y:auto">
           <div style="text-align:center;padding:16px;color:var(--text-light);font-size:12px">
@@ -3987,6 +3987,23 @@ function loadRecord(id) {
     const _vcEl = document.getElementById('lqVehicleCount');
     if(_vcEl) _vcEl.value = r.lqVehicleCount || 1;
     renderLqExtraVehicles();
+  } else if(dispatchMode === 'locknlock') {
+    // 락앤락 경유(다착) 복원
+    _clearLqLegKm();
+    liquorStops = (r.liquorStops && Array.isArray(r.liquorStops)) ? JSON.parse(JSON.stringify(r.liquorStops)) : [];
+    const _wpEl = document.getElementById('lqWaypointFee');
+    if(_wpEl) _wpEl.value = r.lqWaypointFee || 0;
+    // 경유 건은 상차지가 부발이 아니므로 입력칸으로 바꾼 뒤 주소를 다시 넣는다.
+    // (select 상태에서 목록에 없는 주소를 넣으면 조용히 빈 값이 됨 — 동부센터 때 겪은 함정)
+    _setPickupFreeInput(liquorStops.length > 0);
+    const _pkLnl = document.getElementById('pickupAddr');
+    if(_pkLnl) _pkLnl.value = r.pickup || (liquorStops.length > 0 ? '' : LNL_PICKUP_DEFAULT);
+    _applyStopsUIMode();
+    renderLiquorStops();
+  } else {
+    // 일반 모드는 경유 미지원 — 이전 건의 경유지가 남아 문자에 끼어들지 않도록 비움
+    liquorStops = [];
+    renderLiquorStops();
   }
 
   // 🛡 사무실 서류수령 복원 — 락앤락/주류 둘 다 사용하는 필드이므로 모드 무관 항상 복원
@@ -5589,6 +5606,8 @@ function init() {
     mixedMjimSel.appendChild(opt2);
   });
   
+  // 📍 경유지 섹션 초기 표시 (첫 화면은 락앤락 모드 — switchMode가 호출되지 않음)
+  _applyStopsUIMode();
   // 단가표 렌더
   renderRateClientTabs();
   renderRateTable();
@@ -6581,6 +6600,15 @@ function calculate() {
     const _mvSum = document.getElementById('lqVehicleSummary');
     if(_mvSum) _mvSum.textContent = (_lqMV && _lqMV.count > 1) ? ('총 ' + _lqMV.count + '대 · 원금합계 ' + (_lqMV.sumBase + _lqMV.sumWaypoint + _lqMV.sumWork + _lqMV.sumRound).toLocaleString() + '원') : '';
     if(!(_ae && _ae.closest && _ae.closest('#lqExtraVehicleRows'))) renderLqExtraVehicles();
+  } else if(dispatchMode === 'locknlock') {
+    // 📍 락앤락 경유비 = 직원이 직접 입력한 금액 (기본요율은 하차지 권역 단가 그대로)
+    waypointTotal = parseInt(document.getElementById('lqWaypointFee')?.value) || 0;
+    const _lnlTot = document.getElementById('lqWaypointTotal');
+    if(_lnlTot) _lnlTot.textContent = waypointTotal > 0 ? '경유비: ' + waypointTotal.toLocaleString() + '원 (직접입력)' : '';
+    // 경유지 칸 타이핑 중이면 커서 튕김 방지를 위해 재렌더 생략 (주류와 동일 가드)
+    const _aeL = document.activeElement;
+    const _stopsElL = document.getElementById('lqStopsArea');
+    if(_stopsElL && !(_aeL && _aeL.closest && _aeL.closest('#lqStopsArea'))) renderLiquorStops();
   }
   const extraFee = parseInt(document.getElementById('extraWorkFee').value) || 0;
   const total = baseRate + manualFee + waitFee + roundFee + waypointTotal + extraFee;
@@ -7448,7 +7476,8 @@ function resetForm() {
   } else if(dispatchMode === 'general') {
     document.getElementById('pickupAddr').value = '';
   } else {
-    document.getElementById('pickupAddr').value = '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
+    _setPickupFreeInput(false);   // 경유 건에서 바꿔둔 직접 입력칸을 드롭다운으로 되돌림
+    document.getElementById('pickupAddr').value = LNL_PICKUP_DEFAULT;
   }
   // 비정형 배차 플래그 초기화
   if(isReturnMode) {
@@ -7690,6 +7719,9 @@ function saveCurrentModeData() {
     });
   }
   data._liquorStops = JSON.parse(JSON.stringify(liquorStops));
+  // 📍 락앤락 경유 건의 상차지(자유 입력)와 경유비 — 모드 전환 시 유실 방지
+  data._lnlPickup = document.getElementById('pickupAddr')?.value || '';
+  data._wpFee = document.getElementById('lqWaypointFee')?.value || '0';
   data._lqExtraVehicles = JSON.parse(JSON.stringify(lqExtraVehicles));
   data._lqVehicleCount = parseInt(document.getElementById('lqVehicleCount')?.value) || 1;
   data._lqFloor = document.getElementById('lqFloor')?.value || '';
@@ -7714,6 +7746,17 @@ function restoreModeData(mode) {
     const el = document.getElementById(id);
     if(el) el.value = data[id] || '';
   });
+  if(mode === 'locknlock') {
+    // 🛡 복원하지 않으면 직전 주류 모드의 경유지가 락앤락 폼에 그대로 남는다
+    liquorStops = data._liquorStops ? JSON.parse(JSON.stringify(data._liquorStops)) : [];
+    const _wpEl = document.getElementById('lqWaypointFee');
+    if(_wpEl) _wpEl.value = data._wpFee || 0;
+    renderLiquorStops();
+  } else if(mode === 'general') {
+    // 일반 모드는 경유 미지원 — 남은 경유지가 문자에 끼어들지 않도록 비움
+    liquorStops = [];
+    renderLiquorStops();
+  }
   if(mode === 'liquor') {
     liquorStops = data._liquorStops || [];
     lqExtraVehicles = data._lqExtraVehicles || [];
@@ -7805,7 +7848,7 @@ function setDispatchMode(mode) {
   // (인라인 style로 display를 지정했으므로 복원 시 값을 명시해야 함)
   const _dcWrap = document.getElementById('lqDocCountWrap');
   if(_dcWrap) _dcWrap.style.display = mode === 'liquor' ? 'inline-flex' : 'none';
-  document.getElementById('lqWaypointSection').style.display = mode === 'liquor' ? '' : 'none';
+  _applyStopsUIMode();   // 경유지 섹션 표시/색/경유비 입력방식 (주류=자동, 락앤락=수기)
   const _lqVehSec = document.getElementById('lqVehicleSection');
   if(_lqVehSec) _lqVehSec.style.display = mode === 'liquor' ? '' : 'none';
   document.getElementById('lqWeightGroup').style.display = mode === 'liquor' ? '' : 'none';
@@ -7840,7 +7883,16 @@ function setDispatchMode(mode) {
     onCenterChange();
   } else if(mode === 'locknlock') {
     _setPickupFreeInput(false);   // 실비건에서 넘어왔으면 상차지 드롭다운 복원
-    document.getElementById('pickupAddr').value = '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
+    document.getElementById('pickupAddr').value = LNL_PICKUP_DEFAULT;
+    // 📍 경유 건이면 상차지를 직접 입력칸으로 바꾸고 직전에 넣어둔 주소를 되살림
+    if(liquorStops.length > 0) {
+      _syncLnlPickupMode();
+      const _savedPk = (modeFormData.locknlock && modeFormData.locknlock._lnlPickup) || '';
+      const _pkEl = document.getElementById('pickupAddr');
+      if(_pkEl && _savedPk) _pkEl.value = _savedPk;
+    }
+    renderLiquorStops();
+    calcLiquorTotal();
     forceRegenerateSMS();
   } else if(mode === 'general') {
     document.getElementById('pickupAddr').value = '';
@@ -8023,14 +8075,95 @@ function _setPickupFreeInput(enable) {
     const inp = document.createElement('input');
     inp.type = 'text';
     inp.id = 'pickupAddr';
-    inp.placeholder = '상차지 주소 직접 입력 (실비건)';
-    inp.style.cssText = 'font-size:12px;padding:6px 8px;border:1px solid #7c3aed;border-radius:4px;width:100%;box-sizing:border-box';
+    const _lnlFree = (dispatchMode === 'locknlock');
+    inp.placeholder = _lnlFree ? '상차지 주소 직접 입력 (경유 건 — 예: 경기 안성시 ○○로 12)' : '상차지 주소 직접 입력 (실비건)';
+    inp.style.cssText = 'font-size:12px;padding:6px 8px;border:1px solid ' + (_lnlFree ? '#2563eb' : '#7c3aed') + ';border-radius:4px;width:100%;box-sizing:border-box';
     inp.onchange = function(){ if(typeof forceRegenerateSMS === 'function') forceRegenerateSMS(); };
     cur.parentElement.replaceChild(inp, cur);
   } else if(!enable && cur.tagName === 'INPUT' && _pickupSelectBackupLq) {
     cur.parentElement.replaceChild(_pickupSelectBackupLq, cur);
     _pickupSelectBackupLq = null;
   }
+}
+
+// ─── 📍 락앤락 경유 (다착) ────────────────────────────────
+// 주류 경유는 상차 센터가 고정(부발/여주/덕평)이지만, 락앤락 경유 건은 출발지 자체가 다름
+// (예: 안성 → 시흥 → 부천). 그래서 ① 상차지를 자유 입력으로 열고 ② 경유비는 건별 직접 입력.
+// 기본요율은 기존과 동일하게 하차지 권역 단가표(RATES)에서 자동으로 잡힌다.
+const LNL_PICKUP_DEFAULT = '이천시 부발읍 고백리 241 (KCTC풀필먼트3센터 1층)';
+
+// 경유지 권역의 참고 단가표 — 주류는 센터별 주류표, 락앤락은 락앤락 단가표
+function _stopsRateTable() {
+  if(dispatchMode === 'liquor') return getLiquorRateTable();
+  if(dispatchMode === 'locknlock') return RATES;
+  return {};
+}
+
+// 락앤락: 경유지가 1건이라도 있으면 상차지를 직접 입력칸으로, 모두 지우면 드롭다운+부발로 복원
+function _syncLnlPickupMode() {
+  if(dispatchMode !== 'locknlock') return;
+  const cur = document.getElementById('pickupAddr');
+  if(!cur) return;
+  const want = liquorStops.length > 0;
+  const isFree = cur.tagName === 'INPUT';
+  if(want === isFree) return;   // 이미 원하는 상태
+  const prevVal = cur.value || '';
+  _setPickupFreeInput(want);
+  const now = document.getElementById('pickupAddr');
+  if(!now) return;
+  if(want) {
+    // 드롭다운 → 입력칸: 부발 기본주소면 비워 직접 입력을 유도 (그 외 값은 살림)
+    now.value = /부발|풀필먼트|락앤락/.test(prevVal) ? '' : prevVal;
+  } else {
+    now.value = LNL_PICKUP_DEFAULT;
+  }
+  if(typeof forceRegenerateSMS === 'function') forceRegenerateSMS();
+}
+
+// 경유지 섹션을 모드에 맞게 전환 (주류=보라·자동 경유비 / 락앤락=파랑·수기 경유비)
+function _applyStopsUIMode() {
+  const sec = document.getElementById('lqWaypointSection');
+  if(!sec) return;
+  const isLq = dispatchMode === 'liquor';
+  const isLnl = dispatchMode === 'locknlock';
+  sec.style.display = (isLq || isLnl) ? '' : 'none';
+  const color = isLnl ? '#2563eb' : '#7c3aed';
+  const bdColor = isLnl ? '#93c5fd' : '#c4b5fd';
+  sec.style.borderColor = bdColor;
+  const head = sec.firstElementChild;
+  if(head) head.style.background = isLnl ? '#eff6ff' : '#f5f3ff';
+  const title = document.getElementById('lqWaypointTitle');
+  if(title) title.style.color = color;
+  const lbl = document.getElementById('lqWaypointFeeLabel');
+  if(lbl) { lbl.textContent = isLnl ? '경유비(직접입력):' : '경유비(자동):'; lbl.style.color = color; }
+  const fee = document.getElementById('lqWaypointFee');
+  if(fee) {
+    if(isLnl) {
+      fee.removeAttribute('readonly');
+      fee.title = '락앤락 경유비는 건별로 직접 입력합니다 (기본요율은 하차지 권역 단가표에서 자동)';
+      fee.style.background = '#fff';
+    } else {
+      fee.setAttribute('readonly', 'readonly');
+      fee.title = '경유비는 착지 권역에 따라 자동 계산됩니다 (경유지별 동일/타권역으로 조정)';
+      fee.style.background = '#f5f3ff';
+    }
+    fee.style.color = color;
+    fee.style.borderColor = bdColor;
+  }
+  // 자동정렬은 상차 센터 좌표가 출발점이라 출발지가 매번 다른 락앤락에선 숨김
+  const sortBtn = document.getElementById('lqSortBtn');
+  if(sortBtn) sortBtn.style.display = isLnl ? 'none' : '';
+  const addBtn = document.getElementById('lqAddStopBtn');
+  if(addBtn) addBtn.style.background = color;
+  const totEl = document.getElementById('lqWaypointTotal');
+  if(totEl) totEl.style.color = color;
+}
+
+// 락앤락 경유비 수기 입력 → 총액 재계산 (주류는 readonly라 호출되지 않음)
+function onWaypointFeeInput() {
+  if(dispatchMode !== 'locknlock') return;
+  calculate();
+  onCoreFieldChange();
 }
 
 function onCenterChange() {
@@ -8272,6 +8405,7 @@ function validateCodeMode(showAlert) {
 //   같으면 동일(same), 다르면 타권역(diff). (서울=구, 경기=시 단위로 단가표 키가 이미 구분됨)
 //   → 단가표가 거리순위를 담고 있어 네이버 지도 없이 자동 판별.
 function computeLiquorBreakdown(vehicle, mainRegion) {
+  if(dispatchMode !== 'liquor') return null;   // 락앤락 경유는 경유비를 직접 입력받으므로 자동 분해 안 함
   if(!vehicle) return null;
   const rateTable = getLiquorRateTable();
   const all = [];
@@ -8427,6 +8561,7 @@ function renderLqExtraVehicles() {
 function addLiquorStop() {
   liquorStops.push({ dest:'', area:'', addr:'', contact:'', phone:'', qty:'', weight:'', rate:0, feeType:'' });
   _clearLqLegKm();   // 착지가 늘면 기존 구간거리는 더 이상 맞지 않음
+  _syncLnlPickupMode();   // 락앤락: 첫 경유지가 생기면 상차지를 직접 입력칸으로
   renderLiquorStops();
   calculate();
 }
@@ -8434,6 +8569,15 @@ function addLiquorStop() {
 function removeLiquorStop(idx) {
   liquorStops.splice(idx, 1);
   _clearLqLegKm();
+  // 락앤락: 경유지가 하나도 안 남으면 직접 입력한 경유비도 함께 정리 (경유 없는 건에 금액만 남는 것 방지)
+  if(dispatchMode === 'locknlock' && liquorStops.length === 0) {
+    const _wpEl = document.getElementById('lqWaypointFee');
+    if(_wpEl && (parseInt(_wpEl.value) || 0) > 0) {
+      _wpEl.value = 0;
+      showToast('📍 경유지를 모두 삭제해 경유비도 0원으로 되돌렸습니다');
+    }
+  }
+  _syncLnlPickupMode();   // 락앤락: 경유지를 다 지우면 상차지 드롭다운(부발)으로 복원
   renderLiquorStops();
   calculate();
   onCoreFieldChange();
@@ -8621,7 +8765,7 @@ function updateLiquorStop(idx, field, value) {
   }
   if(field === 'area') {
     const vehicle = document.getElementById('vehicleTon').value;
-    const rateTable = getLiquorRateTable();
+    const rateTable = _stopsRateTable();
     const rateData = rateTable[value];
     if(rateData && vehicle && rateData[vehicle]) {
       liquorStops[idx].rate = rateData[vehicle];
@@ -8637,7 +8781,7 @@ function updateLiquorStop(idx, field, value) {
 function recalcAllStops() {
   const vehicle = document.getElementById('vehicleTon').value;
   if(!vehicle || liquorStops.length === 0) { calcLiquorTotal(); return; }
-  const rateTable = getLiquorRateTable();
+  const rateTable = _stopsRateTable();
   let changed = false;
   liquorStops.forEach(s => {
     if(s.area && rateTable[s.area] && rateTable[s.area][vehicle]) {
@@ -8653,12 +8797,29 @@ function renderLiquorStops() {
   const area = document.getElementById('lqStopsArea');
   if(!area) return;
   const vehicle = document.getElementById('vehicleTon').value;
+  // 📍 모드별 색: 주류=보라 / 락앤락=파랑 (금액 규칙이 달라 눈으로 바로 구분되게)
+  const isLnl = dispatchMode === 'locknlock';
+  const _c = isLnl
+    ? { main:'#2563eb', box:'#eff6ff', boxBd:'#bfdbfe', row:'#f0f9ff', rowBd:'#bae6fd' }
+    : { main:'#7c3aed', box:'#f5f3ff', boxBd:'#ddd6fe', row:'#faf5ff', rowBd:'#e9d5ff' };
   const bd = computeLiquorBreakdown(vehicle, getSelectedRegion());
   document.getElementById('lqStopCount').textContent = liquorStops.length + '건';
 
-  // 요약: 기본요율(가장 비싼 곳) + 경유비 내역
+  // 요약: 주류=기본요율(최고가)+자동 경유비 / 락앤락=경로 + 직접입력 경유비
   let summary = '';
-  if(bd && bd.base) {
+  if(isLnl) {
+    const _wpFee = parseInt(document.getElementById('lqWaypointFee')?.value) || 0;
+    const _cut = t => { t = String(t == null ? '' : t).trim(); return t.length > 12 ? t.slice(0, 12) + '…' : t; };
+    const _pkVal = document.getElementById('pickupAddr')?.value || '';
+    const _route = [_cut(_pkVal) || '상차지', _cut(document.getElementById('clientName').value) || _cut(getSelectedRegion()) || '1착'];
+    liquorStops.forEach(st => _route.push(_cut(st.dest) || _cut(st.area) || '경유'));
+    summary = `<div style="padding:6px 8px;margin-bottom:6px;background:${_c.box};border:1px solid ${_c.boxBd};border-radius:5px;font-size:11px;line-height:1.7">
+      🚚 <b style="color:${_c.main}">경로</b>: ${_route.join(' → ')}<br>
+      🚏 <b style="color:${_c.main}">경유비</b>: ${_wpFee > 0
+        ? '<b>' + _wpFee.toLocaleString() + '원</b> <span style="color:#9ca3af">(위 칸에서 직접 입력)</span>'
+        : '<span style="color:#9ca3af">미입력 — 위 경유비 칸에 금액을 넣으세요 (기본요율은 하차지 권역으로 자동)</span>'}
+    </div>`;
+  } else if(bd && bd.base) {
     const wpText = bd.waypoints.length
       ? bd.waypoints.map(w => `${w.region||'?'}(${w.feeType==='same'?'동일':'타'}) ${w.fee.toLocaleString()}`).join(' + ')
       : '없음';
@@ -8690,11 +8851,11 @@ function renderLiquorStops() {
   const _mainRegion = getSelectedRegion() || '-';
   const _mainIsBase = !!(bd && bd.base && bd.base.isMain);
   html += `<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px;padding:4px 6px;background:${_mainIsBase?'#ede9fe':'#f8fafc'};border:1px solid ${_mainIsBase?'#c4b5fd':'#e2e8f0'};border-radius:5px">
-    <span style="font-size:10px;font-weight:700;color:#7c3aed;min-width:28px">1착</span>
+    <span style="font-size:10px;font-weight:700;color:${_c.main};min-width:28px">1착</span>
     <span style="flex:1;font-size:11px;color:#374151"><b>${_mainDest}</b> <span style="color:#9ca3af">(${_mainRegion})</span> <span style="font-size:10px;color:#94a3b8">← 위 메인 폼에서 입력</span></span>
     ${_legBadge(_lqLegKm[0], '상차 센터')}
     ${_mainIsBase ? '<span style="font-size:10px;font-weight:700;color:#6d28d9;background:#ede9fe;padding:3px 6px;border-radius:4px;white-space:nowrap">🏁 기본요율</span>' : ''}
-    <button onclick="swapMainWithStop(0)" title="2착과 순서 교체 (1착을 아래로 내림)" style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:10px;padding:1px 6px;color:#7c3aed">▼ 아래로</button>
+    <button onclick="swapMainWithStop(0)" title="2착과 순서 교체 (1착을 아래로 내림)" style="background:none;border:1px solid ${_c.rowBd};border-radius:3px;cursor:pointer;font-size:10px;padding:1px 6px;color:${_c.main}">▼ 아래로</button>
   </div>`;
   liquorStops.forEach((s, i) => {
     const isBase = !!(bd && bd.base && !bd.base.isMain && bd.base.idx === i);
@@ -8708,11 +8869,17 @@ function renderLiquorStops() {
           <option value="same" ${s.feeType==='same'?'selected':''}>동일권역</option>
           <option value="diff" ${s.feeType==='diff'?'selected':''}>타권역</option>
         </select> <b>${wp.fee.toLocaleString()}</b></span>`;
+    } else if(isLnl) {
+      // 락앤락: 경유 금액은 경유비 칸에서 한 번에 입력하므로 행에는 참고 단가만 표시
+      const _ref = (s.area && vehicle && RATES[s.area] && RATES[s.area][vehicle]) ? RATES[s.area][vehicle] : 0;
+      statusCell = _ref
+        ? `<span style="font-size:10px;color:#94a3b8;white-space:nowrap" title="락앤락 단가표상 이 권역 단가 (참고용 — 경유 금액은 경유비 칸에 직접 입력)">참고 ${_ref.toLocaleString()}</span>`
+        : `<span style="font-size:10px;color:#9ca3af;white-space:nowrap">경유</span>`;
     } else {
       statusCell = `<span style="font-size:10px;color:#9ca3af;white-space:nowrap">권역 입력</span>`;
     }
-    html += `<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;padding:4px 6px;background:${isBase?'#ede9fe':'#faf5ff'};border:1px solid ${isBase?'#c4b5fd':'#e9d5ff'};border-radius:5px">
-      <span style="font-size:10px;font-weight:700;color:#7c3aed;min-width:28px">${i+2}착</span>
+    html += `<div style="display:flex;gap:4px;align-items:center;margin-bottom:4px;padding:4px 6px;background:${isBase?'#ede9fe':_c.row};border:1px solid ${isBase?'#c4b5fd':_c.rowBd};border-radius:5px">
+      <span style="font-size:10px;font-weight:700;color:${_c.main};min-width:28px">${i+2}착</span>
       ${_legBadge(_lqLegKm[i+1], (i+1) + '착')}
       <input type="text" value="${s.dest}" placeholder="배송처" oninput="updateLiquorStop(${i},'dest',this.value)" style="width:90px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
       <input type="text" value="${s.area}" list="regionList" placeholder="권역" oninput="updateLiquorStop(${i},'area',this.value)" style="width:60px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
@@ -8721,8 +8888,8 @@ function renderLiquorStops() {
       <input type="text" value="${s.phone}" placeholder="연락처" oninput="updateLiquorStop(${i},'phone',this.value)" style="width:85px;padding:3px 5px;font-size:11px;border:1px solid #d4d4d8;border-radius:3px">
       ${statusCell}
       <div style="display:flex;flex-direction:column;gap:1px">
-        <button onclick="${i===0?'swapMainWithStop(0)':`moveLiquorStop(${i},-1)`}" style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:10px;padding:0 4px;color:#7c3aed;line-height:14px" title="${i===0?'1착(메인)과 순서 교체':'위로'}">▲</button>
-        <button onclick="moveLiquorStop(${i},1)" ${i===liquorStops.length-1?'disabled':''} style="background:none;border:1px solid #c4b5fd;border-radius:3px;cursor:pointer;font-size:10px;padding:0 4px;color:#7c3aed;line-height:14px;${i===liquorStops.length-1?'opacity:0.3;cursor:default':''}" title="아래로">▼</button>
+        <button onclick="${i===0?'swapMainWithStop(0)':`moveLiquorStop(${i},-1)`}" style="background:none;border:1px solid ${_c.rowBd};border-radius:3px;cursor:pointer;font-size:10px;padding:0 4px;color:${_c.main};line-height:14px" title="${i===0?'1착(메인)과 순서 교체':'위로'}">▲</button>
+        <button onclick="moveLiquorStop(${i},1)" ${i===liquorStops.length-1?'disabled':''} style="background:none;border:1px solid ${_c.rowBd};border-radius:3px;cursor:pointer;font-size:10px;padding:0 4px;color:${_c.main};line-height:14px;${i===liquorStops.length-1?'opacity:0.3;cursor:default':''}" title="아래로">▼</button>
       </div>
       <button onclick="removeLiquorStop(${i})" style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:12px;padding:2px 4px" title="삭제">✕</button>
     </div>`;
@@ -8732,14 +8899,20 @@ function renderLiquorStops() {
 
 // 경유비 합계(자동) 계산 → 헤더/입력칸 반영 (leaf: calculate 호출 안 함)
 function calcLiquorTotal() {
+  const feeEl = document.getElementById('lqWaypointFee');
+  const cntEl = document.getElementById('lqStopCount');
+  const totEl = document.getElementById('lqWaypointTotal');
+  if(cntEl) cntEl.textContent = liquorStops.length + '건';
+  // 🛡 락앤락 경유비는 직원이 직접 입력한 값 — 자동값 0으로 덮어쓰면 금액이 날아감
+  if(dispatchMode === 'locknlock') {
+    const manual = parseInt(feeEl?.value) || 0;
+    if(totEl) totEl.textContent = manual > 0 ? '경유비: ' + manual.toLocaleString() + '원 (직접입력)' : '';
+    return;
+  }
   const vehicle = document.getElementById('vehicleTon').value;
   const bd = computeLiquorBreakdown(vehicle, getSelectedRegion());
   const wpTotal = bd ? bd.waypointTotal : 0;
-  const feeEl = document.getElementById('lqWaypointFee');
   if(feeEl) feeEl.value = wpTotal; // 자동 경유비 (저장/표시용)
-  const cntEl = document.getElementById('lqStopCount');
-  if(cntEl) cntEl.textContent = liquorStops.length + '건';
-  const totEl = document.getElementById('lqWaypointTotal');
   if(totEl) totEl.textContent = wpTotal > 0 ? '경유비 합계: ' + wpTotal.toLocaleString() + '원' : '';
 }
 
@@ -11118,9 +11291,26 @@ ${kioskMsg[center] || ''}`;
     // 사무실 서류수령 체크 시 2번 배송코드 줄 생략 (기사 혼란 방지)
     const _codeLine = _isOfficeDoc ? '' : `2. 키오스크코드: ${cleanCode || '-'}\n`;
 
+    // 📍 경유(다착) 건 — 락앤락에서만. 일반 모드도 이 블록을 함께 쓰므로 모드를 반드시 확인
+    const _lnlStops = (dispatchMode === 'locknlock' && liquorStops.length > 0) ? liquorStops : [];
+
     // 회송 모드: 상차지↔하차지 위치 swap
     let _pickupBlock, _deliveryBlock;
-    if(isReturnMode) {
+    if(_lnlStops.length) {
+      // 다착: 상차지는 그대로, 하차지를 [1착]/[2착]… 목록으로 (회송은 다착에서 의미가 모호해 무시)
+      _pickupBlock = pickup || '-';
+      let _multi = `4. 하차지 (총 ${_lnlStops.length + 1}곳)`;
+      _multi += `\n\n[1착] ${clientName || '-'} (${region || '-'})`;
+      if(detailAddr) _multi += `\n  주소: ${detailAddr}`;
+      if(contactInfo && contactInfo !== '-') _multi += `\n  담당자: ${contactInfo}`;
+      _lnlStops.forEach((st, i) => {
+        _multi += `\n\n[${i+2}착] ${st.dest || '-'}${st.area ? ' (' + st.area + ')' : ''}`;
+        if(st.addr) _multi += `\n  주소: ${st.addr}`;
+        const _stContact = [st.contact, st.phone].filter(Boolean).join(' ');
+        if(_stContact) _multi += `\n  담당자: ${_stContact}`;
+      });
+      _deliveryBlock = _multi;
+    } else if(isReturnMode) {
       let _ret = `${clientName || '-'} (${region || '-'})`;
       if(detailAddr) _ret += `\n   주소: ${detailAddr}`;
       if(contactInfo && contactInfo !== '-') _ret += `\n   담당자: ${contactInfo}`;
@@ -19047,8 +19237,8 @@ async function saveDispatch(closeAfter) {
           lqOfficeDoc: !!document.getElementById('lqOfficeDoc')?.checked,
           lqFloor: dispatchMode === 'liquor' ? (document.getElementById('lqFloor')?.value || '') : '',
           lqDocCount: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqDocCount')?.value) || 1) : 1,
-          lqWaypointFee: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqWaypointFee')?.value) || 0) : 0,
-          liquorStops: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(liquorStops)) : undefined,
+          lqWaypointFee: dispatchMode !== 'general' ? (parseInt(document.getElementById('lqWaypointFee')?.value) || 0) : 0,
+          liquorStops: dispatchMode !== 'general' ? JSON.parse(JSON.stringify(liquorStops)) : undefined,
           // 합짐은 혼적 옵션 사용 안 함 (코드별 금액 직접 입력)
           isMixed: false,
           mixedMjimIdx: '',
@@ -19296,7 +19486,10 @@ async function saveDispatch(closeAfter) {
   let roundFee = type === '왕복' ? Math.round(baseRate * 0.5) : 0;
   if(_saveLqMV) roundFee = _saveLqMV.sumRound;
   let waypointTotal = 0;
-  if(dispatchMode === 'liquor') {
+  if(dispatchMode === 'locknlock') {
+    // 📍 락앤락 경유비는 직접 입력값 그대로 (자동 계산 없음)
+    waypointTotal = parseInt(document.getElementById('lqWaypointFee')?.value) || 0;
+  } else if(dispatchMode === 'liquor') {
     waypointTotal = _saveLqMV ? _saveLqMV.sumWaypoint : (_saveLqBd ? _saveLqBd.waypointTotal : (parseInt(document.getElementById('lqWaypointFee')?.value) || 0));
     // 저장 레코드에 자동 경유비 반영 (입력칸도 동기화)
     const _feeEl = document.getElementById('lqWaypointFee');
@@ -19362,8 +19555,8 @@ async function saveDispatch(closeAfter) {
       lqOfficeDoc: !!document.getElementById('lqOfficeDoc')?.checked,
       lqFloor: dispatchMode === 'liquor' ? (document.getElementById('lqFloor')?.value || '') : '',
       lqDocCount: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqDocCount')?.value) || 1) : 1,
-      lqWaypointFee: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqWaypointFee')?.value) || 0) : 0,
-      liquorStops: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(liquorStops)) : undefined,
+      lqWaypointFee: dispatchMode !== 'general' ? (parseInt(document.getElementById('lqWaypointFee')?.value) || 0) : 0,
+      liquorStops: dispatchMode !== 'general' ? JSON.parse(JSON.stringify(liquorStops)) : undefined,
       lqExtraVehicles: dispatchMode === 'liquor' ? JSON.parse(JSON.stringify(lqExtraVehicles)) : undefined,
       lqVehicleCount: dispatchMode === 'liquor' ? (parseInt(document.getElementById('lqVehicleCount')?.value) || 1) : undefined,
       // 혼적(M짐) 정보 저장 — 수정 모드에서 단가 손상 방지
@@ -19494,7 +19687,7 @@ async function saveDispatch(closeAfter) {
         if(_kLqW) document.getElementById('lqWeight').value = _kLqW;
         if(_kCgW) document.getElementById('cargoWeight').value = _kCgW;
         if(_kLqC && dispatchMode === 'liquor') document.getElementById('lqCenter').value = _kLqC;
-        if(_kWpF && dispatchMode === 'liquor') document.getElementById('lqWaypointFee').value = _kWpF;
+        if(_kWpF && dispatchMode !== 'general') document.getElementById('lqWaypointFee').value = _kWpF;
       }
       return;
     }
@@ -19562,7 +19755,7 @@ async function saveDispatch(closeAfter) {
     if(_keepLqWeight) document.getElementById('lqWeight').value = _keepLqWeight;
     if(_keepCargoWeight) document.getElementById('cargoWeight').value = _keepCargoWeight;
     if(_keepLqCenter && dispatchMode === 'liquor') document.getElementById('lqCenter').value = _keepLqCenter;
-    if(_keepWpFee && dispatchMode === 'liquor') document.getElementById('lqWaypointFee').value = _keepWpFee;
+    if(_keepWpFee && dispatchMode !== 'general') document.getElementById('lqWaypointFee').value = _keepWpFee;
     showToast('✅ 저장 완료 — 폼에서 바로 확인/수정 가능 (새 배차는 F2)');
   }
 
