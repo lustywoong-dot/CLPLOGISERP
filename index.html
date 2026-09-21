@@ -4148,24 +4148,36 @@ function closeInlineDispatch() {
 // ============================================
 // 버튼 시각적 피드백
 // ============================================
+// ⚠ 원본 라벨은 '최초 1회만' 기억한다.
+// 예전엔 호출할 때마다 현재 textContent를 원본으로 삼아서, 저장 버튼을 연타하거나
+// F8/F9 누른 뒤 버튼을 또 클릭하면 두 번째 호출이 '💾 저장 중...'을 원본으로 기억 →
+// 버튼 글자가 영구히 '저장 중...'(초록 배경)으로 굳었음. 진행 중 재호출은 무시한다.
+// innerHTML로 기억해야 F8/F9 단축키 뱃지(span)도 살아남는다.
+function _btnFeedbackRestore(el) {
+  if(!el) return;
+  if(el.dataset.fbOrigHtml !== undefined) el.innerHTML = el.dataset.fbOrigHtml;
+  el.style.background = el.dataset.fbOrigBg || '';
+  el.classList.remove('btn-saving','btn-feedback');
+  el.disabled = false;
+  delete el.dataset.fbBusy;
+}
 function btnFeedback(el, text, doneText, doneColor, ms) {
   if(!el) return;
-  const orig = el.textContent;
-  const origBg = el.style.background;
-  el.textContent = text || orig;
+  if(el.dataset.fbBusy === '1') return;   // 진행 중 재호출 무시 (연타 방어)
+  if(el.dataset.fbOrigHtml === undefined) {
+    el.dataset.fbOrigHtml = el.innerHTML;
+    el.dataset.fbOrigBg = el.style.background || '';
+  }
+  el.dataset.fbBusy = '1';
+  el.textContent = text || '';
   el.classList.add('btn-saving');
   el.disabled = true;
   setTimeout(() => {
-    el.textContent = doneText || orig;
+    if(doneText) el.textContent = doneText;
     el.classList.remove('btn-saving');
     el.classList.add('btn-feedback');
     if(doneColor) el.style.background = doneColor;
-    setTimeout(() => {
-      el.textContent = orig;
-      el.classList.remove('btn-feedback');
-      el.style.background = origBg;
-      el.disabled = false;
-    }, 900);
+    setTimeout(() => { _btnFeedbackRestore(el); }, 900);
   }, ms || 300);
 }
 
@@ -19209,7 +19221,7 @@ async function saveDispatch(closeAfter) {
     showToast('⏳ 저장 진행 중 — 잠시 후 다시 시도해주세요');
     ['btnSaveDispatch1','btnSaveDispatch2'].forEach(id => {
       const b = document.getElementById(id);
-      if(b) { b.disabled = false; b.classList.remove('btn-saving','btn-feedback'); }
+      if(b) _btnFeedbackRestore(b);   // 라벨·배경까지 원래대로 (글자가 '저장 중...'으로 굳는 것 방지)
     });
     return;
   }
@@ -19401,7 +19413,7 @@ async function saveDispatch(closeAfter) {
     }
     ['btnSaveDispatch1','btnSaveDispatch2'].forEach(id => {
       const b = document.getElementById(id);
-      if(b) { b.disabled = false; b.classList.remove('btn-saving','btn-feedback'); }
+      if(b) _btnFeedbackRestore(b);   // 라벨·배경까지 원래대로 (글자가 '저장 중...'으로 굳는 것 방지)
     });
 
     // 구글 시트 저장
@@ -19852,7 +19864,7 @@ async function saveDispatch(closeAfter) {
   // 저장 버튼 상태 강제 복구
   ['btnSaveDispatch1','btnSaveDispatch2'].forEach(id => {
     const b = document.getElementById(id);
-    if(b) { b.disabled = false; b.classList.remove('btn-saving','btn-feedback'); }
+    if(b) _btnFeedbackRestore(b);   // 라벨·배경까지 원래대로 (글자가 '저장 중...'으로 굳는 것 방지)
   });
 
   // 저장된 건 강조 (패널 유지 모드에선 스크롤 이동 안 함 - 폼이 시야에서 벗어나지 않도록)
