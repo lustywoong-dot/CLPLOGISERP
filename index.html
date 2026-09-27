@@ -3928,6 +3928,7 @@ function loadRecord(id) {
     setVal('drv-vehicleNo', r.vehicleNo);
     setVal('drv-pay', r.driverPay);
     setVal('drv-arrival', r.arrivalTime);
+    firstRow.dataset.recId = String(r.id);   // 수정 저장 시 이 행 = 이 레코드
   }
   syncDriverHidden();
   checkDriverAssignBadge();
@@ -5070,6 +5071,9 @@ async function saveDispatchHistory(opts) {
   // 다른 창에서 추가한 배차가 본 창의 stale 메모리로 사라지는 것 방지
   // (직원들 동시 배차 입력 시 핵심 안전장치)
   // skipMerge: 명시적 삭제 후 호출 시 true (머지로 인한 부활 방지)
+  // remoteIds: 시트에서 막 받은 데이터의 id 집합 (시트로 교체한 직후 호출일 때만)
+  const remoteIds = (opts && opts.remoteIds) || null;
+  let _remoteAnomaly = false;
   if(!skipMerge) {
     try {
       const idbStr = await idbGet('dispatchHistory').catch(() => null);
@@ -5077,19 +5081,37 @@ async function saveDispatchHistory(opts) {
         const stored = JSON.parse(idbStr);
         if(Array.isArray(stored) && stored.length > 0) {
           const memIds = new Set(dispatchLog.map(r => r && r.id));
-          let mergedAdds = 0;
-          stored.forEach(s => {
-            if(s && s.id && !memIds.has(s.id)) {
-              dispatchLog.push(s);
-              memIds.add(s.id);
-              mergedAdds++;
+          const cand = stored.filter(s => s && s.id && !memIds.has(s.id));
+          // 🗑 다른 PC에서 삭제된 건: 직전 동기화 때 시트에 있었는데 지금 시트에 없음 → 되살리지 않음
+          // (IDB에만 남아 있다가 머지로 부활해 통계·정산에 계속 잡히던 문제)
+          let gone = new Set();
+          if(remoteIds) {
+            const seen = _getSheetSeenIds();
+            const pend = _pendingPushIds();
+            const goneList = cand.filter(s => seen.has(String(s.id)) && !remoteIds.has(String(s.id)) && !pend.has(String(s.id)));
+            // 시트가 비었거나 잘려서 온 경우(대량 소실)는 삭제로 보지 않음 → 예전처럼 로컬 보존
+            if(remoteIds.size === 0 || goneList.length > Math.max(200, Math.floor(seen.size * 0.2))) {
+              _remoteAnomaly = true;
+              console.warn('[동기화] 시트에서 ' + goneList.length + '건이 한꺼번에 사라짐 — 삭제로 보지 않고 로컬 보존');
+            } else {
+              gone = new Set(goneList.map(s => String(s.id)));
             }
+          }
+          let mergedAdds = 0;
+          cand.forEach(s => {
+            if(gone.has(String(s.id))) return;
+            if(memIds.has(s.id)) return;
+            dispatchLog.push(s);
+            memIds.add(s.id);
+            mergedAdds++;
           });
           if(mergedAdds > 0) console.log('[멀티창 보호] 배차 다른 창 추가분 ' + mergedAdds + '건 머지');
+          if(gone.size > 0) console.log('[동기화] 다른 PC에서 삭제된 배차 ' + gone.size + '건 로컬에서도 정리');
         }
       }
     } catch(e) { console.warn('배차 머지 실패:', e); }
   }
+  if(remoteIds && !_remoteAnomaly) _setSheetSeenIds(remoteIds);
 
   // IDB에 전체 저장 (async, 백그라운드)
   idbSet('dispatchHistory', JSON.stringify(dispatchLog))
@@ -9191,8 +9213,26 @@ function getDriverRows() {
     phone: (row.querySelector('.drv-phone') || {}).value || '',
     vehicleNo: (row.querySelector('.drv-vehicleNo') || {}).value || '',
     pay: parseInt((row.querySelector('.drv-pay') || {}).value) || 0,
-    arrivalTime: (row.querySelector('.drv-arrival') || {}).value || ''
+    arrivalTime: (row.querySelector('.drv-arrival') || {}).value || '',
+    recId: row.dataset.recId || ''   // 이 행이 불러온 기존 배차 id (수정 저장 때 같은 행을 고치기 위함)
   }));
+}
+
+// F9 저장 뒤 폼을 유지할 때: 각 기사 행에 방금 저장된 레코드 id를 연결 (다음 수정 저장이 같은 행을 고치도록)
+// recsByRow[i] = 기사 입력이 있는 i번째 행의 레코드 (getDriverRows 필터와 같은 기준)
+function _bindDriverRows(recsByRow) {
+  const els = Array.from(document.querySelectorAll('#driverRows .driver-row'));
+  const rows = getDriverRows();
+  const hasInput = d => d.name || d.vehicleNo || d.pay > 0;
+  const anyInput = rows.some(hasInput);
+  let k = 0;
+  els.forEach((el, i) => {
+    // 기사 입력이 하나도 없으면 saveDispatch가 빈 1건으로 저장 → 첫 행이 그 레코드
+    const counted = anyInput ? hasInput(rows[i]) : i === 0;
+    const r = counted ? recsByRow[k++] : null;
+    if(r && r.id !== undefined) el.dataset.recId = String(r.id);
+    else delete el.dataset.recId;
+  });
 }
 
 // 기사 자동완성 DB
@@ -9406,6 +9446,7 @@ function resetDriverRows() {
     first.querySelectorAll('input').forEach(inp => inp.value = '');
     // 배차경로는 select라 위 input 루프에 안 잡힘 — 별도 초기화 필요
     first.querySelectorAll('select').forEach(sel => sel.value = '');
+    delete first.dataset.recId;
   }
   checkDriverAssignBadge();
 }
@@ -9432,7 +9473,8 @@ function restoreDriverRows(drvData) {
     const d = drvData[0];
     const set = (cls, val) => { const el = firstRow.querySelector('.'+cls); if(!el) return; if(el.tagName === 'SELECT') setCategoryFieldValue(el, val); else el.value = val || ''; };
     set('drv-route', d.route); set('drv-name', d.name); set('drv-phone', d.phone);
-    set('drv-vehicleNo', d.vehicleNo); set('drv-pay', d.pay);
+    set('drv-vehicleNo', d.vehicleNo); set('drv-pay', d.pay); set('drv-arrival', d.arrivalTime);
+    if(d.recId) firstRow.dataset.recId = d.recId;
   }
   for(let i = 1; i < drvData.length; i++) {
     addDriverRow();
@@ -9442,7 +9484,8 @@ function restoreDriverRows(drvData) {
       const d = drvData[i];
       const set = (cls, val) => { const el = row.querySelector('.'+cls); if(!el) return; if(el.tagName === 'SELECT') setCategoryFieldValue(el, val); else el.value = val || ''; };
       set('drv-route', d.route); set('drv-name', d.name); set('drv-phone', d.phone);
-      set('drv-vehicleNo', d.vehicleNo); set('drv-pay', d.pay);
+      set('drv-vehicleNo', d.vehicleNo); set('drv-pay', d.pay); set('drv-arrival', d.arrivalTime);
+      if(d.recId) row.dataset.recId = d.recId;
     }
   }
   syncDriverHidden();
@@ -10293,8 +10336,10 @@ function parseBulkOrders() {
     };
 
     // A열(첫 번째 칼럼)이 날짜 형식이고 오늘보다 미래면 → 특판: A열 = 배송일
+    // sanitizeDate는 날짜가 아닌 글자(P_010_11 등)를 그대로 돌려주므로 YYYY-MM-DD 형태일 때만 날짜로 인정
+    // (안 그러면 문자열 비교 'P_…' > '2026-…' 가 참이 되어 코드가 배송일로 저장됨)
     const firstColDate = sanitizeDate(parts[0] || '');
-    if(firstColDate && firstColDate > today) {
+    if(/^\d{4}-\d{2}-\d{2}$/.test(firstColDate) && firstColDate > today) {
       order.deliveryDate = firstColDate;
       order._dateSource = 'col_a'; // A열에서 추출
       order._dateWarn = getDateWarning(firstColDate, today);
@@ -10627,9 +10672,13 @@ async function saveBulkOrders() {
   if(isConnected() && saved > 0) {
     const savedRecords = dispatchLog.slice(0, saved);
     Promise.all(
-      savedRecords.map(record => saveToSheet({...record, userName}).catch(e => {}))
-    ).then(() => {
+      savedRecords.map(record => saveToSheet({...record, userName})
+        .then(res => { _markPendingPush(record.id, !(res && res.success)); return res; })
+        .catch(e => { _markPendingPush(record.id, true); }))   // 실패 건은 자동 재전송 대기열로
+    ).then(results => {
       _lastSaveTime = Date.now() - 25000; // 25초 후 autoSync 허용
+      const failN = results.filter(r => !(r && r.success)).length;
+      if(failN > 0) showToast('⚠ 일괄 등록 ' + failN + '건 시트 전송 실패 — 자동으로 다시 보냅니다', 5000);
     });
   }
   
@@ -12741,8 +12790,7 @@ async function syncFromSheet() {
       return;
     }
     if(data.success) {
-      dispatchLog = _mergeLocalFields(data.data);
-      saveDispatchHistory();
+      _replaceDispatchFromSheet(data.data);   // 로컬 전용 필드·전송 대기 수정본 보존 + 다른 PC 삭제 반영
       renderHistory();
       renderInlineHistory();
     }
@@ -12783,6 +12831,8 @@ function saveSettlementLocal(opts) {
   // skipPush: autoSync에서 받은 데이터 저장 시 true (시트 push 무한 루프 방지)
   const skipMerge = !!(opts && opts.skipMerge);
   const skipPush = !!(opts && opts.skipPush);
+  // dropKeys: 날짜·코드를 바꾼 행의 옛 키('date|dispCode') — 머지로 옛 행이 부활하지 않게 제외
+  const _dropKeys = (opts && opts.dropKeys && opts.dropKeys.size) ? opts.dropKeys : null;
   try {
     if(!skipMerge) {
       // ─── 멀티 창 안전 보호: 추가 머지 ───────────
@@ -12800,6 +12850,8 @@ function saveSettlementLocal(opts) {
         stored.forEach(s => {
           const k = (s.date||'') + '|' + (s.dispCode||'');
           if(k === '|') return;
+          // 방금 날짜·코드를 바꾼 행의 '옛 키' → 캐시에 남은 옛 행을 되살리면 같은 건이 두 줄(금액 2배)
+          if(_dropKeys && _dropKeys.has(k)) return;
           if(!memIdx.has(k)) {
             s.payment = parseInt(s.payment)||0;
             s.kctcAmount = parseInt(s.kctcAmount)||0;
@@ -13155,6 +13207,7 @@ async function pushAllToSheet() {
     const text = await res.text();
     const result = JSON.parse(text);
     if(result.success) {
+      try { localStorage.removeItem(_PENDING_PUSH_KEY); } catch(e) {}   // 전부 올라갔으니 재전송 대기 비움
       updateConnStatus('ok');
       showToast('✅ 전체 업로드 완료! ' + dispatchLog.length + '건');
       return;
@@ -15678,6 +15731,7 @@ function syncHJToSettlement(records) {
   if(targets.length === 0) return 0;
 
   let added = 0, updated = 0;
+  const dropKeys = new Set();   // 배송일 정정으로 날짜가 바뀐 행의 옛 키 (머지 부활 방지)
   targets.forEach(r => {
     // HJ는 월 단위 청구 → 실제 운송이 일어난 '배송일' 기준으로 귀속월 결정
     // (배차일로 잡으면 월말에 배차·배송이 갈릴 때 청구월이 밀림)
@@ -15723,13 +15777,15 @@ function syncHJToSettlement(records) {
       settlementData.push(Object.assign({}, base, { note: '', receipt: '' }));
       added++;
     } else {
+      const _oldKey = (settlementData[idx].date||'') + '|' + (settlementData[idx].dispCode||'');
       Object.assign(settlementData[idx], base);   // note·receipt 보존
+      if(_oldKey !== (base.date + '|' + base.dispCode)) dropKeys.add(_oldKey);
       updated++;
     }
   });
 
   if(added || updated) {
-    saveSettlementLocal();
+    saveSettlementLocal({ dropKeys });
     try { if(typeof updateDriverFilter === 'function') updateDriverFilter(); } catch(e) {}
     try { if(typeof renderSettlement === 'function') renderSettlement(); } catch(e) {}
     showToast('💰 HJ로지스 정산 반영 — ' + (added ? '신규 ' + added + '건' : '') + (added && updated ? ' / ' : '') + (updated ? '갱신 ' + updated + '건' : ''));
@@ -15789,7 +15845,20 @@ function autoImportFromDispatch() {
     else if(/^HJ/i.test(d.code)) client = 'HJ로지스';
     else if(/^CLP/i.test(d.code)) client = '씨엘피';
     else if(/^(GN[-_]|TEMP_GN)/i.test(d.code)) client = '기타';
-    
+
+    // 멀티기사 서브코드(-2, -3 …)는 배차 저장 때 매출(total)이 기사마다 전액 복제돼 있음
+    // → 매출은 첫 기사(-1) 행에만 넣음 (HJ 동기화와 같은 규칙). 지급액은 기사별 실제 금액.
+    // 판정: 같은 배송일에 본코드-1 이 있고 매출이 같을 때만 (독립 코드가 우연히 -2로 끝나는 경우 보호)
+    let _extraDriver = false;
+    const _subM = String(d.code || '').match(/^(.*)-(\d+)$/);
+    if(_subM && parseInt(_subM[2], 10) >= 2) {
+      const _firstCode = _subM[1] + '-1';
+      const _dd = sanitizeDate(d.deliveryDate || d.date || '');
+      _extraDriver = dispatchLog.some(x => x.code === _firstCode
+        && sanitizeDate(x.deliveryDate || x.date || '') === _dd
+        && (parseInt(x.total) || 0) === (parseInt(d.total) || 0));
+    }
+
     settlementData.push({
       client: client,
       date: d.date,
@@ -15800,7 +15869,7 @@ function autoImportFromDispatch() {
       dest: d.clientName || '',
       area: d.delivery || '',
       payment: parseInt(d.driverPay) || 0,
-      kctcAmount: parseInt(d.total) || 0,
+      kctcAmount: _extraDriver ? 0 : (parseInt(d.total) || 0),
       category: d.dispatchRoute || '',
       note: '',
       receipt: ''
@@ -15967,6 +16036,7 @@ function updateManualSettlement() {
 
   // 첫 번째 기사 = 기존 레코드 수정 (dispCode는 firstCode 그대로 — 메인↔sub 강제 변환 X)
   const drv0 = drivers[0];
+  const _stlOldKey = (d.date||'') + '|' + (d.dispCode||'');   // 날짜·코드 변경 시 옛 행 부활 방지용
   d.date = date;
   d.dispCode = firstCode;
   d.dest = dest;
@@ -16028,7 +16098,8 @@ function updateManualSettlement() {
     }
   }
   
-  saveSettlementLocal();
+  const _stlNewKey = (d.date||'') + '|' + (d.dispCode||'');
+  saveSettlementLocal(_stlOldKey !== _stlNewKey ? { dropKeys: new Set([_stlOldKey]) } : undefined);
   cancelStlEdit();
   updateDriverFilter();
   renderSettlement();
@@ -18886,7 +18957,24 @@ function restoreManualData() {
 
 
 // 정산 날짜 자동 교정 (수작업 데이터 보존, 배차 데이터 기준으로 날짜만 수정)
+// 배차 이력에 같은 코드가 서로 다른 배송일로 2건 이상 있으면 true (코드 재사용 → 날짜 교정 대상 아님)
+let _repairCodeDates = null;   // repairSettlementDates 실행마다 새로 만듦 (코드 → 배송일 집합)
+function _repairAmbiguous(code) {
+  if(!_repairCodeDates) {
+    _repairCodeDates = new Map();
+    dispatchLog.forEach(r => {
+      const dd = sanitizeDate(r.deliveryDate || r.date || '');
+      if(!dd) return;
+      if(!_repairCodeDates.has(r.code)) _repairCodeDates.set(r.code, new Set());
+      _repairCodeDates.get(r.code).add(dd);
+    });
+  }
+  const dates = _repairCodeDates.get(code);
+  return !!dates && dates.size > 1;
+}
+
 function repairSettlementDates() {
+  _repairCodeDates = null;
   const month = document.getElementById('settlementMonth').value;
   if(!month) { showToast('⚠ 먼저 정산 월을 선택하세요'); return; }
   
@@ -18900,6 +18988,8 @@ function repairSettlementDates() {
     // 배차 데이터에서 같은 코드 찾기
     const dispatch = dispatchLog.find(r => r.code === stl.dispCode);
     if(!dispatch) { notFound++; return; }
+    // 같은 코드를 여러 날짜에 재사용한 경우엔 어느 건인지 알 수 없음 → 교정하면 다른 날짜 건과 겹침
+    if(_repairAmbiguous(stl.dispCode)) { skipped++; return; }
     
     const correctDate = sanitizeDate(dispatch.deliveryDate || dispatch.date);
     if(!correctDate) { skipped++; return; }
@@ -18928,19 +19018,22 @@ function repairSettlementDates() {
   // 실제 교정 실행
   backupSettlementToSheet(); // 교정 전 백업
   let actualFixed = 0;
+  const dropKeys = new Set();   // 날짜를 바꾼 행의 옛 키 (머지로 옛 행이 되살아나 두 줄 되는 것 방지)
   settlementData.forEach(stl => {
     if(!stl.dispCode) return;
     const dispatch = dispatchLog.find(r => r.code === stl.dispCode);
     if(!dispatch) return;
+    if(_repairAmbiguous(stl.dispCode)) return;
     const correctDate = sanitizeDate(dispatch.deliveryDate || dispatch.date);
     if(!correctDate || stl.date === correctDate) return;
     const inCurrentMonth = (stl.date && stl.date.startsWith(month)) || correctDate.startsWith(month);
     if(!inCurrentMonth) return;
+    dropKeys.add((stl.date||'') + '|' + (stl.dispCode||''));
     stl.date = correctDate;
     actualFixed++;
   });
   
-  saveSettlementLocal();
+  saveSettlementLocal({ dropKeys });
   updateDriverFilter();
   renderSettlement();
   showToast(`✅ 날짜 교정 완료: ${actualFixed}건 수정 (지불금액·비고 등 수작업 데이터 유지)`);
@@ -19216,6 +19309,91 @@ function _mergeLocalFields(sheetData) {
   return sheetData;
 }
 
+// ─── 시트 전송 대기열 ─────────────────────────────────────
+// 저장/수정 후 시트 전송이 실패한 배차 id → 자동 재전송.
+// 대기 중인 건은 동기화가 시트의 옛 값으로 덮어쓰지 않도록 로컬 수정본을 지킨다.
+// (예전엔 전송 실패를 무시해 '수정 완료'가 뜬 뒤 옛 값으로 되돌아가곤 했음)
+const _PENDING_PUSH_KEY = 'clp_pending_push';
+const _PENDING_PUSH_MAX_AGE = 7 * 24 * 60 * 60 * 1000;   // 7일 넘게 실패하면 포기(무한 보호 방지)
+function _getPendingPush() {
+  try {
+    const o = JSON.parse(localStorage.getItem(_PENDING_PUSH_KEY) || '{}');
+    return (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
+  } catch(e) { return {}; }
+}
+function _markPendingPush(id, pending) {
+  if(id === undefined || id === null) return;
+  const o = _getPendingPush();
+  const k = String(id);
+  if(pending) { if(!o[k]) o[k] = Date.now(); } else delete o[k];
+  try { localStorage.setItem(_PENDING_PUSH_KEY, JSON.stringify(o)); } catch(e) {}
+}
+function _pendingPushIds() {
+  const o = _getPendingPush();
+  const now = Date.now();
+  const ids = new Set();
+  let expired = false;
+  Object.keys(o).forEach(k => {
+    if(now - (o[k] || 0) > _PENDING_PUSH_MAX_AGE) { delete o[k]; expired = true; }
+    else ids.add(k);
+  });
+  if(expired) { try { localStorage.setItem(_PENDING_PUSH_KEY, JSON.stringify(o)); } catch(e) {} }
+  return ids;
+}
+// 시트 데이터로 교체할 때: 전송 대기 중인 건은 로컬 수정본 유지, 시트에 아직 없는 대기 건(신규 전송 실패)은 뒤에 붙임
+function _applyPendingLocal(list, prevLog) {
+  const pend = _pendingPushIds();
+  if(!pend.size) return list;
+  const localMap = new Map();
+  (prevLog || []).forEach(r => { if(r && r.id !== undefined) localMap.set(String(r.id), r); });
+  const out = list.map(r => (r && pend.has(String(r.id)) && localMap.has(String(r.id))) ? localMap.get(String(r.id)) : r);
+  const ids = new Set(out.map(r => r && String(r.id)));
+  pend.forEach(id => { if(!ids.has(id) && localMap.has(id)) out.push(localMap.get(id)); });
+  return out;
+}
+let _retryPendingBusy = false, _retryPendingAt = 0;
+async function _retryPendingPush() {
+  if(_retryPendingBusy || !isConnected()) return;
+  if(Date.now() - _retryPendingAt < 30000) return;   // 30초에 한 번만 (오프라인일 때 요청 폭주 방지)
+  const pend = _pendingPushIds();
+  if(!pend.size) return;
+  _retryPendingBusy = true;
+  _retryPendingAt = Date.now();
+  let okCount = 0;
+  try {
+    for(const id of pend) {
+      const rec = dispatchLog.find(r => r && String(r.id) === id);
+      if(!rec) { _markPendingPush(id, false); continue; }   // 그 사이 삭제된 건
+      let res = null;
+      try { res = await saveToSheet(rec); } catch(e) {}
+      if(res && res.success) { _markPendingPush(id, false); okCount++; }
+    }
+  } finally { _retryPendingBusy = false; }
+  if(okCount > 0) {
+    _lastSyncHash = '';   // 다른 PC가 바로 감지하도록
+    showToast('✅ 전송 대기 배차 ' + okCount + '건 시트 전송 완료');
+  }
+}
+
+// ─── 시트에서 본 적 있는 배차 id ──────────────────────────
+// 로컬 IDB에만 있는 건이 '아직 안 올라간 새 건'인지 '다른 PC에서 지운 건'인지 가르는 기준.
+// 직전 동기화 때 시트에 있었는데 이번에 없으면 → 다른 PC에서 삭제된 것 (되살리지 않음)
+const _SHEET_SEEN_KEY = 'clp_sheet_seen_ids';
+function _getSheetSeenIds() {
+  try { return new Set((JSON.parse(localStorage.getItem(_SHEET_SEEN_KEY) || '[]') || []).map(String)); }
+  catch(e) { return new Set(); }
+}
+function _setSheetSeenIds(idSet) {
+  try { localStorage.setItem(_SHEET_SEEN_KEY, JSON.stringify([...idSet])); } catch(e) {}
+}
+
+// 시트 데이터로 배차 목록 교체 (autoSync·첫 로딩·수동 동기화 공통)
+function _replaceDispatchFromSheet(sheetData) {
+  const prev = dispatchLog;
+  dispatchLog = _applyPendingLocal(_mergeLocalFields(sheetData), prev);
+  saveDispatchHistory({ remoteIds: new Set((sheetData || []).map(r => r && String(r.id))) });
+}
+
 // 초기 로딩 시 조용한 동기화 (토스트 없음, 30초 차단 우회)
 async function _silentSyncOnLoad() {
   const url = getSheetUrl();
@@ -19224,8 +19402,7 @@ async function _silentSyncOnLoad() {
     const res = await fetch(url + '?action=getAll');
     const data = await res.json();
     if(data.success && data.data) {
-      dispatchLog = _mergeLocalFields(data.data);
-      saveDispatchHistory();
+      _replaceDispatchFromSheet(data.data);   // 로컬 전용 필드·전송 대기 수정본 보존 + 다른 PC 삭제 반영
       renderHistory();
       renderInlineHistory();
       _lastSyncHash = _calcSyncHash(data.data);
@@ -19238,6 +19415,7 @@ let _saveDispatchInProgress = false; // 저장 동시 진행 차단 (같은 코�
 async function autoSync() {
   const url = getSheetUrl();
   if(!url) return;
+  _retryPendingPush();   // 전송 실패했던 배차 재전송 (30초 간격, 기다리지 않음)
   if(Date.now() - _lastSaveTime < 30000) return;
   try {
     const res = await fetch(url + '?action=getAll');
@@ -19248,8 +19426,7 @@ async function autoSync() {
       const newHash = _calcSyncHash(d);
       if(newHash !== _lastSyncHash) {
         const prevCount = dispatchLog.length;
-        dispatchLog = _mergeLocalFields(data.data);
-        saveDispatchHistory();
+        _replaceDispatchFromSheet(data.data);   // 로컬 전용 필드·전송 대기 수정본 보존 + 다른 PC 삭제 반영
         renderHistory();
         renderInlineHistory();
         // 새 건이 추가됐을 때 관리자 PC에 알림
@@ -19574,9 +19751,11 @@ async function saveDispatch(closeAfter) {
       try {
         updateConnStatus('loading', '저장 중...');
         let allOk = true;
+        records.forEach(rec => _markPendingPush(rec.id, true));   // 전송 전 대기 표시 (실패 시 자동 재전송)
         for(const rec of records) {
           try {
             const sheetResult = await saveToSheet(rec);
+            _markPendingPush(rec.id, !sheetResult.success);
             if(!sheetResult.success) { allOk = false; console.warn('시트 저장 실패:', rec.code, sheetResult.message); }
           } catch(e) { allOk = false; console.warn('시트 저장 오류:', rec.code, e.message); }
         }
@@ -19761,16 +19940,62 @@ async function saveDispatch(closeAfter) {
   // 다중 기사 서브코드 생성 시 이중 접미사 방지 (예: ACLP_180_01-1 → ACLP_180_01)
   // HJ-YYYYMMDD-NN은 본코드가 3조각이라 일련번호를 서브코드로 오인하면 안 됨 (다른 오더끼리 코드 충돌 → 정산 혼선)
   const baseCode = /^HJD?-/i.test(code) ? _hjBaseCode(code) : code.replace(/-\d+$/, '');
+  // ✏️ 수정 모드: 폼의 기사 행 ↔ 기존 레코드 연결 (행의 recId, 없으면 첫 행 = 편집 중인 건)
+  // 예전엔 행 순서대로 서브코드(-1,-2…)를 매겨서, 2번 기사 수정이 '중복'으로 조용히 빠지거나
+  // 한 건만 불러와 기사를 추가하면 같은 오더의 다른 기사 행을 덮어썼음.
+  // → 연결된 행은 그 레코드를 고치고(번호 유지), 새 행만 비어 있는 번호로 추가
+  const _rowTargets = driverList.map(() => null);
+  const _rowCodes = driverList.map((drv, di) => driverList.length > 1 ? `${baseCode}-${di+1}` : code);
+  if(isUpdate) {
+    const _ex = dispatchLog.find(r => r.id === selectedRecordId);
+    const _used = new Set();
+    driverList.forEach((drv, di) => {
+      let t = drv.recId ? dispatchLog.find(r => String(r.id) === String(drv.recId)) : null;
+      if(!t && di === 0) t = _ex;
+      if(t && !_used.has(t.id)) { _rowTargets[di] = t; _used.add(t.id); }
+    });
+    if(_ex && !_used.has(_ex.id)) {
+      const k = _rowTargets.findIndex(t => !t);
+      if(k >= 0) { _rowTargets[k] = _ex; _used.add(_ex.id); }
+    }
+    if(driverList.length > 1) {
+      const _suffix = c => { const m = String(c || '').match(/-(\d+)$/); return (m && String(c).slice(0, -m[0].length) === baseCode) ? parseInt(m[1], 10) : null; };
+      const _usedNums = new Set();
+      // 연결된 행은 원래 번호 유지
+      _rowTargets.forEach((t, di) => {
+        const n = t ? _suffix(t.code) : null;
+        if(n && !_usedNums.has(n)) { _usedNums.add(n); _rowCodes[di] = `${baseCode}-${n}`; }
+        else _rowCodes[di] = null;
+      });
+      // 폼에 안 불러온 같은 오더의 다른 기사 행이 쓰는 번호는 피함
+      dispatchLog.forEach(r => {
+        if(_used.has(r.id)) return;
+        if(sanitizeDate(r.deliveryDate || r.date || '') !== mainDeliveryDate) return;
+        const n = _suffix(r.code);
+        if(n) _usedNums.add(n);
+      });
+      let _next = 1;
+      _rowCodes.forEach((c, di) => {
+        if(c) return;
+        while(_usedNums.has(_next)) _next++;
+        _usedNums.add(_next);
+        _rowCodes[di] = `${baseCode}-${_next}`;
+      });
+    }
+  }
+  const _targetIds = new Set(_rowTargets.filter(Boolean).map(t => t.id));
+  const _recTargetMap = new Map();   // 기록 → 고칠 기존 레코드
+  const _recRowMap = new Map();      // 기록 → 기사 행 번호
   driverList.forEach((drv, di) => {
-    const recCode = driverList.length > 1 ? `${baseCode}-${di+1}` : code;
+    const recCode = _rowCodes[di];
     const driverPay = drv.pay || 0;
     const margin = driverPay > 0 ? total - driverPay : 0;
 
     // 중복 체크 (서브코드 포함) — 코드+배송일 둘 다 일치할 때만 스킵
-    // 자기 자신(selectedRecordId)은 제외해야 update 모드에서 records=[]가 되지 않음
-    if(dispatchLog.some(r => r.id !== selectedRecordId && r.code === recCode && sanitizeDate(r.deliveryDate||r.date||'') === mainDeliveryDate)) return;
+    // 자기 자신(selectedRecordId)과 이번에 고칠 기존 행(_targetIds)은 제외
+    if(dispatchLog.some(r => r.id !== selectedRecordId && !_targetIds.has(r.id) && r.code === recCode && sanitizeDate(r.deliveryDate||r.date||'') === mainDeliveryDate)) return;
 
-    records.push({
+    const _recObj = {
       id: Date.now() + di,
       code: recCode,
       clientName: document.getElementById('clientName').value,
@@ -19820,7 +20045,10 @@ async function saveDispatch(closeAfter) {
       lqActualCost: _lqActualSave,   // 💰 주류 실비건 (시트 컬럼 없음 → 다른 PC는 loadRecord 흔적 판정)
       refNo: dispatchMode === 'general' ? (document.getElementById('genRefNo')?.value || '') : '',
       createdBy: getUserName() || '-'
-    });
+    };
+    records.push(_recObj);
+    _recTargetMap.set(_recObj, _rowTargets[di]);
+    _recRowMap.set(_recObj, di);
   });
 
   if(records.length === 0) {
@@ -19829,8 +20057,8 @@ async function saveDispatch(closeAfter) {
     let dupe = null, dupeCode = '';
     driverList.forEach((drv, di) => {
       if(dupe) return;
-      const rc = driverList.length > 1 ? `${baseCode}-${di+1}` : code;
-      const hit = dispatchLog.find(r => r.id !== selectedRecordId && r.code === rc && sanitizeDate(r.deliveryDate||r.date||'') === mainDeliveryDate);
+      const rc = _rowCodes[di];
+      const hit = dispatchLog.find(r => r.id !== selectedRecordId && !_targetIds.has(r.id) && r.code === rc && sanitizeDate(r.deliveryDate||r.date||'') === mainDeliveryDate);
       if(hit) { dupe = hit; dupeCode = rc; }
     });
     if(dupe) {
@@ -19868,33 +20096,46 @@ async function saveDispatch(closeAfter) {
       }
       // 이전 코드 저장 (정산 동기화용)
       const oldCode = existing.code;
-      const newData = records[0];
-      Object.keys(newData).forEach(k => { if(k !== 'id') existing[k] = newData[k]; });
-
-      // 차량(기사) 추가된 경우: records[1+]를 신규 레코드로 저장 (중복 방지)
-      const addedRecords = [];
-      if(records.length > 1) {
-        for(let i = 1; i < records.length; i++) {
-          const subRec = records[i];
-          const subDeliveryDate = sanitizeDate(subRec.deliveryDate || subRec.date || '');
-          const dup = dispatchLog.find(r =>
-            r.id !== existing.id &&
-            r.code === subRec.code &&
-            sanitizeDate(r.deliveryDate||r.date||'') === subDeliveryDate
-          );
-          if(!dup) {
-            dispatchLog.unshift(subRec);
-            addedRecords.push(subRec);
-            _newRecordIds.add(subRec.id);
-            setTimeout(() => { _newRecordIds.delete(subRec.id); }, _NEW_BADGE_TTL);
-          }
-        }
+      // 기사 행(records) → 고칠 기존 레코드 매핑 (위에서 행 연결로 정함)
+      // 편집 중이던 건(existing)이 어느 행에도 안 잡혔으면 남은 첫 기록을 받는다 (예전 동작 유지)
+      const _assign = new Map();
+      const _usedIds = new Set();
+      records.forEach(rec => {
+        const t = _recTargetMap.get(rec);
+        if(t && dispatchLog.includes(t) && !_usedIds.has(t.id)) { _assign.set(rec, t); _usedIds.add(t.id); }
+      });
+      if(!_usedIds.has(existing.id)) {
+        const _rec0 = records.find(r => !_assign.has(r));
+        if(_rec0) { _assign.set(_rec0, existing); _usedIds.add(existing.id); }
       }
+      const updatedSiblings = [];
+      _assign.forEach((t, rec) => {
+        Object.keys(rec).forEach(k => { if(k !== 'id') t[k] = rec[k]; });
+        if(t !== existing) updatedSiblings.push(t);
+      });
+
+      // 차량(기사) 추가된 경우: 매핑되지 않은 기록을 신규 레코드로 저장 (중복 방지)
+      const addedRecords = [];
+      records.forEach(subRec => {
+        if(_assign.has(subRec)) return;
+        const subDeliveryDate = sanitizeDate(subRec.deliveryDate || subRec.date || '');
+        const dup = dispatchLog.find(r =>
+          !_usedIds.has(r.id) &&
+          r.code === subRec.code &&
+          sanitizeDate(r.deliveryDate||r.date||'') === subDeliveryDate
+        );
+        if(!dup) {
+          dispatchLog.unshift(subRec);
+          addedRecords.push(subRec);
+          _newRecordIds.add(subRec.id);
+          setTimeout(() => { _newRecordIds.delete(subRec.id); }, _NEW_BADGE_TTL);
+        }
+      });
 
       saveDispatchHistory();
 
       // HJ로지스 건은 WMS 실적 엑셀이 없으므로 배차 수정 내용을 정산에도 반영
-      try { syncHJToSettlement([existing].concat(addedRecords)); } catch(e) { console.warn('HJ 정산 반영 실패:', e.message); }
+      try { syncHJToSettlement([existing].concat(updatedSiblings, addedRecords)); } catch(e) { console.warn('HJ 정산 반영 실패:', e.message); }
 
       // 수정된 배송일이 필터 범위 밖이면 자동 확장
       autoExpandDateRange(existing.deliveryDate || existing.date || '');
@@ -19903,15 +20144,28 @@ async function saveDispatch(closeAfter) {
       renderHistory();
       renderInlineHistory();
 
+      // 시트 전송 — 결과를 확인해 실패 건은 재전송 대기열에 넣고 알림
+      // (예전엔 실패해도 '수정 완료'만 떠서, 동기화 때 옛 값으로 되돌아가 수정이 사라졌음)
+      const _pushFailed = [];
       if(isConnected()) {
-        try { await saveToSheet(existing); } catch(e) {}
-        for(const ar of addedRecords) {
-          try { await saveToSheet(ar); } catch(e) {}
+        const _toPush = [existing].concat(updatedSiblings, addedRecords);
+        // 전송 전에 먼저 대기 표시 → 이미 떠 있던 동기화 응답(수정 전 값)이 도착해도 로컬 수정본 유지
+        _toPush.forEach(rec => _markPendingPush(rec.id, true));
+        for(const rec of _toPush) {
+          let res = null;
+          try { res = await saveToSheet(rec); } catch(e) {}
+          const ok = !!(res && res.success);
+          _markPendingPush(rec.id, !ok);
+          if(!ok) _pushFailed.push(rec.code);
         }
       }
-      showToast(addedRecords.length > 0
-        ? '✅ 배차 수정 완료! (차량 ' + addedRecords.length + '건 추가)'
-        : '✅ 배차 수정 완료!');
+      const _extraMsg = (updatedSiblings.length > 0 ? ' (함께 수정 ' + updatedSiblings.length + '건)' : '')
+        + (addedRecords.length > 0 ? ' (차량 ' + addedRecords.length + '건 추가)' : '');
+      if(_pushFailed.length > 0) {
+        showToast('⚠ 배차 수정은 이 PC에 저장됐지만 시트 전송 실패 (' + _pushFailed.join(', ') + ') — 자동으로 다시 보냅니다', 6000);
+      } else {
+        showToast('✅ 배차 수정 완료!' + _extraMsg);
+      }
 
       if(closeAfter) {
         selectedRecordId = null;
@@ -19935,6 +20189,14 @@ async function saveDispatch(closeAfter) {
         const _kCgW = existing.cargoWeight || '';
         const _kLqC = existing.lqCenter || '';
         const _kWpF = existing.lqWaypointFee || 0;
+        // 기사 행 ↔ 저장된 레코드 다시 연결 (고친 행은 그 레코드, 새로 추가된 행은 새 레코드)
+        const _byRow = driverList.map(() => null);
+        records.forEach(rec => {
+          const di = _recRowMap.get(rec);
+          if(di === undefined) return;
+          _byRow[di] = _assign.get(rec) || (addedRecords.includes(rec) ? rec : null);
+        });
+        _bindDriverRows(_byRow);
         showInlineEditInfo(existing);
         if(_kLqW) document.getElementById('lqWeight').value = _kLqW;
         if(_kCgW) document.getElementById('cargoWeight').value = _kCgW;
@@ -20001,6 +20263,10 @@ async function saveDispatch(closeAfter) {
     const _keepLqCenter = records[0].lqCenter || '';
     const _keepWpFee = records[0].lqWaypointFee || 0;
     selectedRecordId = records[0].id;
+    // 기사 행 ↔ 방금 저장한 레코드 연결 (F9 뒤 2번 기사를 고쳐 다시 저장해도 같은 행을 고치도록)
+    const _byRowNew = driverList.map(() => null);
+    records.forEach(rec => { const di = _recRowMap.get(rec); if(di !== undefined) _byRowNew[di] = rec; });
+    _bindDriverRows(_byRowNew);
     document.getElementById('dispatchCode').style.background = '#fef3c7';
     showInlineEditInfo(records[0]);
     // 방어적 복원 (렌더링 과정에서 유실 방지)
@@ -20043,6 +20309,8 @@ async function saveDispatch(closeAfter) {
     try {
       updateConnStatus('loading', '저장 중...');
       let allOk = true;
+      // 전송 전에 먼저 대기 표시 → 이미 떠 있던 동기화 응답이 도착해도 방금 저장한 건이 사라지지 않음
+      records.forEach(rec => _markPendingPush(rec.id, true));
       for(const rec of records) {
         try {
           const sheetResult = await saveToSheet(rec);
@@ -20050,8 +20318,10 @@ async function saveDispatch(closeAfter) {
             allOk = false;
             console.warn('시트 저장 실패:', rec.code, sheetResult.message);
           }
+          _markPendingPush(rec.id, !sheetResult.success);   // 실패 건은 자동 재전송 대기열로
         } catch(e) {
           allOk = false;
+          _markPendingPush(rec.id, true);
           console.warn('시트 저장 오류:', rec.code, e.message);
         }
       }
