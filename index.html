@@ -19417,10 +19417,15 @@ function _applyPendingLocal(list, prevLog) {
   return out;
 }
 let _retryPendingBusy = false, _retryPendingAt = 0;
+const _PENDING_RETRY_MIN_AGE = 60 * 1000;   // 표시 후 60초 지난 건만 재전송
 async function _retryPendingPush() {
   if(_retryPendingBusy || !isConnected()) return;
   if(Date.now() - _retryPendingAt < 30000) return;   // 30초에 한 번만 (오프라인일 때 요청 폭주 방지)
-  const pend = _pendingPushIds();
+  // ⚠ 저장 흐름은 전송 '전에' 대기 표시를 붙이므로, 막 표시된 건은 아직 전송 중일 수 있음.
+  //   그걸 여기서 또 보내면 시트(Apps Script)가 같은 id를 두 줄로 추가함(2026-09-27 실제 발생) → 60초 지난 건만
+  const _marks = _getPendingPush();
+  const _now = Date.now();
+  const pend = new Set([..._pendingPushIds()].filter(id => _now - (_marks[id] || 0) >= _PENDING_RETRY_MIN_AGE));
   if(!pend.size) return;
   _retryPendingBusy = true;
   _retryPendingAt = Date.now();
@@ -19454,6 +19459,20 @@ function _setSheetSeenIds(idSet) {
 
 // 시트 데이터로 배차 목록 교체 (autoSync·첫 로딩·수동 동기화 공통)
 function _replaceDispatchFromSheet(sheetData) {
+  // 시트에 같은 id가 두 줄 이상이면 첫 줄만 사용 — Apps Script 저장은 id로 '첫 줄'을 찾아 고치므로
+  // 첫 줄이 최신, 뒤 줄은 동시 전송으로 잘못 추가된 옛 사본 (둘 다 쓰면 화면 중복·동시 선택)
+  if(Array.isArray(sheetData)) {
+    const _seenId = new Set();
+    const _before = sheetData.length;
+    sheetData = sheetData.filter(r => {
+      if(!r || r.id === undefined || r.id === null || r.id === '') return true;
+      const k = String(r.id);
+      if(_seenId.has(k)) return false;
+      _seenId.add(k);
+      return true;
+    });
+    if(sheetData.length !== _before) console.warn('[동기화] 시트 중복 id ' + (_before - sheetData.length) + '줄 제외');
+  }
   const prev = dispatchLog;
   dispatchLog = _applyPendingLocal(_mergeLocalFields(sheetData), prev);
   saveDispatchHistory({ remoteIds: new Set((sheetData || []).map(r => r && String(r.id))) });
@@ -19480,8 +19499,8 @@ let _saveDispatchInProgress = false; // 저장 동시 진행 차단 (같은 코�
 async function autoSync() {
   const url = getSheetUrl();
   if(!url) return;
-  _retryPendingPush();   // 전송 실패했던 배차 재전송 (30초 간격, 기다리지 않음)
   if(Date.now() - _lastSaveTime < 30000) return;
+  _retryPendingPush();   // 전송 실패했던 배차 재전송 (저장 직후 30초는 건너뜀 — 저장 중인 전송과 겹치지 않게)
   try {
     const res = await fetch(url + '?action=getAll');
     const data = await res.json();
