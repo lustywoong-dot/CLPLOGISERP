@@ -804,7 +804,8 @@ body.hide-cost-col .col-sensitive { display: none !important; }
               <option value="yj">KCTC여주센터</option>
               <option value="hj">HJ로지스 (여주센터 상차)</option>
               <option value="db">KCTC동부센터 (HJ로지스)</option>
-              <option value="etc">기타 · 실비건 (직접입력)</option>
+              <!-- 구버전 실비건(HJ 코드 전용) — 옛 건을 열 때만 쓰임. 새 실비건은 센터 선택 + '💰 실비건' 체크 -->
+              <option value="etc" hidden>기타 · 실비건 (구버전)</option>
             </select>
           </div>
           <div class="form-group">
@@ -819,6 +820,12 @@ body.hide-cost-col .col-sensitive { display: none !important; }
             </label>
             <span style="font-size:11px;color:#7c3aed">※ ECLP→여주 / ACLP→덕평 / HJ-→HJ로지스 / HJD-→동부센터 자동 감지</span>
           </div>
+        </div>
+        <!-- 💰 실비건 출발지 — 하단 상차지 칸은 폼 맨 아래라 찾기 어려워, 체크 시 여기서 바로 입력 -->
+        <div id="lqActualPickupRow" style="display:none;margin-top:6px;align-items:center;gap:8px;padding:6px 10px;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:700;color:#b45309;white-space:nowrap">🚚 출발지(상차지)</span>
+          <input type="text" id="lqActualPickupInput" placeholder="출발지 주소 — 센터에서 출발하면 센터 주소 그대로 두세요" oninput="onLqActualPickupInput()" style="flex:1;min-width:220px;padding:5px 8px;font-size:12px;border:1px solid #f59e0b;border-radius:4px;box-sizing:border-box">
+          <span style="font-size:11px;color:#92400e;white-space:nowrap">배차코드는 원래대로: 여주 ECLP · 덕평 ACLP · HJ로지스 HJ-</span>
         </div>
       </div>
       <!-- 일반 모드 전용 폼 (상차지→하차지→거래처 순서) -->
@@ -3999,6 +4006,7 @@ function loadRecord(id) {
     _setPickupFreeInput(_isEtcCenter || _lqAct);
     const _pkEl = document.getElementById('pickupAddr');
     if(_pkEl && r.pickup) _pkEl.value = r.pickup;
+    _applyLqActualPickupUI(_isEtcCenter || _lqAct);   // 실비건이면 센터 줄 아래 출발지 칸에 표시
 
     const _wpFeeEl = document.getElementById('lqWaypointFee');
     if(_wpFeeEl) _wpFeeEl.value = r.lqWaypointFee || 0;
@@ -8191,6 +8199,12 @@ function _setPickupFreeInput(enable) {
     inp.placeholder = _lnlFree ? '상차지 주소 직접 입력 (경유 건 — 예: 경기 안성시 ○○로 12)' : '상차지 주소 직접 입력 (실비건)';
     inp.style.cssText = 'font-size:12px;padding:6px 8px;border:1px solid ' + (_lnlFree ? '#2563eb' : '#7c3aed') + ';border-radius:4px;width:100%;box-sizing:border-box';
     inp.onchange = function(){ if(typeof forceRegenerateSMS === 'function') forceRegenerateSMS(); };
+    // 타이핑 중에도 문자에 바로 반영 (예전엔 칸을 벗어나야 반영돼, 바로 복사하면 상차지가 비어 있었음)
+    inp.oninput = function(){
+      const _a = document.getElementById('lqActualPickupInput');
+      if(_a && _a !== document.activeElement) _a.value = inp.value;
+      if(typeof generateSMS === 'function') generateSMS();
+    };
     cur.parentElement.replaceChild(inp, cur);
   } else if(!enable && cur.tagName === 'INPUT' && _pickupSelectBackupLq) {
     cur.parentElement.replaceChild(_pickupSelectBackupLq, cur);
@@ -8368,6 +8382,8 @@ function onCenterChange() {
   validateLiquorCodeCenter();
   // 핵심 변경 → 수동 편집 모드 해제 후 재생성
   forceRegenerateSMS();
+  // 💰 실비건 출발지 칸 표시·값 동기화 (센터를 바꿔 센터 주소가 바뀐 경우 포함)
+  _applyLqActualPickupUI(center === 'etc' || _actual);
   // 단가 재계산 (1착 + 경유지)
   calculate();
   recalcAllStops();
@@ -8417,8 +8433,28 @@ function _applyLqActualCost(on, pickupVal, rateVal) {
     if(pk && _LQ_CENTER_PICKUP[center]) pk.value = _LQ_CENTER_PICKUP[center];
     if(customRateMode) toggleCustomRate();   // 요율표 자동 단가로 복귀
   }
+  _applyLqActualPickupUI(on || center === 'etc');
   calculate();
   forceRegenerateSMS();
+  if(on && pickupVal === undefined) document.getElementById('lqActualPickupInput')?.focus();
+}
+
+// 실비건 출발지 칸(센터 줄 바로 아래) 표시 — 켜면 하단 상차지 칸은 숨김(같은 값 중복 표시 방지)
+function _applyLqActualPickupUI(on) {
+  const row = document.getElementById('lqActualPickupRow');
+  if(row) row.style.display = on ? 'flex' : 'none';
+  const grp = document.getElementById('pickupAddrGroup');
+  if(grp && dispatchMode === 'liquor') grp.style.display = on ? 'none' : '';
+  const inp = document.getElementById('lqActualPickupInput');
+  if(on && inp) inp.value = document.getElementById('pickupAddr')?.value || '';
+}
+
+// 출발지 칸 입력 → 실제 저장 필드(pickupAddr)로 동기화 + 문자 즉시 갱신
+function onLqActualPickupInput() {
+  const inp = document.getElementById('lqActualPickupInput');
+  const pk = document.getElementById('pickupAddr');
+  if(inp && pk) pk.value = inp.value;
+  generateSMS();
 }
 
 function toggleLqActualCost() {
@@ -8433,6 +8469,10 @@ function _leaveLqActualCost(nextMode) {
   const wasOn = !!(cb && cb.checked) || _lqCenterVal() === 'etc';
   if(cb) cb.checked = false;
   _applyLqActualStyle(false);
+  const _row = document.getElementById('lqActualPickupRow');
+  if(_row) _row.style.display = 'none';
+  const _grp = document.getElementById('pickupAddrGroup');
+  if(_grp) _grp.style.display = '';   // 락앤락은 이후 _applyLnlPickupUI가 다시 정함
   if(wasOn && customRateMode && nextMode !== 'general') {
     customRateMode = false;
     _applyCustomRateToggleStyle();
@@ -19565,8 +19605,8 @@ async function saveDispatch(closeAfter) {
     // ─── 💰 주류 실비건: 요율표가 없으므로 청구액·상차지가 비면 0원/빈 상차지로 저장된다 ───
     if(_isLqActualCost()) {
       if(!(document.getElementById('pickupAddr')?.value || '').trim()) {
-        showToast('⚠ 실비건 — 상차지 주소를 입력하세요', 5000);
-        document.getElementById('pickupAddr')?.focus();
+        showToast('⚠ 실비건 — 🚚 출발지(상차지) 주소를 입력하세요', 5000);
+        document.getElementById('lqActualPickupInput')?.focus();
         return;
       }
       if(getCurrentBaseRate() <= 0) {
