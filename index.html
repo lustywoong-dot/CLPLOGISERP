@@ -813,7 +813,12 @@ body.hide-cost-col .col-sensitive { display: none !important; }
               <option value="">-</option>
             </select>
           </div>
-          <div style="font-size:11px;color:#7c3aed;line-height:28px;padding-top:18px">※ ECLP→여주 / ACLP→덕평 / HJ-→HJ로지스 / HJD-→동부센터 자동 감지</div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-top:18px">
+            <label id="lqActualCostWrap" title="권역 요율표가 없는 건 — 청구처는 상차 센터·배차코드 그대로, 상차지와 청구액·지급액만 직접 입력" style="display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;color:#b45309;cursor:pointer;padding:3px 10px;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;white-space:nowrap">
+              <input type="checkbox" id="lqActualCost" onchange="toggleLqActualCost()" style="width:14px;height:14px">💰 실비건
+            </label>
+            <span style="font-size:11px;color:#7c3aed">※ ECLP→여주 / ACLP→덕평 / HJ-→HJ로지스 / HJD-→동부센터 자동 감지</span>
+          </div>
         </div>
       </div>
       <!-- 일반 모드 전용 폼 (상차지→하차지→거래처 순서) -->
@@ -3941,6 +3946,10 @@ function loadRecord(id) {
     document.getElementById('vehicleTon').value = r.vehicle || '';
   }
 
+  // 💰 실비건 체크는 아래 주류 분기에서 이 건 기준으로 다시 정함 (다른 건의 체크가 남지 않게 먼저 해제)
+  const _lqActCb0 = document.getElementById('lqActualCost');
+  if(_lqActCb0) _lqActCb0.checked = false;
+  _applyLqActualStyle(false);
   // 주류 중량(톤) + 상차 센터 + 경유지 복원
   document.getElementById('lqWeight').value = r.lqWeight || '';
   document.getElementById('cargoWeight').value = r.cargoWeight || '';
@@ -3973,7 +3982,20 @@ function loadRecord(id) {
     // 상차지 입력요소 정리 — 실비건이면 드롭다운을 입력칸으로 바꾸고 저장된 주소를 다시 채움
     // (위에서 pickupAddr 에 값을 넣는 시점엔 아직 select 라 목록에 없는 주소가 유실됨)
     const _isEtcCenter = document.getElementById('lqCenter').value === 'etc';
-    _setPickupFreeInput(_isEtcCenter);
+    // 💰 실비건 판정 — 플래그(lqActualCost)는 이 PC에만 있으므로, 없으면 흔적으로 판정:
+    // 권역이 요율표에 없거나(빈 권역 포함) 상차지가 센터 주소가 아니면 실비건.
+    // (안 그러면 다른 PC에서 열었을 때 요율표 단가 0원으로 다시 저장되어 청구액이 날아감)
+    let _lqAct = !!r.lqActualCost;
+    if(!_lqAct && !_isEtcCenter && r.type !== 'M짐' && !r.isMixed) {
+      const _tbl = getLiquorRateTable() || {};
+      const _regionMiss = !_tbl[r.delivery || ''];
+      const _pickupOff = !!String(r.pickup || '').trim() && !_LQ_CENTER_PICKUP_RE.test(String(r.pickup));
+      _lqAct = _regionMiss || _pickupOff;
+    }
+    const _lqActCb = document.getElementById('lqActualCost');
+    if(_lqActCb) _lqActCb.checked = _lqAct && !_isEtcCenter;
+    _applyLqActualStyle(_lqAct && !_isEtcCenter);
+    _setPickupFreeInput(_isEtcCenter || _lqAct);
     const _pkEl = document.getElementById('pickupAddr');
     if(_pkEl && r.pickup) _pkEl.value = r.pickup;
 
@@ -4051,7 +4073,7 @@ function loadRecord(id) {
   isReturnMode = !!r.isReturn;
   _applyReturnToggleStyle();
   // 일반 모드: customRateMode 항상 ON 유지
-  customRateMode = dispatchMode === 'general' ? true : !!r.customRate;
+  customRateMode = dispatchMode === 'general' ? true : (!!r.customRate || _isLqActualCost());
   _applyCustomRateToggleStyle();
   if(customRateMode) {
     // 단가 직접입력 모드: 저장된 baseRate를 직접 표시 (자동계산 차단)
@@ -4064,6 +4086,15 @@ function loadRecord(id) {
       _rateEl.value = String(r.baseRate || 0);
       _rateEl.removeEventListener('input', _onCustomRateInput);
       _rateEl.addEventListener('input', _onCustomRateInput);
+    }
+  } else {
+    // 직전 건이 직접입력/실비건이었으면 입력칸이 열린 채 남음 → 자동단가 칸으로 되돌림
+    const _rateEl = document.getElementById('autoRateDisplay');
+    if(_rateEl) {
+      _rateEl.setAttribute('readonly', 'readonly');
+      _rateEl.style.background = '#fff8f0';
+      _rateEl.style.borderColor = 'var(--accent)';
+      _rateEl.removeEventListener('input', _onCustomRateInput);
     }
   }
 
@@ -6545,8 +6576,9 @@ function calculate() {
   let _lqBreakdown = null; // 🍷 주류 요율 분해 (기본요율=최고가, 경유비 자동)
   let _lqMV = null; // 🚚 주류 다중 차량 합산
   let isMixed = document.getElementById('mixedCargoCheck')?.checked;
+  const _lqActual = _isLqActualCost();   // 💰 주류 실비건: 청구액 직접, 자동 부가요금 없음
 
-  if(customRateMode) {
+  if(customRateMode || _lqActual) {
     // 단가 직접입력 모드: 사용자 입력값 그대로 사용
     baseRate = getCurrentBaseRate();
   } else if(isMixed) {
@@ -6585,7 +6617,7 @@ function calculate() {
   
   // 수작업비 (일반 모드: 수작업비 자동계산 없음 — 직접 입력)
   let manualFee = 0;
-  if(boxes >= 50 && dispatchMode !== 'general') {
+  if(boxes >= 50 && dispatchMode !== 'general' && !_lqActual) {
     manualFee = (dispatchMode === 'liquor' ? LIQUOR_WORK_FEE[vehicle] : MANUAL_FEE[vehicle]) || 0;
   }
   // 🚚 주류 다중 차량: 작업비도 대수·톤수만큼 합산
@@ -6607,7 +6639,7 @@ function calculate() {
   // 총 매출 (주류: 기본요율=최고가 + 경유비 자동합계, 다중 차량은 대수만큼)
   let waypointTotal = 0;
   if(dispatchMode === 'liquor') {
-    waypointTotal = _lqMV ? _lqMV.sumWaypoint : (_lqBreakdown ? _lqBreakdown.waypointTotal : (parseInt(document.getElementById('lqWaypointFee')?.value) || 0));
+    waypointTotal = _lqActual ? 0 : (_lqMV ? _lqMV.sumWaypoint : (_lqBreakdown ? _lqBreakdown.waypointTotal : (parseInt(document.getElementById('lqWaypointFee')?.value) || 0)));
     // 자동 경유비를 입력칸/헤더에 반영 (저장·표시용)
     const _feeEl = document.getElementById('lqWaypointFee');
     if(_feeEl) _feeEl.value = waypointTotal;
@@ -7493,6 +7525,10 @@ function resetForm() {
   document.getElementById('mixedCargoCheck').checked = false;
   document.getElementById('mixedMjimArea').style.display = 'none';
   document.getElementById('smsContent').value = '';
+  // 💰 실비건 해제 (직접입력 해제는 아래 비정형 플래그 초기화에서 함께 처리)
+  const _lqActReset = document.getElementById('lqActualCost');
+  if(_lqActReset) _lqActReset.checked = false;
+  _applyLqActualStyle(false);
   // 상차지 모드별 초기화
   if(dispatchMode === 'liquor') {
     onCenterChange();
@@ -7753,6 +7789,12 @@ function saveCurrentModeData() {
   data._lqVehicleCount = parseInt(document.getElementById('lqVehicleCount')?.value) || 1;
   data._lqFloor = document.getElementById('lqFloor')?.value || '';
   data._lqDocCount = document.getElementById('lqDocCount')?.value || '1';
+  // 💰 주류 실비건 — 모드를 떠날 때 해제되므로 돌아와서 되살릴 값 보관
+  if(dispatchMode === 'liquor') {
+    data._lqActual = !!document.getElementById('lqActualCost')?.checked;
+    data._lqActualPickup = document.getElementById('pickupAddr')?.value || '';
+    data._lqActualRate = getCurrentBaseRate();
+  }
   data._smsContent = document.getElementById('smsContent').value;
   data._smsManual = smsManualMode;
   // 오더 붙여넣기 상태 저장
@@ -7851,6 +7893,7 @@ function setDispatchMode(mode) {
   const prevMode = dispatchMode;
   // 현재 모드 데이터 저장
   saveCurrentModeData();
+  if(prevMode === 'liquor') _leaveLqActualCost(mode);   // 실비건 직접입력이 다른 모드로 새지 않게
   dispatchMode = mode;
   // 전환할 모드 데이터 복원
   restoreModeData(mode);
@@ -7956,6 +7999,18 @@ function setDispatchMode(mode) {
     if(typeof resetDriverRows === 'function') resetDriverRows();
     _syncStdToGen();
     _refreshGenAutocomplete();
+  }
+  // 💰 주류로 돌아오면 떠날 때 해제했던 실비건 상태(체크·상차지·청구액) 복원
+  // (위의 직접입력 토글 정리보다 뒤에 둬야 다시 꺼지지 않음)
+  if(mode === 'liquor') {
+    const _lqSaved = modeFormData.liquor || {};
+    const _lqCb = document.getElementById('lqActualCost');
+    if(_lqSaved._lqActual && _lqCb) {
+      _lqCb.checked = true;
+      _applyLqActualCost(true, _lqSaved._lqActualPickup, _lqSaved._lqActualRate);
+    } else if(_lqCenterVal() === 'etc' && !customRateMode) {
+      toggleCustomRate();   // 기타·실비건 센터는 항상 직접입력
+    }
   }
 }
 
@@ -8249,22 +8304,30 @@ function onWaypointFeeInput() {
   onCoreFieldChange();
 }
 
+// 상차 센터별 상차지 표기 (드롭다운 옵션 문자열과 같아야 함)
+const _LQ_CENTER_PICKUP = {
+  'dp1': '경기 이천시 마장면 서이천로 91 (KCTC덕평1센터)',
+  'dp2': '경기 이천시 마장면 덕평로661번길87 (KCTC덕평2센터)',
+  'yj': '경기 여주시 대신면 대신로 894-10 (KCTC여주센터)',
+  'hj': '경기 여주시 대신면 대신로 894-10 (KCTC여주센터)',  // HJ로지스 = 여주센터 상차 (도급사만 다름)
+  'db': '경기도 광주시 산수로 642-55 (KCTC동부센터)'
+  // 'etc'(실비·기타)는 상차지를 직원이 직접 입력하므로 자동 채우지 않음
+};
+// 상차지가 센터 주소인지 판정 (옛 표기까지 느슨하게)
+const _LQ_CENTER_PICKUP_RE = /KCTC|덕평|서이천로|대신로|산수로|동부센터|여주센터/;
+
 function onCenterChange() {
   if(dispatchMode !== 'liquor') return;
   const center = document.getElementById('lqCenter').value;
+  const _actual = !!document.getElementById('lqActualCost')?.checked;
   _clearLqLegKm();   // 출발 센터가 바뀌면 구간거리 무효
   refreshLqFloorOptions();
-  _setPickupFreeInput(center === 'etc');   // 값 설정 전에 요소부터 교체
-  const centerPickup = {
-    'dp1': '경기 이천시 마장면 서이천로 91 (KCTC덕평1센터)',
-    'dp2': '경기 이천시 마장면 덕평로661번길87 (KCTC덕평2센터)',
-    'yj': '경기 여주시 대신면 대신로 894-10 (KCTC여주센터)',
-    'hj': '경기 여주시 대신면 대신로 894-10 (KCTC여주센터)',  // HJ로지스 = 여주센터 상차 (도급사만 다름)
-    'db': '경기도 광주시 산수로 642-55 (KCTC동부센터)'
-    // 'etc'(실비·기타)는 상차지를 직원이 직접 입력하므로 자동 채우지 않음
-  };
+  _setPickupFreeInput(center === 'etc' || _actual);   // 값 설정 전에 요소부터 교체
+  const centerPickup = _LQ_CENTER_PICKUP;
   if(centerPickup[center]) {
-    document.getElementById('pickupAddr').value = centerPickup[center];
+    const _pk = document.getElementById('pickupAddr');
+    // 💰 실비건: 직원이 직접 넣은 출발지는 센터를 바꿔도 보존 (비었거나 센터 주소일 때만 새 센터로 교체)
+    if(!_actual || !_pk.value.trim() || _LQ_CENTER_PICKUP_RE.test(_pk.value)) _pk.value = centerPickup[center];
   } else if(center === 'etc') {
     // 실비·기타: 센터 고정 주소가 없음 → 이전 센터 주소가 남아있으면 비워 직접 입력 유도
     const _pk = document.getElementById('pickupAddr');
@@ -8286,6 +8349,80 @@ function onCenterChange() {
   // 단가 재계산 (1착 + 경유지)
   calculate();
   recalcAllStops();
+}
+
+// ─── 💰 주류 실비건 ─────────────────────────────────────
+// 요율표에 없는 구간(권역 없음). 청구처는 상차 센터·배차코드 그대로(ACLP/ECLP/HJ/HJD)이고,
+// 상차지와 금액(청구액=원청단가 칸, 기사 지급액)만 직접 입력한다.
+// 자동 작업비·경유비·다중 차량 합산은 붙이지 않는다 → 청구액 + 직접 넣은 추가요금 = 총액.
+// 'etc'(기타·실비건) 센터는 예전부터 쓰던 HJ 전용 실비건 → 같은 규칙으로 취급.
+function _isLqActualCost() {
+  if(dispatchMode !== 'liquor') return false;
+  return !!document.getElementById('lqActualCost')?.checked || _lqCenterVal() === 'etc';
+}
+
+function _applyLqActualStyle(on) {
+  const w = document.getElementById('lqActualCostWrap');
+  if(!w) return;
+  w.style.background = on ? '#fde68a' : '#fffbeb';
+  w.style.borderColor = on ? '#d97706' : '#fcd34d';
+}
+
+// 켜기/끄기. pickupVal·rateVal 은 모드 전환 복원 시에만 넘김
+function _applyLqActualCost(on, pickupVal, rateVal) {
+  const center = _lqCenterVal();
+  _applyLqActualStyle(on);
+  if(on) {
+    const prevPickup = document.getElementById('pickupAddr')?.value || '';
+    _setPickupFreeInput(true);   // select 는 목록 밖 주소를 조용히 버리므로 입력칸으로 교체
+    const pk = document.getElementById('pickupAddr');
+    if(pk) {
+      pk.value = (pickupVal !== undefined) ? pickupVal : prevPickup;
+      pk.placeholder = '상차지 주소 직접 입력 (실비건 — 센터 출발이면 그대로 두세요)';
+    }
+    const wasCustom = customRateMode;
+    if(!customRateMode) toggleCustomRate();
+    const rateEl = document.getElementById('autoRateDisplay');
+    if(rateEl) {
+      // 요율표 자동값은 실비 청구액과 무관 → 새로 켤 때는 비워서 직접 입력 유도
+      if(rateVal !== undefined) rateEl.value = String(rateVal || '');
+      else if(!wasCustom) rateEl.value = '';
+      rateEl.placeholder = '실비 청구액 입력 (숫자만)';
+    }
+  } else if(center !== 'etc') {
+    _setPickupFreeInput(false);
+    const pk = document.getElementById('pickupAddr');
+    if(pk && _LQ_CENTER_PICKUP[center]) pk.value = _LQ_CENTER_PICKUP[center];
+    if(customRateMode) toggleCustomRate();   // 요율표 자동 단가로 복귀
+  }
+  calculate();
+  forceRegenerateSMS();
+}
+
+function toggleLqActualCost() {
+  const on = !!document.getElementById('lqActualCost')?.checked;
+  _applyLqActualCost(on);
+  if(on) showToast('💰 실비건 — 상차지·청구액(원청단가 칸)·기사 지급액을 직접 입력하세요', 4000);
+}
+
+// 주류 모드를 떠날 때: 실비건의 직접입력 상태가 다른 모드로 새지 않게 해제 (돌아오면 복원)
+function _leaveLqActualCost(nextMode) {
+  const cb = document.getElementById('lqActualCost');
+  const wasOn = !!(cb && cb.checked) || _lqCenterVal() === 'etc';
+  if(cb) cb.checked = false;
+  _applyLqActualStyle(false);
+  if(wasOn && customRateMode && nextMode !== 'general') {
+    customRateMode = false;
+    _applyCustomRateToggleStyle();
+    const el = document.getElementById('autoRateDisplay');
+    if(el) {
+      el.setAttribute('readonly', 'readonly');
+      el.style.background = '#fff8f0';
+      el.style.borderColor = 'var(--accent)';
+      el.removeEventListener('input', _onCustomRateInput);
+      el.value = '-';
+    }
+  }
 }
 
 // ─── HJ로지스 배차코드 (HJ-배차일-일련번호) ──────────────────────
@@ -11275,7 +11412,9 @@ function generateSMS() {
     // === 주류 모드 SMS ===
     const cleanCode = code.replace(/[_\-]/g, '');
     const center = document.getElementById('lqCenter').value;
-    
+    // 💰 실비건인데 센터가 아닌 곳에서 출발하면 그 센터의 키오스크·안전화 안내는 맞지 않음 → 실비건 안내 사용
+    const _kioskKey = (_isLqActualCost() && !_LQ_CENTER_PICKUP_RE.test(document.getElementById('pickupAddr')?.value || '')) ? 'etc' : center;
+
     // 서류 수령 방식 체크
     const isOfficeDoc = document.getElementById('lqOfficeDoc')?.checked;
     // 상차 층 (직원이 선택). 사무실 수령이면 체크 시 3층으로 자동 지정되지만,
@@ -11333,13 +11472,14 @@ function generateSMS() {
       }
     }
 
-    const _codeLabel = isOfficeDoc ? '배송코드' : '키오스크코드';
+    // 센터 밖 출발(실비건)은 키오스크가 없음 → 배송코드로 안내
+    const _codeLabel = (isOfficeDoc || _kioskKey === 'etc') ? '배송코드' : '키오스크코드';
     sms = `[배송 안내]
 ■ 배송일: ${dateStr}${hasStops ? '' : '\n■ 거래처: ' + (clientName || '-')}
 1. 상차지: ${_liquorPickupBlock}
 2. ${_codeLabel}: ${cleanCode || '-'}
 3. 수량/중량: ${qtyInfo}
-${kioskMsg[center] || ''}`;
+${kioskMsg[_kioskKey] || ''}`;
 
     if(hasStops) {
       // 다착(2착 이상): [1착]/[2착]... 레이블 표시
@@ -19058,7 +19198,7 @@ function _calcSyncHash(d) {
 // 시트 동기화 시 로컬 전용 필드 보존 (시트에 없는 필드를 기존 로컬 데이터에서 병합)
 // ⚠ arrivalTime(입차시간)은 시트 컬럼에 없어 pull 시 사라지던 값 → 로컬 보존 대상에 포함.
 //    시트 Apps Script를 '입차시간' 컬럼이 있는 최신본으로 교체하면 다른 PC와도 공유됨.
-const _LOCAL_ONLY_FIELDS = ['arrivalTime','lqWeight','lqCenter','lqFloor','lqDocCount','lqOfficeDoc','lqWaypointFee','liquorStops','cargoWeight','isMixed','mixedMjimIdx','mixedMjimSize','hapjimGroup','stickyMemo','isReturn','customRate','refNo'];
+const _LOCAL_ONLY_FIELDS = ['arrivalTime','lqWeight','lqCenter','lqFloor','lqDocCount','lqOfficeDoc','lqWaypointFee','liquorStops','cargoWeight','isMixed','mixedMjimIdx','mixedMjimSize','hapjimGroup','stickyMemo','isReturn','customRate','refNo','lqActualCost'];
 function _mergeLocalFields(sheetData) {
   const localMap = {};
   dispatchLog.forEach(r => { if(r.id) localMap[r.id] = r; });
@@ -19244,6 +19384,19 @@ async function saveDispatch(closeAfter) {
       const _fp = document.getElementById('lnlPickupInput');
       if(_fp) _fp.focus();
       return; // 빈 상차지 저장 차단
+    }
+    // ─── 💰 주류 실비건: 요율표가 없으므로 청구액·상차지가 비면 0원/빈 상차지로 저장된다 ───
+    if(_isLqActualCost()) {
+      if(!(document.getElementById('pickupAddr')?.value || '').trim()) {
+        showToast('⚠ 실비건 — 상차지 주소를 입력하세요', 5000);
+        document.getElementById('pickupAddr')?.focus();
+        return;
+      }
+      if(getCurrentBaseRate() <= 0) {
+        showToast('⚠ 실비건 — 청구액(원청단가 칸)을 입력하세요', 5000);
+        document.getElementById('autoRateDisplay')?.focus();
+        return;
+      }
     }
     let code = document.getElementById('dispatchCode').value.trim();
   
@@ -19535,7 +19688,7 @@ async function saveDispatch(closeAfter) {
     }
     plt = document.getElementById('palletCount').value || '0';
 
-    if(customRateMode) {
+    if(customRateMode || _isLqActualCost()) {
       // 단가 직접입력 모드: 사용자 입력값 사용 (단가표 외 건)
       baseRate = getCurrentBaseRate();
     } else if(!region) {
@@ -19569,11 +19722,15 @@ async function saveDispatch(closeAfter) {
   const waitH = 0;
 
   // 🚚 주류 다중 차량 합산 (화면 calculate와 동일 규칙) — boxes 확정 후 계산
-  const _saveLqMV = (dispatchMode === 'liquor') ? computeLiquorMultiVehicle(region, boxes, type === '왕복') : null;
+  // 화면(calculate)은 직접입력·혼적·실비건이면 다중 차량 합산을 안 하므로 저장도 똑같이 건너뜀
+  // (안 그러면 직접 넣은 단가가 요율표 합계로 덮여 화면 금액 ≠ 저장 금액)
+  const _lqActualSave = _isLqActualCost();
+  const _mixedSave = !!document.getElementById('mixedCargoCheck')?.checked;
+  const _saveLqMV = (dispatchMode === 'liquor' && !customRateMode && !_lqActualSave && !_mixedSave) ? computeLiquorMultiVehicle(region, boxes, type === '왕복') : null;
   if(_saveLqMV) baseRate = _saveLqMV.sumBase;
 
   let manualFee = 0;
-  if(type !== 'M짐' && boxes >= 50) manualFee = (dispatchMode === 'liquor' ? LIQUOR_WORK_FEE[vehicle] : MANUAL_FEE[vehicle]) || 0;
+  if(type !== 'M짐' && boxes >= 50 && !_lqActualSave) manualFee = (dispatchMode === 'liquor' ? LIQUOR_WORK_FEE[vehicle] : MANUAL_FEE[vehicle]) || 0;
   if(_saveLqMV) manualFee = _saveLqMV.sumWork;
   let waitFee = waitH > 2 ? (waitH - 2) * 10000 : 0;
   if(_saveLqMV) waitFee *= _saveLqMV.count;
@@ -19584,7 +19741,7 @@ async function saveDispatch(closeAfter) {
     // 📍 락앤락 경유비는 직접 입력값 그대로 (자동 계산 없음)
     waypointTotal = parseInt(document.getElementById('lqWaypointFee')?.value) || 0;
   } else if(dispatchMode === 'liquor') {
-    waypointTotal = _saveLqMV ? _saveLqMV.sumWaypoint : (_saveLqBd ? _saveLqBd.waypointTotal : (parseInt(document.getElementById('lqWaypointFee')?.value) || 0));
+    waypointTotal = _lqActualSave ? 0 : (_saveLqMV ? _saveLqMV.sumWaypoint : (_saveLqBd ? _saveLqBd.waypointTotal : (parseInt(document.getElementById('lqWaypointFee')?.value) || 0)));
     // 저장 레코드에 자동 경유비 반영 (입력칸도 동기화)
     const _feeEl = document.getElementById('lqWaypointFee');
     if(_feeEl) _feeEl.value = waypointTotal;
@@ -19660,6 +19817,7 @@ async function saveDispatch(closeAfter) {
       // 비정형 배차 플래그 (회송 / 단가 직접입력)
       isReturn: !!isReturnMode,
       customRate: !!customRateMode,
+      lqActualCost: _lqActualSave,   // 💰 주류 실비건 (시트 컬럼 없음 → 다른 PC는 loadRecord 흔적 판정)
       refNo: dispatchMode === 'general' ? (document.getElementById('genRefNo')?.value || '') : '',
       createdBy: getUserName() || '-'
     });
