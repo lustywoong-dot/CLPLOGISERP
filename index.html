@@ -824,8 +824,9 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <!-- 💰 실비건 출발지 — 하단 상차지 칸은 폼 맨 아래라 찾기 어려워, 체크 시 여기서 바로 입력 -->
         <div id="lqActualPickupRow" style="display:none;margin-top:6px;align-items:center;gap:8px;padding:6px 10px;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;flex-wrap:wrap">
           <span style="font-size:12px;font-weight:700;color:#b45309;white-space:nowrap">🚚 출발지(상차지)</span>
+          <input type="text" id="lqActualPickupName" placeholder="상호 (예: 트레이더스 동탄점)" oninput="onLqActualPickupInput()" style="width:190px;padding:5px 8px;font-size:12px;font-weight:600;border:1px solid #f59e0b;border-radius:4px;box-sizing:border-box">
           <input type="text" id="lqActualPickupInput" placeholder="출발지 주소 — 센터에서 출발하면 센터 주소 그대로 두세요" oninput="onLqActualPickupInput()" style="flex:1;min-width:220px;padding:5px 8px;font-size:12px;border:1px solid #f59e0b;border-radius:4px;box-sizing:border-box">
-          <span style="font-size:11px;color:#92400e;white-space:nowrap">배차코드는 원래대로: 여주 ECLP · 덕평 ACLP · HJ로지스 HJ-</span>
+          <span style="font-size:11px;color:#92400e;white-space:nowrap">위쪽 폼은 1착(첫 배송처) · 배차코드는 원래대로: 여주 ECLP · 덕평 ACLP · HJ로지스 HJ-</span>
         </div>
       </div>
       <!-- 일반 모드 전용 폼 (상차지→하차지→거래처 순서) -->
@@ -8201,8 +8202,7 @@ function _setPickupFreeInput(enable) {
     inp.onchange = function(){ if(typeof forceRegenerateSMS === 'function') forceRegenerateSMS(); };
     // 타이핑 중에도 문자에 바로 반영 (예전엔 칸을 벗어나야 반영돼, 바로 복사하면 상차지가 비어 있었음)
     inp.oninput = function(){
-      const _a = document.getElementById('lqActualPickupInput');
-      if(_a && _a !== document.activeElement) _a.value = inp.value;
+      if(typeof _fillLqActualPickupInputs === 'function') _fillLqActualPickupInputs(inp.value);
       if(typeof generateSMS === 'function') generateSMS();
     };
     cur.parentElement.replaceChild(inp, cur);
@@ -8445,15 +8445,36 @@ function _applyLqActualPickupUI(on) {
   if(row) row.style.display = on ? 'flex' : 'none';
   const grp = document.getElementById('pickupAddrGroup');
   if(grp && dispatchMode === 'liquor') grp.style.display = on ? 'none' : '';
-  const inp = document.getElementById('lqActualPickupInput');
-  if(on && inp) inp.value = document.getElementById('pickupAddr')?.value || '';
+  if(on) _fillLqActualPickupInputs(document.getElementById('pickupAddr')?.value || '');
 }
 
-// 출발지 칸 입력 → 실제 저장 필드(pickupAddr)로 동기화 + 문자 즉시 갱신
+// 출발지 = 상호 + 주소. 저장은 센터 표기와 같은 '주소 (상호)' 한 줄 (시트 컬럼 추가 없이 호환)
+function _composeLqPickup(name, addr) {
+  name = String(name || '').trim(); addr = String(addr || '').trim();
+  if(name && addr) return addr + ' (' + name + ')';
+  return name || addr;
+}
+function _splitLqPickup(v) {
+  const s = String(v || '').trim();
+  const m = s.match(/^(.*\S)\s*\(([^()]+)\)$/);
+  return m ? { addr: m[1].trim(), name: m[2].trim() } : { addr: s, name: '' };
+}
+function _fillLqActualPickupInputs(v) {
+  const sp = _splitLqPickup(v);
+  const nm = document.getElementById('lqActualPickupName');
+  const ad = document.getElementById('lqActualPickupInput');
+  if(nm && nm !== document.activeElement) nm.value = sp.name;
+  if(ad && ad !== document.activeElement) ad.value = sp.addr;
+}
+
+// 출발지 칸(상호·주소) 입력 → 실제 저장 필드(pickupAddr)로 동기화 + 문자 즉시 갱신
 function onLqActualPickupInput() {
-  const inp = document.getElementById('lqActualPickupInput');
+  const nm = document.getElementById('lqActualPickupName');
+  const ad = document.getElementById('lqActualPickupInput');
   const pk = document.getElementById('pickupAddr');
-  if(inp && pk) pk.value = inp.value;
+  // 센터 출발 기본값(상호=센터명)에서 주소만 센터 밖으로 바꾸면 센터명이 남아 '나주 주소 (KCTC여주센터)'가 됨 → 센터명 비움
+  if(nm && ad && document.activeElement !== nm && _LQ_CENTER_PICKUP_RE.test(nm.value) && ad.value.trim() && !_LQ_CENTER_PICKUP_RE.test(ad.value)) nm.value = '';
+  if(pk) pk.value = _composeLqPickup(nm?.value, ad?.value);
   generateSMS();
 }
 
@@ -11552,6 +11573,10 @@ function generateSMS() {
       if(detailAddr) _ret += `\n   주소: ${detailAddr}`;
       if(contactInfo && contactInfo !== '-') _ret += `\n   담당자: ${contactInfo}`;
       _liquorPickupBlock = _ret;
+    } else if(_kioskKey === 'etc' && _splitLqPickup(pickup).name) {
+      // 💰 실비건 센터 밖 출발: '주소 (상호)'로 저장된 값을 상호 / 주소 두 줄로 안내
+      const _sp = _splitLqPickup(pickup);
+      _liquorPickupBlock = _sp.name + (_sp.addr ? '\n   주소: ' + _sp.addr : '');
     } else {
       _liquorPickupBlock = pickup || '-';
       // 선택한 상차 층을 문자에만 덧붙임 (덕평1·2 1~3층 / 여주 1~4층 건물이라 기사 혼선 방지)
