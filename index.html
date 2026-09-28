@@ -1134,7 +1134,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
               </div>
               <div class="form-group" style="margin:0">
                 <label style="font-size:10px">기사 지급액</label>
-                <input type="number" class="drv-pay" min="0" step="1000" placeholder="지급액" oninput="checkDriverAssignBadge()" style="font-size:11px;padding:3px 5px">
+                <input type="number" class="drv-pay" min="0" step="1000" placeholder="지급액" oninput="checkDriverAssignBadge();calculate()" style="font-size:11px;padding:3px 5px">
               </div>
               <div class="form-group" style="margin:0">
                 <label style="font-size:10px">🕐 입차시간</label>
@@ -6592,7 +6592,7 @@ function calculate() {
   const plt = parseInt(document.getElementById('palletCount').value) || 0;
   const boxes = parseInt(document.getElementById('boxCount').value) || 0;
   const waitH = 0;
-  const driverPay = parseInt(document.getElementById('driverPay').value) || 0;
+  const driverPay = _driverPayTotal();   // 기사 여러 명이면 지급액 합계
 
   // 차량 결정
   let vehicle = document.getElementById('vehicleTon').value;
@@ -6708,7 +6708,7 @@ function calculate() {
   document.getElementById('resManual').textContent = (manualFee + extraFee) > 0 ? (manualFee + extraFee).toLocaleString() + '원' : '-';
   document.getElementById('resRound').textContent = roundFee > 0 ? '+' + roundFee.toLocaleString() + '원' : '-';
   document.getElementById('resTotal').innerHTML = total.toLocaleString() + '<small>원</small>';
-  document.getElementById('resDriver').textContent = driverPay > 0 ? driverPay.toLocaleString() + '원' : '미입력';
+  document.getElementById('resDriver').textContent = driverPay > 0 ? driverPay.toLocaleString() + '원' + _driverPayCountLabel() : '미입력';
   document.getElementById('resMargin').textContent = driverPay > 0 ? margin.toLocaleString() + '원' : '-';
   
   // 원청단가 표시: 추가요금 있으면 총액만 표시
@@ -6741,7 +6741,7 @@ function calculateMjim() {
   
   const boxes = parseInt(document.getElementById('boxCount').value) || 0;
   const waitH = 0;
-  const driverPay = parseInt(document.getElementById('driverPay').value) || 0;
+  const driverPay = _driverPayTotal();   // 기사 여러 명이면 지급액 합계
   
   // M짐은 수작업비 없음 (혼적이라 별도)
   let waitFee = waitH > 2 ? (waitH - 2) * 10000 : 0;
@@ -6753,7 +6753,7 @@ function calculateMjim() {
   document.getElementById('resManual').textContent = '-';
   document.getElementById('resRound').textContent = '-';
   document.getElementById('resTotal').innerHTML = total.toLocaleString() + '<small>원</small>';
-  document.getElementById('resDriver').textContent = driverPay > 0 ? driverPay.toLocaleString() + '원' : '미입력';
+  document.getElementById('resDriver').textContent = driverPay > 0 ? driverPay.toLocaleString() + '원' + _driverPayCountLabel() : '미입력';
   document.getElementById('resMargin').textContent = driverPay > 0 ? margin.toLocaleString() + '원' : '-';
   
   // 원청단가 자동 표시
@@ -9279,6 +9279,16 @@ function getDriverRows() {
   }));
 }
 
+// 조회 결과 박스의 매입(기사 지급액) — 기사 여러 명이면 전원 합계 (예전엔 첫 기사 금액만 잡혀 마진이 부풀려 보였음)
+function _driverPayTotal() {
+  const sum = getDriverRows().reduce((t, d) => t + (d.pay || 0), 0);
+  return sum || (parseInt(document.getElementById('driverPay')?.value) || 0);
+}
+function _driverPayCountLabel() {
+  const n = getDriverRows().filter(d => d.pay > 0).length;
+  return n > 1 ? ' (' + n + '대)' : '';
+}
+
 // F9 저장 뒤 폼을 유지할 때: 각 기사 행에 방금 저장된 레코드 id를 연결 (다음 수정 저장이 같은 행을 고치도록)
 // recsByRow[i] = 기사 입력이 있는 i번째 행의 레코드 (getDriverRows 필터와 같은 기준)
 function _bindDriverRows(recsByRow) {
@@ -9472,7 +9482,7 @@ function addDriverRow() {
       <input type="text" class="drv-vehicleNo" placeholder="차량번호" oninput="checkDriverAssignBadge();showDriverSuggestByVehicle(this)" list="vehicleNoList" style="font-size:11px;padding:4px 6px">
     </div>
     <div class="form-group" style="margin:0">
-      <input type="number" class="drv-pay" min="0" step="1000" placeholder="지급액" oninput="checkDriverAssignBadge()" style="font-size:11px;padding:4px 6px">
+      <input type="number" class="drv-pay" min="0" step="1000" placeholder="지급액" oninput="checkDriverAssignBadge();calculate()" style="font-size:11px;padding:4px 6px">
     </div>
     <div class="form-group" style="margin:0">
       <input type="text" class="drv-arrival" placeholder="입차시간" style="font-size:11px;padding:4px 6px">
@@ -9494,6 +9504,7 @@ function removeDriverRow(btn) {
     if(label) label.textContent = '#' + (i+1);
   });
   checkDriverAssignBadge();
+  calculate();   // 지운 기사의 지급액을 매입·마진에서 빼기
 }
 
 function resetDriverRows() {
@@ -9521,6 +9532,7 @@ function clearDriverAssign() {
   if(!confirm('기사 배정 정보를 모두 지울까요?\n\n· 배차경로 · 기사명 · 기사 연락처\n· 차량번호 · 지급액 · 입차시간\n\n※ 화면 입력값만 지워집니다.\n※ 저장된 배차 이력·정산 데이터는 변경되지 않습니다.')) return;
   resetDriverRows();          // 추가 행 제거 + 첫 행 입력값 초기화 + checkDriverAssignBadge
   syncDriverHidden();         // SMS용 hidden 필드(dispatchRoute/driverName/...) 동기화
+  if(typeof calculate === 'function') calculate();   // 매입·마진도 비움
   if(typeof generateSMS === 'function') generateSMS();
   showToast('🧹 기사 배정 정보를 초기화했습니다');
 }
