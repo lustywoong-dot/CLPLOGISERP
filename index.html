@@ -8331,7 +8331,22 @@ function refreshLqFloorOptions() {
 // 사무실 서류수령 체크 시 안내는 '선택한 상차 층의 사무실' 기준으로 나감.
 // (층을 3층으로 강제하지 않음 — 층마다 사무실이 있어 직원이 고른 층을 그대로 따름)
 function onOfficeDocChange() {
+  // 직원이 직접 바꾸면 HJ 자동 체크 표시는 해제 (센터를 바꿔도 직원 선택을 건드리지 않게)
+  const cb = document.getElementById('lqOfficeDoc');
+  if(cb) delete cb.dataset.hjAuto;
   onCoreFieldChange();
+}
+
+// HJ로지스 센터(hj·db)는 키오스크를 못 써서 사무실 서류 수령 → 체크박스도 자동으로 켜서 화면과 문자를 일치시킴
+function _syncHjOfficeDoc(center) {
+  const cb = document.getElementById('lqOfficeDoc');
+  if(!cb) return;
+  if(center === 'hj' || center === 'db') {
+    if(!cb.checked) { cb.checked = true; cb.dataset.hjAuto = '1'; }
+  } else if(cb.dataset.hjAuto === '1') {
+    cb.checked = false;       // HJ 때문에 자동으로 켰던 것만 되돌림
+    delete cb.dataset.hjAuto;
+  }
 }
 
 // 실비·기타 건은 상차지가 고정 센터가 아니므로 드롭다운을 입력칸으로 교체해 직접 입력 가능하게 함
@@ -8533,6 +8548,7 @@ function onCenterChange() {
   forceRegenerateSMS();
   // 💰 실비건 출발지 칸 표시·값 동기화 (센터를 바꿔 센터 주소가 바뀐 경우 포함)
   _applyLqActualPickupUI(center === 'etc' || _actual);
+  _syncHjOfficeDoc(center);   // HJ로지스 = 사무실 서류 수령
   // 단가 재계산 (1착 + 경유지)
   calculate();
   recalcAllStops();
@@ -11687,7 +11703,10 @@ function generateSMS() {
     const _kioskKey = (_isLqActualCost() && !_LQ_CENTER_PICKUP_RE.test(document.getElementById('pickupAddr')?.value || '')) ? 'etc' : center;
 
     // 서류 수령 방식 체크
-    const isOfficeDoc = document.getElementById('lqOfficeDoc')?.checked;
+    // HJ로지스(여주 HJ·동부 HJD)는 KCTC 시스템을 못 써서 키오스크 출력 불가 → 항상 사무실에서 서류 직접 수령
+    // (센터 밖 출발 실비건은 사무실 안내가 맞지 않으므로 제외)
+    const _hjLogis = (center === 'hj' || center === 'db') && _kioskKey !== 'etc';
+    const isOfficeDoc = document.getElementById('lqOfficeDoc')?.checked || _hjLogis;
     // 상차 층 (직원이 선택). 사무실 수령이면 체크 시 3층으로 자동 지정되지만,
     // 층을 비워둔 채 저장된 옛 건도 있으므로 안내문은 3층으로 폴백.
     const _lqFloor = document.getElementById('lqFloor')?.value || '';
