@@ -7229,7 +7229,6 @@ function renderClpFixedRates() {
 // ─── 고정기사 요율표 기사 배포용 이미지 (센터별 1장) ─────────────────
 // 새 고정기사 모집 시 카톡으로 보내거나 인쇄해서 전달. 휴대폰에서 보기 좋게 세로형
 // (행 = 권역, 열 = 톤수). 그 센터에서 운행하지 않는 권역(전 톤수 빈칸)은 뺀다.
-const CLP_FIXED_CONTACT = '010-3111-3087';   // 기사 문자의 '고정/반고정 문의' 번호와 동일
 const _CLP_FIXED_TON_ORDER = [1, 2.5, 3.5, 5, 5.5, 11, 18];   // tonHeaders·extraFees 열 순서
 function _clpFixedTonLabel(ton) { return ton === 5.5 ? '5톤축' : ton + '톤'; }
 
@@ -7248,8 +7247,7 @@ function _drawClpFixedCenterCanvas(center) {
   const H = PAD + 30 + 24 + 16                          // 제목·부제
           + HEAD_H + rows.length * ROW_H + 22            // 운임표
           + 26 + HEAD_H + (R.extraFees || []).length * ROW_H + 18   // 추가 요금
-          + memos.length * 22 + 14                       // 안내
-          + 44 + PAD;                                    // 문의
+          + memos.length * 22 + PAD;                     // 안내
   const canvas = document.createElement('canvas');
   const dpr = 2;
   canvas.width = W * dpr; canvas.height = H * dpr;
@@ -7311,10 +7309,6 @@ function _drawClpFixedCenterCanvas(center) {
   y += 18;
 
   memos.forEach(m => { txt('•  ' + m, PAD + 4, y + 8, { size: 13, color: '#92400e' }); y += 22; });
-  y += 14;
-
-  ctx.fillStyle = '#eff6ff'; ctx.fillRect(PAD, y, W - PAD * 2, 36);
-  txt('고정 / 반고정 문의  ' + CLP_FIXED_CONTACT + '   ·   (주)씨엘피', W / 2, y + 18, { bold: true, size: 14, color: '#1e3a8a', align: 'center' });
   return canvas;
 }
 
