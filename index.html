@@ -1332,6 +1332,10 @@ body.hide-cost-col .col-sensitive { display: none !important; }
             <option value="서이천센터">서이천센터</option>
             <option value="여주센터">여주센터</option>
           </select>
+          <!-- 기사 배포용 (센터별 1장, 휴대폰 보기용 세로형) -->
+          <button class="btn btn-sm" onclick="copyClpFixedImage()" title="선택한 센터 요율표를 이미지로 복사 → 카톡에 Ctrl+V" style="background:#fee500;color:#3c1e1e;border:1px solid #e5cf00;font-weight:700;padding:5px 10px;font-size:12px">🖼 이미지 복사</button>
+          <button class="btn btn-sm" onclick="downloadClpFixedImages()" title="센터별 PNG 파일로 저장 (전체 센터면 센터마다 1장)" style="background:#fff;color:var(--primary);border:1px solid var(--primary);font-weight:700;padding:5px 10px;font-size:12px">💾 이미지 저장</button>
+          <button class="btn btn-sm" onclick="printClpFixedRates()" title="센터별 1장씩 인쇄 (A4 세로)" style="background:#fff;color:#374151;border:1px solid #9ca3af;font-weight:700;padding:5px 10px;font-size:12px">🖨 인쇄</button>
         </span>
       </div>
       <div class="info-banner" style="margin-bottom:8px;font-size:11px">
@@ -7220,6 +7224,156 @@ function renderClpFixedRates() {
   if(memoList && CLP_FIXED_RATES.memos) {
     memoList.innerHTML = CLP_FIXED_RATES.memos.map(m => `<li>${m}</li>`).join('');
   }
+}
+
+// ─── 고정기사 요율표 기사 배포용 이미지 (센터별 1장) ─────────────────
+// 새 고정기사 모집 시 카톡으로 보내거나 인쇄해서 전달. 휴대폰에서 보기 좋게 세로형
+// (행 = 권역, 열 = 톤수). 그 센터에서 운행하지 않는 권역(전 톤수 빈칸)은 뺀다.
+const CLP_FIXED_CONTACT = '010-3111-3087';   // 기사 문자의 '고정/반고정 문의' 번호와 동일
+const _CLP_FIXED_TON_ORDER = [1, 2.5, 3.5, 5, 5.5, 11, 18];   // tonHeaders·extraFees 열 순서
+function _clpFixedTonLabel(ton) { return ton === 5.5 ? '5톤축' : ton + '톤'; }
+
+function _drawClpFixedCenterCanvas(center) {
+  const R = CLP_FIXED_RATES;
+  const tons = center.tons;
+  const rows = R.regions.map((cities, idx) => ({ label: cities.join(' · '), vals: tons.map(t => t.rates[idx]) }))
+                        .filter(r => r.vals.some(v => v !== null && v !== undefined && v !== ''));
+  const extraCols = tons.map(t => _CLP_FIXED_TON_ORDER.indexOf(t.ton));
+  const today = getTodayStr();
+
+  const F = "'Noto Sans KR','Malgun Gothic',sans-serif";
+  const PAD = 24, LABEL_W = 170, COL_W = 66, ROW_H = 30, HEAD_H = 34;
+  const W = PAD * 2 + LABEL_W + COL_W * tons.length;
+  const memos = R.memos || [];
+  const H = PAD + 30 + 24 + 16                          // 제목·부제
+          + HEAD_H + rows.length * ROW_H + 22            // 운임표
+          + 26 + HEAD_H + (R.extraFees || []).length * ROW_H + 18   // 추가 요금
+          + memos.length * 22 + 14                       // 안내
+          + 44 + PAD;                                    // 문의
+  const canvas = document.createElement('canvas');
+  const dpr = 2;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+  ctx.fillStyle = '#1e3a8a'; ctx.fillRect(0, 0, W, 6);
+
+  const txt = (s, x, y, o) => {
+    o = o || {};
+    ctx.font = (o.bold ? 'bold ' : '') + (o.size || 13) + 'px ' + F;
+    ctx.fillStyle = o.color || '#111827';
+    ctx.textAlign = o.align || 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(s), x, y);
+  };
+  let y = PAD + 14;
+  txt('CLP 고정기사 운임표', PAD, y, { bold: true, size: 22, color: '#1e3a8a' });
+  txt('발행 ' + today, W - PAD, y, { size: 11, color: '#6b7280', align: 'right' });
+  y += 30;
+  txt(center.name + ' 출발  ·  단위: 만원 (예: 7 = 70,000원)', PAD, y, { bold: true, size: 14, color: '#374151' });
+  y += 24;
+
+  // 표 공통
+  const drawTable = (headers, bodyRows, fmt) => {
+    const x0 = PAD;
+    ctx.fillStyle = '#1e3a8a';
+    ctx.fillRect(x0, y, LABEL_W + COL_W * headers.length, HEAD_H);
+    txt(headers.corner, x0 + 10, y + HEAD_H / 2, { bold: true, size: 13, color: '#fff' });
+    headers.forEach((h, i) => txt(h, x0 + LABEL_W + COL_W * i + COL_W / 2, y + HEAD_H / 2, { bold: true, size: 13, color: '#fff', align: 'center' }));
+    y += HEAD_H;
+    bodyRows.forEach((r, ri) => {
+      ctx.fillStyle = ri % 2 ? '#f3f4f6' : '#ffffff';
+      ctx.fillRect(x0, y, LABEL_W + COL_W * headers.length, ROW_H);
+      txt(r.label, x0 + 10, y + ROW_H / 2, { bold: true, size: 13, color: '#1f2937' });
+      r.vals.forEach((v, i) => {
+        const empty = v === null || v === undefined || v === '';
+        txt(empty ? '-' : fmt(v), x0 + LABEL_W + COL_W * i + COL_W / 2, y + ROW_H / 2,
+            { bold: !empty, size: 14, color: empty ? '#d1d5db' : '#111827', align: 'center' });
+      });
+      y += ROW_H;
+    });
+    ctx.strokeStyle = '#d1d5db'; ctx.lineWidth = 1;
+    ctx.strokeRect(x0 + 0.5, y - HEAD_H - bodyRows.length * ROW_H + 0.5, LABEL_W + COL_W * headers.length - 1, HEAD_H + bodyRows.length * ROW_H - 1);
+  };
+
+  const tonHeads = tons.map(t => _clpFixedTonLabel(t.ton));
+  tonHeads.corner = '권역';
+  drawTable(tonHeads, rows, v => v);
+  y += 22;
+
+  // 추가 요금 (이 센터 톤수 열만)
+  txt('추가 요금 (단위: 원)', PAD, y + 8, { bold: true, size: 14, color: '#7c3aed' });
+  y += 26;
+  const exHeads = tons.map(t => _clpFixedTonLabel(t.ton));
+  exHeads.corner = '구분';
+  const exRows = (R.extraFees || []).map(f => ({ label: f.label, vals: extraCols.map(ci => ci >= 0 ? f.tons[ci] : null) }));
+  drawTable(exHeads, exRows, v => Number(v).toLocaleString());
+  y += 18;
+
+  memos.forEach(m => { txt('•  ' + m, PAD + 4, y + 8, { size: 13, color: '#92400e' }); y += 22; });
+  y += 14;
+
+  ctx.fillStyle = '#eff6ff'; ctx.fillRect(PAD, y, W - PAD * 2, 36);
+  txt('고정 / 반고정 문의  ' + CLP_FIXED_CONTACT + '   ·   (주)씨엘피', W / 2, y + 18, { bold: true, size: 14, color: '#1e3a8a', align: 'center' });
+  return canvas;
+}
+
+// 선택된 센터 목록 (전체면 모든 센터)
+function _clpFixedSelectedCenters() {
+  const sel = document.getElementById('clpFixedCenter')?.value || 'all';
+  return CLP_FIXED_RATES.centers.filter(c => sel === 'all' || c.name === sel);
+}
+
+function copyClpFixedImage() {
+  const centers = _clpFixedSelectedCenters();
+  if(centers.length !== 1) { showToast('⚠ 복사할 센터를 먼저 고르세요 (전체 센터는 💾 이미지 저장으로 센터별 파일)', 4000); document.getElementById('clpFixedCenter')?.focus(); return; }
+  const canvas = _drawClpFixedCenterCanvas(centers[0]);
+  canvas.toBlob(blob => {
+    if(!blob) { showToast('⚠ 이미지 생성 실패'); return; }
+    try {
+      navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+        .then(() => showToast('✅ ' + centers[0].name + ' 요율표 이미지 복사 완료 — 카톡에 Ctrl+V'))
+        .catch(() => { _downloadBlob(blob, _clpFixedFileName(centers[0])); showToast('ℹ 복사가 막혀 파일로 저장했습니다'); });
+    } catch(e) {
+      _downloadBlob(blob, _clpFixedFileName(centers[0]));
+      showToast('ℹ 복사가 막혀 파일로 저장했습니다');
+    }
+  }, 'image/png');
+}
+
+function _clpFixedFileName(center) { return 'CLP_고정기사_운임표_' + center.name + '_' + getTodayStr() + '.png'; }
+function _downloadBlob(blob, name) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+
+function downloadClpFixedImages() {
+  const centers = _clpFixedSelectedCenters();
+  centers.forEach((c, i) => {
+    // 브라우저가 연속 다운로드를 막지 않게 약간씩 띄움
+    setTimeout(() => {
+      _drawClpFixedCenterCanvas(c).toBlob(blob => { if(blob) _downloadBlob(blob, _clpFixedFileName(c)); }, 'image/png');
+    }, i * 400);
+  });
+  showToast('💾 ' + centers.map(c => c.name).join(', ') + ' 요율표 저장 (' + centers.length + '장)');
+}
+
+function printClpFixedRates() {
+  const centers = _clpFixedSelectedCenters();
+  const imgs = centers.map(c => _drawClpFixedCenterCanvas(c).toDataURL('image/png'));
+  const w = window.open('', '_blank');
+  if(!w) { showToast('⚠ 팝업이 차단됐습니다 — 팝업 허용 후 다시 눌러주세요'); return; }
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>CLP 고정기사 운임표</title>'
+    + '<style>@page{size:A4 portrait;margin:10mm}body{margin:0;text-align:center}'
+    + 'img{max-width:100%;max-height:270mm;page-break-after:always;display:block;margin:0 auto}'
+    + 'img:last-child{page-break-after:auto}</style></head><body>'
+    + imgs.map(src => '<img src="' + src + '">').join('')
+    + '</body></html>');
+  w.document.close();
+  w.onload = () => { w.focus(); w.print(); };
 }
 
 // ============================================
