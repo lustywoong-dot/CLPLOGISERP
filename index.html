@@ -1295,6 +1295,14 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <tbody id="rateBody"></tbody>
         </table>
       </div>
+      <!-- 락앤락 부가요금 참고표 (KCTC 제공, 락앤락 선택 시만 표시) — 표시 전용, 자동 계산에 쓰지 않음 -->
+      <div id="lnlExtraFeeSection" style="margin-top:16px">
+        <div style="font-weight:700;font-size:13px;color:var(--primary);margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--primary)">📋 부가요금 참고표 <small style="font-size:11px;color:var(--text-light);font-weight:400">(KCTC 제공 · 단위: 원 · 참고용 — 배차 등록 자동 계산에는 반영되지 않음)</small></div>
+        <div class="table-wrap">
+          <table id="lnlExtraFeeTable"></table>
+        </div>
+        <ul id="lnlExtraFeeMemo" style="margin:6px 0 0;padding-left:18px;font-size:11px;color:#92400e;line-height:1.7"></ul>
+      </div>
       <!-- M짐 단가 (락앤락 선택 시만 표시) -->
       <div id="mjimSection" style="margin-top:16px">
         <div style="font-weight:700;font-size:13px;color:var(--primary);margin-bottom:8px;padding-bottom:6px;border-bottom:2px solid var(--primary)">📦 M짐(혼적) 단가표</div>
@@ -7118,6 +7126,33 @@ function renderRateTable() {
   
   // M짐 섹션: 락앤락일 때만 표시
   document.getElementById('mjimSection').style.display = activeRateClient === 'locknlock' ? '' : 'none';
+  // 부가요금 참고표: 락앤락일 때만 표시
+  const _exSec = document.getElementById('lnlExtraFeeSection');
+  if(_exSec) _exSec.style.display = activeRateClient === 'locknlock' ? '' : 'none';
+  if(activeRateClient === 'locknlock') renderLnlExtraFeeRef();
+}
+
+// 락앤락 부가요금 참고표 (KCTC 제공 표 그대로 옮김 — 표시 전용)
+// ⚠ 자동 계산은 MANUAL_FEE(작업비, 1톤 코드부터 청구)·경유비 직접입력을 그대로 씀. 이 표로 바꾸지 말 것(2026-10-01 보스 확인)
+const LNL_EXTRA_FEE_REF = {
+  tons: ['1톤', '2.5톤', '3.5톤', '5톤', '5톤축', '11톤', '18톤'],
+  rows: [
+    { label: '동일권역', vals: [10000, 10000, 10000, 15000, 20000, 20000, 30000] },
+    { label: '타권역',   vals: [15000, 15000, 15000, 20000, 25000, 25000, 40000] },
+    { label: '작업비',   vals: [20000, 20000, 20000, 30000, 40000, 40000, 40000] },
+    { label: '대기료',   vals: [20000, 20000, 20000, 20000, 20000, 20000, 20000] },
+  ],
+  memos: ['대기료는 2시간 대기후 시간당 발생', '50박스 이상 수작업 발생시 비용 지급'],
+};
+function renderLnlExtraFeeRef() {
+  const tbl = document.getElementById('lnlExtraFeeTable');
+  if(!tbl) return;
+  const R = LNL_EXTRA_FEE_REF;
+  tbl.innerHTML = `<thead><tr><th>구분</th>${R.tons.map(t => `<th>${t}</th>`).join('')}</tr></thead><tbody>`
+    + R.rows.map(r => `<tr><td style="font-weight:700;text-align:left;padding-left:12px">${r.label}</td>${r.vals.map(v => `<td class="amount">${v.toLocaleString()}</td>`).join('')}</tr>`).join('')
+    + '</tbody>';
+  const memo = document.getElementById('lnlExtraFeeMemo');
+  if(memo) memo.innerHTML = R.memos.map(m => `<li>${m}</li>`).join('');
 }
 
 function filterRateTable() {
