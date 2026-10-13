@@ -513,6 +513,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
   <div class="tab" data-tab="receipt" onclick="switchTab('receipt')">📋 인수증 체크</div>
   <div class="tab" data-tab="stats" onclick="switchTab('stats')">📈 통계</div>
   <div class="tab" data-tab="attendance" onclick="switchTab('attendance')">📋 출퇴근부</div>
+  <div class="tab" data-tab="clientLog" onclick="switchTab('clientLog')" title="원청 무리한 오더 수행 근거 기록 (관리자 전용)">📒 원청 대응</div>
   <div class="tab" data-tab="settings" onclick="switchTab('settings')">⚙️ 설정</div>
 </div>
 </div>
@@ -2165,6 +2166,89 @@ body.hide-cost-col .col-sensitive { display: none !important; }
             </tr>
           </thead>
           <tbody id="statsDetailBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 📒 원청 대응 기록 (관리자 전용) — 원청의 무리한 오더를 우리가 수행했다는 근거를 날짜·시간별로 남김 -->
+  <div id="panel-clientLog" class="panel">
+    <div class="card">
+      <div class="card-title" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
+        <span><span class="icon">📒</span> 원청 대응 기록 <small style="font-size:11px;color:var(--text-light);font-weight:400">(관리자 전용 · 무리한 오더 수행 근거)</small></span>
+        <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+          <span id="issueSyncStatus" style="font-size:11px;color:var(--text-light)"></span>
+          <button class="btn btn-sm" onclick="openIssueForm()" style="background:#1e3a8a;color:#fff;font-weight:700;padding:5px 12px">+ 새 기록</button>
+          <button class="btn btn-sm" onclick="syncIssueLog(true)" style="background:#fff;color:var(--primary);border:1px solid var(--primary);padding:5px 10px">🔄 동기화</button>
+          <label style="font-size:11px;display:inline-flex;align-items:center;gap:3px;cursor:pointer"><input type="checkbox" id="issueExportPhotos" checked>사진 포함</label>
+          <button class="btn btn-sm" onclick="exportIssueLogExcel()" style="background:#059669;color:#fff;font-weight:700;padding:5px 10px">📥 엑셀 보고서</button>
+        </span>
+      </div>
+      <div id="issueUpgradeBanner" class="info-banner" style="display:none;margin-bottom:8px;background:#fef2f2;border-color:#fecaca;color:#991b1b;font-size:12px">
+        ⚠ 구글시트 서버 코드가 옛 버전이라 원청 대응 기록이 <b>이 PC에만</b> 저장되고 있습니다. 설정 탭 → 시트 코드 복사 → 구글시트 Apps Script에 붙여넣고 <b>새 버전으로 배포</b>하면 다른 PC와 공유됩니다.
+      </div>
+
+      <!-- 입력 폼 -->
+      <div id="issueFormWrap" style="display:none;margin-bottom:12px;padding:12px;border:2px solid #1e3a8a;border-radius:8px;background:#f8fafc">
+        <div style="font-weight:700;font-size:13px;color:#1e3a8a;margin-bottom:8px" id="issueFormTitle">+ 새 기록</div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px">
+          <div class="form-group"><label>날짜 *</label><input type="date" id="issDate"></div>
+          <div class="form-group"><label>유형 *</label>
+            <input type="text" id="issType" list="issTypeList" placeholder="선택 또는 직접 입력">
+            <datalist id="issTypeList">
+              <option value="당일 긴급 오더"><option value="마감 후 추가 오더"><option value="오더 확정 지연"><option value="상차 시간 촉박">
+              <option value="수량·차량 변경"><option value="야간·새벽 요청"><option value="명절·연휴 요청"><option value="기타">
+            </datalist>
+          </div>
+          <div class="form-group"><label>원청 담당자</label><input type="text" id="issContact" placeholder="이름 / 소속"></div>
+          <div class="form-group"><label>배차코드</label><input type="text" id="issCode" list="issCodeList" placeholder="연결할 배차 (선택)" oninput="onIssueCodeInput()"><datalist id="issCodeList"></datalist></div>
+          <div class="form-group"><label>📩 오더 접수 일시 *</label><input type="datetime-local" id="issReceivedAt" oninput="updateIssueLeadTime()"></div>
+          <div class="form-group"><label>🚚 요청 상차 일시</label><input type="datetime-local" id="issLoadAt" oninput="updateIssueLeadTime()"></div>
+          <div class="form-group"><label>✅ 수배 완료 일시</label><input type="datetime-local" id="issDispatchedAt"></div>
+          <div class="form-group"><label>📍 입차 일시</label><input type="datetime-local" id="issArrivedAt"></div>
+          <div class="form-group"><label>결과 *</label>
+            <select id="issResult"><option value="수행 완료">수행 완료</option><option value="부분 수행">부분 수행</option><option value="수행 불가">수행 불가</option></select>
+          </div>
+          <div class="form-group"><label>추가 비용 (원)</label><input type="number" id="issExtraCost" min="0" step="1000" placeholder="용차 할증 등"></div>
+          <div class="form-group" style="grid-column:span 2"><label>⏱ 리드타임 (접수 → 요청 상차)</label><div id="issLeadTime" style="padding:7px 10px;font-weight:700;font-size:13px;border-radius:4px;background:#fff;border:1px solid var(--border)">-</div></div>
+          <div class="form-group" style="grid-column:span 4"><label>배차 정보 <small style="font-weight:400;color:var(--text-light)">(배차코드를 넣으면 자동)</small></label><input type="text" id="issDispSummary" placeholder="배송처 / 하차지 / 차량 / 기사" style="background:#f9fafb"></div>
+          <div class="form-group" style="grid-column:span 2"><label>원청 요청 내용 *</label><textarea id="issRequest" rows="3" placeholder="예: 17:40 카톡으로 내일 06시 상차 11톤 2대 추가 요청" style="width:100%;font-family:inherit;font-size:12px;padding:6px;box-sizing:border-box"></textarea></div>
+          <div class="form-group" style="grid-column:span 2"><label>우리 대응 / 비고</label><textarea id="issNote" rows="3" placeholder="예: 용차 3곳 수배, 21:10 확보 (할증 4만), 원청 담당에 22:00 회신" style="width:100%;font-family:inherit;font-size:12px;padding:6px;box-sizing:border-box"></textarea></div>
+          <div class="form-group" style="grid-column:span 4">
+            <label>📎 증빙 사진 <small style="font-weight:400;color:var(--text-light)">(카톡 캡처 등 — 아래 칸 클릭 후 Ctrl+V, 또는 사진 추가 · 이 PC에 저장)</small></label>
+            <div id="issPhotoDrop" tabindex="0" onpaste="onIssuePhotoPaste(event)" style="min-height:70px;padding:8px;border:2px dashed #93c5fd;border-radius:6px;background:#fff;display:flex;gap:6px;flex-wrap:wrap;align-items:center;outline:none">
+              <span id="issPhotoHint" style="font-size:11px;color:var(--text-light)">여기를 클릭하고 Ctrl+V</span>
+            </div>
+            <input type="file" id="issPhotoFile" accept="image/*" multiple onchange="onIssuePhotoFile(this)" style="margin-top:4px;font-size:11px">
+          </div>
+        </div>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn btn-sm" onclick="saveIssueForm()" style="background:#1e3a8a;color:#fff;font-weight:700;padding:6px 16px">💾 저장</button>
+          <button class="btn btn-sm" onclick="closeIssueForm()" style="background:#fff;border:1px solid #9ca3af;padding:6px 12px">취소</button>
+          <button class="btn btn-sm" id="issDeleteBtn" onclick="deleteIssueRecord()" style="display:none;margin-left:auto;background:#fff;color:#dc2626;border:1px solid #dc2626;padding:6px 12px">🗑 삭제</button>
+        </div>
+      </div>
+
+      <!-- 필터 -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;font-size:12px">
+        <label>기간</label>
+        <input type="date" id="issFrom" onchange="renderIssueLog()" style="padding:4px 6px;font-size:12px">
+        <span>~</span>
+        <input type="date" id="issTo" onchange="renderIssueLog()" style="padding:4px 6px;font-size:12px">
+        <button class="btn btn-sm" onclick="setIssueRange('month')" style="padding:3px 8px;font-size:11px">이번달</button>
+        <button class="btn btn-sm" onclick="setIssueRange('last')" style="padding:3px 8px;font-size:11px">지난달</button>
+        <button class="btn btn-sm" onclick="setIssueRange('all')" style="padding:3px 8px;font-size:11px">전체</button>
+        <select id="issFilterType" onchange="renderIssueLog()" style="padding:4px 6px;font-size:12px"><option value="">전체 유형</option></select>
+        <input type="text" id="issSearch" oninput="renderIssueLog()" placeholder="🔍 담당자·코드·내용 검색" style="padding:4px 8px;font-size:12px;width:200px">
+      </div>
+      <div id="issSummary" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px"></div>
+      <div class="table-wrap" style="max-height:calc(100vh - 330px);overflow-y:auto">
+        <table style="font-size:12px">
+          <thead><tr>
+            <th>날짜</th><th>유형</th><th>원청 담당</th><th>배차코드</th><th>오더 접수</th><th>요청 상차</th><th>리드타임</th>
+            <th>수배 완료</th><th>입차</th><th>결과</th><th>추가 비용</th><th style="min-width:220px">요청 내용</th><th>📎</th><th>작성</th>
+          </tr></thead>
+          <tbody id="issueBody"></tbody>
         </table>
       </div>
     </div>
@@ -5180,7 +5264,7 @@ async function loadDispatchHistory() {
 // ============================================
 const ROLE_LABELS = { admin: '관리자', dispatcher: '배차 담당', settlement: '정산 담당', viewer: '조회' };
 const ROLE_TABS = {
-  admin: ['dispatch','history','rate','clpFixed','rateRef','drivers','settlement','fixedReport','receipt','stats','attendance','settings'],
+  admin: ['dispatch','history','rate','clpFixed','rateRef','drivers','settlement','fixedReport','receipt','stats','attendance','clientLog','settings'],   // clientLog(원청 대응 기록)는 관리자 전용
   dispatcher: ['dispatch','history','rate','clpFixed','rateRef','drivers','fixedReport','receipt'],
   settlement: ['settlement','clpFixed','fixedReport','receipt'],
   viewer: ['history','rate','clpFixed','rateRef','receipt']
@@ -5795,6 +5879,7 @@ function switchTab(name) {
     }
   }
   if(name === 'attendance') initAttendance();
+  if(name === 'clientLog') initIssueLog();
 }
 
 // ============================================
@@ -7153,6 +7238,422 @@ function renderLnlExtraFeeRef() {
     + '</tbody>';
   const memo = document.getElementById('lnlExtraFeeMemo');
   if(memo) memo.innerHTML = R.memos.map(m => `<li>${m}</li>`).join('');
+}
+
+// ═════════════════════════════════════════════════════════════════
+// 📒 원청 대응 기록 (관리자 전용) — 2026-10-14
+// 원청의 무리한 오더를 우리가 수행했다는 근거를 날짜·시간별로 남김 (원청 대응용)
+// 저장: 이 PC(IDB) + 구글시트 '원청대응기록'(다른 PC 공유). 같은 기록은 수정시각(updatedAt) 최신 쪽 채택,
+//       삭제는 지우지 않고 deleted 표시로 남겨 다른 PC에도 전파. 증빙 사진은 용량 때문에 그 PC(IDB)에만.
+// ═════════════════════════════════════════════════════════════════
+let issueLog = [];             // deleted 표시 포함 전체
+let _issueLoaded = false;
+let _issueEditId = null;
+let _issuePhotos = [];         // 편집 중 증빙 사진 (dataURL)
+let _issueSyncBusy = false, _issueSyncAgain = false, _issueSyncTimer = null;
+const ISSUE_IDB_KEY = 'clientIssueLog';
+const ISSUE_LEAD_WARN_MIN = 180;   // 접수→요청 상차 3시간 미만이면 '촉박' 표시
+
+function _issueIsAdmin() { const u = getCurrentUser(); return !!(u && u.role === 'admin'); }
+function _issueNow() { return _formatLoginTs(new Date()); }
+function _issueDtLocal(d) {   // Date → datetime-local 값
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function _issueFmtDt(v) {   // '2026-10-14T09:30' → '10-14 09:30'
+  const m = String(v || '').match(/^\d{4}-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
+  return m ? m[1] + '-' + m[2] + ' ' + m[3] + ':' + m[4] : (v || '-');
+}
+function _issueLeadMin(r) {
+  if(!r.receivedAt || !r.loadAt) return null;
+  const a = new Date(String(r.receivedAt).replace(' ', 'T')), b = new Date(String(r.loadAt).replace(' ', 'T'));
+  if(isNaN(a) || isNaN(b)) return null;
+  return Math.round((b - a) / 60000);
+}
+function _issueFmtLead(min) {
+  if(min === null) return '-';
+  if(min < 0) return '⚠ 시각 확인';
+  const h = Math.floor(min / 60), m = min % 60;
+  return (h ? h + '시간 ' : '') + m + '분';
+}
+function _escIssue(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+function _normIssueRecord(r) {
+  return {
+    id: String(r.id || ''), date: String(r.date || '').slice(0, 10),
+    receivedAt: String(r.receivedAt || ''), loadAt: String(r.loadAt || ''),
+    contact: String(r.contact || ''), type: String(r.type || ''), code: String(r.code || ''),
+    dispSummary: String(r.dispSummary || ''), request: String(r.request || ''),
+    dispatchedAt: String(r.dispatchedAt || ''), arrivedAt: String(r.arrivedAt || ''),
+    result: String(r.result || ''), extraCost: parseInt(r.extraCost) || 0, note: String(r.note || ''),
+    photoCount: parseInt(r.photoCount) || 0,
+    createdBy: String(r.createdBy || ''), createdAt: _normReceiptTs(r.createdAt || ''),
+    updatedBy: String(r.updatedBy || ''), updatedAt: _normReceiptTs(r.updatedAt || ''),
+    deleted: r.deleted === true || String(r.deleted).toUpperCase() === 'TRUE'
+  };
+}
+
+async function _loadIssueLocal() {
+  try {
+    const s = await idbGet(ISSUE_IDB_KEY);
+    const a = s ? JSON.parse(s) : [];
+    issueLog = Array.isArray(a) ? a.map(_normIssueRecord) : [];
+  } catch(e) { issueLog = []; }
+  _issueLoaded = true;
+}
+async function _saveIssueLocal() {
+  try { await idbSet(ISSUE_IDB_KEY, JSON.stringify(issueLog)); }
+  catch(e) { showToast('⚠ 원청 대응 기록 저장 실패 — 📥 엑셀 보고서로 백업해 두세요', 5000); }
+}
+
+// 두 목록 합치기: 같은 id면 수정시각 최신 쪽 (삭제 표시도 수정으로 취급해 전파)
+// 수정시각이 같으면(같은 초) 뒤 목록(b = 이 PC) 우선 — 방금 한 수정·삭제가 시트 옛 값에 묻히지 않게
+function _mergeIssueLists(a, b) {
+  const m = new Map();
+  [...a, ...b].forEach(r => {
+    if(!r || !r.id) return;
+    const k = String(r.id), cur = m.get(k);
+    if(!cur || String(r.updatedAt || '') >= String(cur.updatedAt || '')) m.set(k, r);
+  });
+  return [...m.values()];
+}
+
+function _setIssueStatus(t) { const el = document.getElementById('issueSyncStatus'); if(el) el.textContent = t; }
+
+// 시트에서 받아 합치고, 로컬에만 있거나 더 최신인 기록이 있으면 시트에 올림
+async function syncIssueLog(manual) {
+  if(!_issueIsAdmin()) return;
+  if(!_issueLoaded) await _loadIssueLocal();
+  if(!isConnected()) { _setIssueStatus('시트 미연결 — 이 PC에만 저장'); return; }
+  if(_issueSyncBusy) { _issueSyncAgain = true; return; }
+  _issueSyncBusy = true;
+  _setIssueStatus('🔄 동기화 중...');
+  const banner = document.getElementById('issueUpgradeBanner');
+  try {
+    const j = await (await fetch(getSheetUrl() + '?action=getIssueLog&_=' + Date.now())).json();
+    if(!j || !j.success) {
+      const old = /알 수 없는 요청/.test(String(j && j.message || ''));
+      if(banner) banner.style.display = old ? '' : 'none';
+      _setIssueStatus(old ? '⚠ 시트 코드 교체 필요 — 이 PC에만 저장' : '⚠ 동기화 실패 — 이 PC엔 저장됨');
+      return;
+    }
+    if(banner) banner.style.display = 'none';
+    const remote = (j.records || []).map(_normIssueRecord);
+    issueLog = _mergeIssueLists(remote, issueLog);
+    await _saveIssueLocal();
+    const rMap = new Map(remote.map(r => [r.id, r]));
+    const needPush = issueLog.some(r => { const x = rMap.get(r.id); return !x || x.updatedAt !== r.updatedAt; });
+    if(needPush) {
+      const pj = await (await fetch(getSheetUrl(), { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'saveIssueLog', records: issueLog }) })).json();
+      if(!pj || !pj.success) throw new Error((pj && pj.message) || '시트 저장 실패');
+    }
+    _setIssueStatus('✅ 동기화 ' + _issueNow().slice(11, 16));
+    if(manual) showToast('✅ 원청 대응 기록 동기화 완료 (' + issueLog.filter(r => !r.deleted).length + '건)');
+    renderIssueLog();
+  } catch(e) {
+    console.warn('원청 대응 기록 동기화 실패:', e);
+    _setIssueStatus('⚠ 동기화 실패 — 이 PC엔 저장됨');
+    if(manual) showToast('⚠ 동기화 실패 — 이 PC에는 저장되어 있습니다');
+  } finally {
+    _issueSyncBusy = false;
+    if(_issueSyncAgain) { _issueSyncAgain = false; syncIssueLog(); }
+  }
+}
+function _scheduleIssueSync() { clearTimeout(_issueSyncTimer); _issueSyncTimer = setTimeout(() => syncIssueLog(), 800); }
+
+async function initIssueLog() {
+  if(!_issueIsAdmin()) return;
+  if(!_issueLoaded) await _loadIssueLocal();
+  if(!document.getElementById('issFrom').value && !document.getElementById('issTo').value) setIssueRange('month', true);
+  renderIssueLog();
+  syncIssueLog();
+}
+
+function setIssueRange(kind, silent) {
+  const f = document.getElementById('issFrom'), t = document.getElementById('issTo');
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  const ymd = x => x.getFullYear() + '-' + p(x.getMonth() + 1) + '-' + p(x.getDate());
+  if(kind === 'all') { f.value = ''; t.value = ''; }
+  else {
+    const base = kind === 'last' ? new Date(d.getFullYear(), d.getMonth() - 1, 1) : new Date(d.getFullYear(), d.getMonth(), 1);
+    f.value = ymd(base);
+    t.value = ymd(new Date(base.getFullYear(), base.getMonth() + 1, 0));
+  }
+  if(!silent) renderIssueLog();
+}
+
+function _filteredIssues() {
+  const f = document.getElementById('issFrom')?.value || '', t = document.getElementById('issTo')?.value || '';
+  const ty = document.getElementById('issFilterType')?.value || '';
+  const q = (document.getElementById('issSearch')?.value || '').trim().toLowerCase();
+  return issueLog.filter(r => !r.deleted)
+    .filter(r => (!f || r.date >= f) && (!t || r.date <= t))
+    .filter(r => !ty || r.type === ty)
+    .filter(r => !q || [r.contact, r.code, r.type, r.request, r.note, r.dispSummary, r.result].some(v => String(v || '').toLowerCase().includes(q)))
+    .sort((a, b) => (b.date + b.receivedAt).localeCompare(a.date + a.receivedAt));
+}
+
+function renderIssueLog() {
+  const body = document.getElementById('issueBody');
+  if(!body) return;
+  // 유형 필터 목록 (기록에 있는 유형)
+  const tySel = document.getElementById('issFilterType');
+  if(tySel) {
+    const cur = tySel.value;
+    const types = [...new Set(issueLog.filter(r => !r.deleted && r.type).map(r => r.type))].sort();
+    tySel.innerHTML = '<option value="">전체 유형</option>' + types.map(t => `<option value="${_escIssue(t)}">${_escIssue(t)}</option>`).join('');
+    tySel.value = types.includes(cur) ? cur : '';
+  }
+  const list = _filteredIssues();
+  const resColor = { '수행 완료': '#059669', '부분 수행': '#d97706', '수행 불가': '#dc2626' };
+  body.innerHTML = list.length ? list.map(r => {
+    const lead = _issueLeadMin(r);
+    const tight = lead !== null && lead >= 0 && lead < ISSUE_LEAD_WARN_MIN;
+    return `<tr onclick="openIssueForm('${_escIssue(r.id)}')" style="cursor:pointer">
+      <td style="white-space:nowrap">${r.date}</td>
+      <td style="white-space:nowrap;font-weight:600">${_escIssue(r.type)}</td>
+      <td>${_escIssue(r.contact) || '-'}</td>
+      <td style="white-space:nowrap">${_escIssue(r.code) || '-'}</td>
+      <td style="white-space:nowrap">${_issueFmtDt(r.receivedAt)}</td>
+      <td style="white-space:nowrap">${_issueFmtDt(r.loadAt)}</td>
+      <td style="white-space:nowrap;font-weight:700;color:${tight ? '#dc2626' : '#374151'};${tight ? 'background:#fef2f2' : ''}">${_issueFmtLead(lead)}</td>
+      <td style="white-space:nowrap">${_issueFmtDt(r.dispatchedAt)}</td>
+      <td style="white-space:nowrap">${_issueFmtDt(r.arrivedAt)}</td>
+      <td style="white-space:nowrap;font-weight:700;color:${resColor[r.result] || '#374151'}">${_escIssue(r.result)}</td>
+      <td class="amount">${r.extraCost ? r.extraCost.toLocaleString() : '-'}</td>
+      <td style="text-align:left;max-width:320px;white-space:normal">${_escIssue(r.request)}</td>
+      <td>${r.photoCount ? '📎' + r.photoCount : ''}</td>
+      <td style="font-size:10px;color:var(--text-light);white-space:nowrap">${_escIssue(r.updatedBy || r.createdBy)}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="14" style="padding:24px;text-align:center;color:var(--text-light)">기록이 없습니다 — 「+ 새 기록」으로 추가하세요</td></tr>';
+
+  // 요약
+  const cnt = k => list.filter(r => r.result === k).length;
+  const tightN = list.filter(r => { const l = _issueLeadMin(r); return l !== null && l >= 0 && l < ISSUE_LEAD_WARN_MIN; }).length;
+  const cost = list.reduce((s, r) => s + (r.extraCost || 0), 0);
+  const chip = (t, c) => `<span style="padding:4px 10px;border-radius:12px;font-size:12px;font-weight:700;background:${c}1a;color:${c};border:1px solid ${c}55">${t}</span>`;
+  const sum = document.getElementById('issSummary');
+  if(sum) sum.innerHTML = chip('총 ' + list.length + '건', '#1e3a8a') + chip('수행 완료 ' + cnt('수행 완료'), '#059669')
+    + chip('부분 수행 ' + cnt('부분 수행'), '#d97706') + chip('수행 불가 ' + cnt('수행 불가'), '#dc2626')
+    + chip('리드타임 3시간 미만 ' + tightN, '#dc2626') + chip('추가 비용 ' + cost.toLocaleString() + '원', '#7c3aed');
+}
+
+// ── 입력 폼 ──
+async function openIssueForm(id) {
+  if(!_issueIsAdmin()) { showToast('⚠ 관리자만 사용할 수 있습니다'); return; }
+  if(!_issueLoaded) await _loadIssueLocal();
+  const r = id ? issueLog.find(x => x.id === id && !x.deleted) : null;
+  _issueEditId = r ? r.id : null;
+  const $ = k => document.getElementById(k);
+  const now = new Date();
+  $('issueFormTitle').textContent = r ? '✏️ 기록 수정 — ' + r.date + ' ' + r.type : '+ 새 기록';
+  $('issDate').value = r ? r.date : getTodayStr();
+  $('issType').value = r ? r.type : '';
+  $('issContact').value = r ? r.contact : '';
+  $('issCode').value = r ? r.code : '';
+  $('issReceivedAt').value = r ? r.receivedAt : _issueDtLocal(now);
+  $('issLoadAt').value = r ? r.loadAt : '';
+  $('issDispatchedAt').value = r ? r.dispatchedAt : '';
+  $('issArrivedAt').value = r ? r.arrivedAt : '';
+  $('issResult').value = r ? (r.result || '수행 완료') : '수행 완료';
+  $('issExtraCost').value = r && r.extraCost ? r.extraCost : '';
+  $('issDispSummary').value = r ? r.dispSummary : '';
+  $('issRequest').value = r ? r.request : '';
+  $('issNote').value = r ? r.note : '';
+  $('issDeleteBtn').style.display = r ? '' : 'none';
+  // 배차코드 자동완성 (최근 60일)
+  const cut = new Date(); cut.setDate(cut.getDate() - 60);
+  const cutStr = _issueDtLocal(cut).slice(0, 10);
+  const codes = [...new Set(dispatchLog.filter(d => String(d.deliveryDate || d.date || '') >= cutStr).map(d => String(d.code || '')).filter(Boolean))].slice(0, 500);
+  $('issCodeList').innerHTML = codes.map(c => `<option value="${_escIssue(c)}">`).join('');
+  _issuePhotos = [];
+  if(r) { try { const s = await idbGet('issueImg_' + r.id); _issuePhotos = s ? JSON.parse(s) : []; } catch(e) {} }
+  _renderIssuePhotos(r && r.photoCount && !_issuePhotos.length ? r.photoCount : 0);
+  updateIssueLeadTime();
+  $('issueFormWrap').style.display = '';
+  $('issueFormWrap').scrollIntoView({ block: 'start', behavior: 'smooth' });
+}
+function closeIssueForm() {
+  document.getElementById('issueFormWrap').style.display = 'none';
+  _issueEditId = null; _issuePhotos = [];
+}
+function updateIssueLeadTime() {
+  const el = document.getElementById('issLeadTime');
+  if(!el) return;
+  const min = _issueLeadMin({ receivedAt: document.getElementById('issReceivedAt').value, loadAt: document.getElementById('issLoadAt').value });
+  const tight = min !== null && min >= 0 && min < ISSUE_LEAD_WARN_MIN;
+  el.textContent = min === null ? '오더 접수·요청 상차 일시를 넣으면 자동 계산' : _issueFmtLead(min) + (tight ? '  ⚠ 3시간 미만 (촉박)' : '');
+  el.style.color = tight ? '#dc2626' : '#374151';
+  el.style.background = tight ? '#fef2f2' : '#fff';
+}
+function onIssueCodeInput() {
+  const code = document.getElementById('issCode').value.trim();
+  const d = code && dispatchLog.find(x => String(x.code) === code);
+  if(!d) return;
+  document.getElementById('issDispSummary').value = [d.clientName, d.delivery, d.vehicle, d.driverName ? '기사 ' + d.driverName : '', d.vehicleNo]
+    .filter(Boolean).join(' / ') + ' (배송일 ' + sanitizeDate(d.deliveryDate || d.date || '') + ')';
+}
+
+async function saveIssueForm() {
+  if(!_issueIsAdmin()) { showToast('⚠ 관리자만 사용할 수 있습니다'); return; }
+  const v = k => (document.getElementById(k).value || '').trim();
+  if(!v('issDate')) { showToast('⚠ 날짜를 입력하세요'); return; }
+  if(!v('issType')) { showToast('⚠ 유형을 입력하세요'); document.getElementById('issType').focus(); return; }
+  if(!v('issReceivedAt')) { showToast('⚠ 오더 접수 일시를 입력하세요'); document.getElementById('issReceivedAt').focus(); return; }
+  if(!v('issRequest')) { showToast('⚠ 원청 요청 내용을 입력하세요'); document.getElementById('issRequest').focus(); return; }
+  const prev = _issueEditId ? issueLog.find(x => x.id === _issueEditId) : null;
+  const id = prev ? prev.id : 'iss_' + Date.now();
+  const now = _issueNow(), user = getUserName() || '-';
+  const rec = _normIssueRecord({
+    id, date: v('issDate'), receivedAt: v('issReceivedAt'), loadAt: v('issLoadAt'),
+    contact: v('issContact'), type: v('issType'), code: v('issCode'), dispSummary: v('issDispSummary'),
+    request: v('issRequest'), dispatchedAt: v('issDispatchedAt'), arrivedAt: v('issArrivedAt'),
+    result: v('issResult'), extraCost: parseInt(v('issExtraCost')) || 0, note: v('issNote'),
+    photoCount: _issuePhotos.length || (prev && !_issuePhotos.length && prev.photoCount && document.getElementById('issPhotoDrop').dataset.remoteOnly === '1' ? prev.photoCount : 0),
+    createdBy: prev ? prev.createdBy : user, createdAt: prev ? prev.createdAt : now,
+    updatedBy: user, updatedAt: now, deleted: false
+  });
+  issueLog = issueLog.filter(x => x.id !== id).concat(rec);
+  await _saveIssueLocal();
+  try {
+    if(_issuePhotos.length) await idbSet('issueImg_' + id, JSON.stringify(_issuePhotos));
+    else if(document.getElementById('issPhotoDrop').dataset.remoteOnly !== '1') await idbSet('issueImg_' + id, '[]');
+  } catch(e) { showToast('⚠ 증빙 사진 저장 실패 (용량 확인)', 5000); }
+  closeIssueForm();
+  renderIssueLog();
+  showToast('✅ 원청 대응 기록 저장' + (rec.photoCount ? ' (사진 ' + rec.photoCount + '장)' : ''));
+  _scheduleIssueSync();
+}
+
+async function deleteIssueRecord() {
+  if(!_issueIsAdmin() || !_issueEditId) return;
+  const r = issueLog.find(x => x.id === _issueEditId);
+  if(!r || !confirm('이 기록을 삭제할까요?\n\n' + r.date + ' · ' + r.type + '\n' + r.request.slice(0, 60))) return;
+  r.deleted = true; r.updatedAt = _issueNow(); r.updatedBy = getUserName() || '-';
+  await _saveIssueLocal();
+  try { await idbSet('issueImg_' + r.id, '[]'); } catch(e) {}
+  closeIssueForm();
+  renderIssueLog();
+  showToast('🗑 삭제했습니다');
+  _scheduleIssueSync();
+}
+
+// ── 증빙 사진 ──
+function _renderIssuePhotos(remoteOnlyCount) {
+  const box = document.getElementById('issPhotoDrop');
+  if(!box) return;
+  box.dataset.remoteOnly = remoteOnlyCount ? '1' : '';
+  const thumbs = _issuePhotos.map((src, i) =>
+    `<span style="position:relative;display:inline-block">
+      <img src="${src}" onclick="openIssuePhotoView(${i})" style="width:64px;height:64px;object-fit:cover;border:1px solid #d1d5db;border-radius:4px;cursor:zoom-in" title="크게 보기">
+      <button onclick="event.stopPropagation();removeIssuePhoto(${i})" title="사진 빼기" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;border:none;background:#dc2626;color:#fff;font-size:11px;line-height:18px;padding:0;cursor:pointer">✕</button>
+    </span>`).join('');
+  const hint = remoteOnlyCount
+    ? `<span style="font-size:11px;color:#92400e">📎 사진 ${remoteOnlyCount}장은 작성한 PC에 저장되어 있습니다 (이 PC에서 새로 붙이면 교체)</span>`
+    : (_issuePhotos.length ? '' : '<span style="font-size:11px;color:var(--text-light)">여기를 클릭하고 Ctrl+V</span>');
+  box.innerHTML = thumbs + hint;
+}
+async function _addIssuePhotoFiles(files) {
+  let n = 0;
+  for(const f of files) {
+    if(!f || !f.type || !f.type.startsWith('image/')) continue;
+    try { _issuePhotos.push(await _resizeImageFileToDataURL(f, 1600, 0.8)); n++; } catch(e) {}
+  }
+  if(n) { _renderIssuePhotos(0); showToast('📎 증빙 사진 ' + n + '장 추가 (총 ' + _issuePhotos.length + '장)'); }
+}
+function onIssuePhotoPaste(e) {
+  const items = (e.clipboardData || window.clipboardData)?.items || [];
+  const files = [];
+  for(let i = 0; i < items.length; i++) if(items[i].kind === 'file' && /^image\//.test(items[i].type)) files.push(items[i].getAsFile());
+  if(!files.length) return;
+  e.preventDefault();
+  _addIssuePhotoFiles(files);
+}
+function onIssuePhotoFile(input) { _addIssuePhotoFiles([...(input.files || [])]); input.value = ''; }
+function removeIssuePhoto(i) { _issuePhotos.splice(i, 1); _renderIssuePhotos(0); }
+function openIssuePhotoView(i) {
+  const src = _issuePhotos[i];
+  if(!src) return;
+  const ov = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:10000;display:flex;align-items:center;justify-content:center;cursor:zoom-out';
+  ov.onclick = () => ov.remove();
+  ov.innerHTML = `<img src="${src}" style="max-width:95vw;max-height:95vh;border-radius:6px;background:#fff">`;
+  document.body.appendChild(ov);
+}
+
+// ── 엑셀 보고서 (현재 필터 그대로) ──
+async function exportIssueLogExcel() {
+  if(!_issueIsAdmin()) return;
+  if(typeof ExcelJS === 'undefined') { showToast('⚠ 엑셀 모듈 로딩 중 — 잠시 후 다시 시도'); return; }
+  const list = _filteredIssues().slice().reverse();   // 보고서는 날짜 오름차순
+  if(!list.length) { showToast('ℹ 내보낼 기록이 없습니다'); return; }
+  const f = document.getElementById('issFrom').value || list[0].date;
+  const t = document.getElementById('issTo').value || list[list.length - 1].date;
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('원청대응기록');
+  const cols = [
+    ['No', 5], ['날짜', 11], ['유형', 16], ['원청 담당자', 12], ['배차코드', 16], ['배차 정보', 30],
+    ['오더 접수', 16], ['요청 상차', 16], ['리드타임', 12], ['수배 완료', 16], ['입차', 16],
+    ['결과', 10], ['추가 비용', 11], ['원청 요청 내용', 40], ['우리 대응 / 비고', 40], ['사진', 6], ['작성', 10]
+  ];
+  ws.columns = cols.map(([h, w]) => ({ width: w }));
+  ws.mergeCells(1, 1, 1, cols.length);
+  ws.getCell(1, 1).value = '원청 대응 기록  (' + f + ' ~ ' + t + ')   ·   총 ' + list.length + '건   ·   작성 ' + _issueNow().slice(0, 16);
+  ws.getCell(1, 1).font = { bold: true, size: 14, color: { argb: 'FF1E3A8A' } };
+  ws.getRow(1).height = 26;
+  const hr = ws.getRow(2);
+  cols.forEach(([h], i) => {
+    const c = hr.getCell(i + 1);
+    c.value = h; c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E3A8A' } };
+    c.alignment = { horizontal: 'center', vertical: 'middle' };
+  });
+  const dt = v => String(v || '').replace('T', ' ');
+  list.forEach((r, i) => {
+    const lead = _issueLeadMin(r);
+    const row = ws.addRow([i + 1, r.date, r.type, r.contact, r.code, r.dispSummary, dt(r.receivedAt), dt(r.loadAt), _issueFmtLead(lead),
+      dt(r.dispatchedAt), dt(r.arrivedAt), r.result, r.extraCost || '', r.request, r.note, r.photoCount || '', r.createdBy]);
+    row.alignment = { vertical: 'top', wrapText: true };
+    row.getCell(13).numFmt = '#,##0';
+    if(lead !== null && lead >= 0 && lead < ISSUE_LEAD_WARN_MIN) {
+      row.getCell(9).font = { bold: true, color: { argb: 'FFDC2626' } };
+      row.getCell(9).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF2F2' } };
+    }
+  });
+  ws.views = [{ state: 'frozen', ySplit: 2 }];
+
+  // 증빙 사진 시트 (이 PC에 있는 사진만)
+  let photoN = 0;
+  if(document.getElementById('issueExportPhotos')?.checked) {
+    const ps = wb.addWorksheet('증빙사진');
+    ps.getColumn(1).width = 90;
+    let rowIdx = 1;
+    for(const r of list) {
+      let imgs = [];
+      try { const s = await idbGet('issueImg_' + r.id); imgs = s ? JSON.parse(s) : []; } catch(e) {}
+      if(!imgs.length) continue;
+      const cap = ps.getCell(rowIdx, 1);
+      cap.value = r.date + '  ·  ' + r.type + (r.code ? '  ·  ' + r.code : '') + '  —  ' + r.request.slice(0, 80);
+      cap.font = { bold: true, color: { argb: 'FF1E3A8A' } };
+      rowIdx++;
+      for(const src of imgs) {
+        const dim = await new Promise(res => { const im = new Image(); im.onload = () => res({ w: im.naturalWidth, h: im.naturalHeight }); im.onerror = () => res(null); im.src = src; });
+        if(!dim) continue;
+        const w = Math.min(480, dim.w), h = Math.round(dim.h * w / dim.w);
+        const ext = /^data:image\/png/.test(src) ? 'png' : 'jpeg';
+        const imgId = wb.addImage({ base64: src, extension: ext });
+        ps.addImage(imgId, { tl: { col: 0, row: rowIdx - 1 }, ext: { width: w, height: h } });
+        rowIdx += Math.ceil(h / 20) + 1;
+        photoN++;
+      }
+      rowIdx++;
+    }
+    if(!photoN) wb.removeWorksheet(ps.id);
+  }
+  const buf = await wb.xlsx.writeBuffer();
+  _downloadBlob(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), '원청대응기록_' + f + '_' + t + '.xlsx');
+  showToast('📥 원청 대응 기록 ' + list.length + '건' + (photoN ? ' + 증빙 사진 ' + photoN + '장' : '') + ' 엑셀 저장');
 }
 
 function filterRateTable() {
@@ -12157,7 +12658,8 @@ function doGet(e) {
     else if (action === 'getUsers') result = getUsers();
     else if (action === 'getSettlement') result = getSettlement();
     else if (action === 'getReceiptCheck') result = getReceiptCheck();
-    else if (action === 'ping') result = { success: true, message: '연결 성공! v4 (인수증 동기화 지원)' };
+    else if (action === 'getIssueLog') result = getIssueLog();
+    else if (action === 'ping') result = { success: true, message: '연결 성공! v5 (원청 대응 기록 지원)' };
     else result = { success: false, message: '알 수 없는 요청' };
     return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
   } catch(err) { return ContentService.createTextOutput(JSON.stringify({success:false,message:err.toString()})).setMimeType(ContentService.MimeType.JSON); }
@@ -12175,6 +12677,7 @@ function doPost(e) {
     else if (data.action === 'saveSettlementBackup') result = saveSettlementBackup(data.records);
     else if (data.action === 'saveReceiptCheck') result = saveReceiptCheck(data.records);
     else if (data.action === 'saveReceiptCheckBackup') result = saveReceiptCheckBackup(data.records);
+    else if (data.action === 'saveIssueLog') result = saveIssueLog(data.records);
     else result = { success: false, message: '알 수 없는 요청' };
     return ContentService.createTextOutput(JSON.stringify(result)).setMimeType(ContentService.MimeType.JSON);
   } catch(err) { return ContentService.createTextOutput(JSON.stringify({success:false,message:err.toString()})).setMimeType(ContentService.MimeType.JSON); }
@@ -12524,6 +13027,60 @@ function saveReceiptCheckBackup(records) {
     sheet.getRange(2,1,rows.length,11).setValues(rows);
   }
   return { success: true, message: records.length + '건 인수증 백업 완료' };
+}
+
+// ===== 원청 대응 기록 (관리자 전용, 다른 PC 공유) =====
+// 모든 칸을 텍스트로 저장(시트가 날짜·시각을 자동 변환하지 않게). 삭제는 '삭제' 칸 TRUE 로 남겨 다른 PC에 전파
+var ISSUE_HEADERS = ['ID','날짜','오더접수','요청상차','원청담당자','유형','배차코드','배차정보','요청내용','수배완료','입차','결과','추가비용','비고','사진수','작성자','작성시간','수정자','수정시간','삭제'];
+function _issueStr(v) {
+  if (v instanceof Date) {
+    var k = new Date(v.getTime() + 9 * 60 * 60 * 1000);
+    var p = function(n) { return ('0' + n).slice(-2); };
+    return k.getUTCFullYear() + '-' + p(k.getUTCMonth() + 1) + '-' + p(k.getUTCDate()) + 'T' + p(k.getUTCHours()) + ':' + p(k.getUTCMinutes());
+  }
+  return String(v == null ? '' : v);
+}
+function getIssueLog() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('원청대응기록');
+  if (!sheet) return { success: true, records: [] };
+  var lastRow = sheet.getLastRow();
+  if (lastRow <= 1) return { success: true, records: [] };
+  var rows = sheet.getRange(2, 1, lastRow - 1, ISSUE_HEADERS.length).getValues();
+  var records = rows.filter(function(r) { return r[0]; }).map(function(r) {
+    var s = _issueStr;
+    return { id: s(r[0]), date: s(r[1]).slice(0, 10), receivedAt: s(r[2]), loadAt: s(r[3]), contact: s(r[4]), type: s(r[5]),
+      code: s(r[6]), dispSummary: s(r[7]), request: s(r[8]), dispatchedAt: s(r[9]), arrivedAt: s(r[10]), result: s(r[11]),
+      extraCost: Number(r[12]) || 0, note: s(r[13]), photoCount: Number(r[14]) || 0, createdBy: s(r[15]), createdAt: s(r[16]),
+      updatedBy: s(r[17]), updatedAt: s(r[18]), deleted: (r[19] === true || String(r[19]).toUpperCase() === 'TRUE') };
+  });
+  return { success: true, records: records };
+}
+function saveIssueLog(records) {
+  var lock = LockService.getScriptLock();
+  try { lock.waitLock(15000); } catch (e) { return { success: false, message: 'locked' }; }
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('원청대응기록');
+    var n = ISSUE_HEADERS.length;
+    if (!sheet) {
+      sheet = ss.insertSheet('원청대응기록');
+      sheet.getRange(1, 1, 1, n).setValues([ISSUE_HEADERS]).setBackground('#1e3a8a').setFontColor('white').setFontWeight('bold');
+      sheet.setFrozenRows(1);
+    }
+    var lastRow = sheet.getLastRow();
+    if (lastRow > 1) sheet.getRange(2, 1, lastRow - 1, n).clearContent();
+    if (records && records.length > 0) {
+      var rows = records.map(function(r) {
+        return [r.id, r.date, r.receivedAt, r.loadAt, r.contact, r.type, r.code, r.dispSummary, r.request, r.dispatchedAt, r.arrivedAt,
+          r.result, String(r.extraCost || 0), r.note, String(r.photoCount || 0), r.createdBy, r.createdAt, r.updatedBy, r.updatedAt,
+          r.deleted ? 'TRUE' : 'FALSE'].map(function(v) { return String(v == null ? '' : v); });
+      });
+      var rng = sheet.getRange(2, 1, rows.length, n);
+      rng.setNumberFormat('@');
+      rng.setValues(rows);
+    }
+    return { success: true, message: records.length + '건 원청 대응 기록 저장' };
+  } finally { lock.releaseLock(); }
 }
 `;
 
