@@ -1651,6 +1651,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
       <div class="info-banner" style="margin-bottom:10px;font-size:11px">
         📌 배차 등록된 코드가 거래처별로 <b>자동 표시</b>됩니다 (LNL=P, 덕평=ACLP, 여주=ECLP).
         회수/스캔 셀을 <b>클릭</b>하면 빈칸 → O → X 순으로 토글됩니다. 비고는 셀에 직접 입력하면 자동 저장.
+        <br>※ 락앤락(LNL)은 <b>2026-10-01 배송분부터 스캔 불필요</b> — 원본 회수만 체크합니다 (9/30 이전 건은 그대로).
         <br>※ 옛 인수증(배차 데이터에 없는 건)은 우측 [+ 수동 추가]로 등록 가능.
       </div>
       <!-- 거래처 서브탭 -->
@@ -1693,7 +1694,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
             <option value="all">전체</option>
             <option value="unreceived">미회수만</option>
             <option value="unscanned">미스캔만</option>
-            <option value="incomplete">미완료(회수 또는 스캔 X)</option>
+            <option value="incomplete">미완료(회수 또는 스캔 안 됨)</option>
             <option value="complete">완료(회수+스캔 모두 O)</option>
           </select>
         </div>
@@ -14510,6 +14511,18 @@ function getReceiptClient(code) {
   return null;
 }
 
+// 락앤락은 2026-10-01 배송분부터 인수증 스캔 불필요 (원본만 회수) — 이전 건·다른 거래처는 그대로
+// 저장 데이터(scanned)는 건드리지 않고 화면·출력에서만 스캔 칸을 뺌
+const RECEIPT_NO_SCAN_FROM = { 'LNL': '2026-10-01' };
+function _receiptNeedsScan(client, date) {
+  const from = RECEIPT_NO_SCAN_FROM[client];
+  return !(from && String(date || '') >= from);
+}
+// 완료 판정: 스캔 불필요 건은 회수 O만으로 완료
+function _receiptIsComplete(client, r) {
+  return r.received === 'O' && (!_receiptNeedsScan(client, r.date) || r.scanned === 'O');
+}
+
 // 거래처 서브탭 변경
 function setReceiptClient(client) {
   receiptActiveClient = client;
@@ -15352,19 +15365,20 @@ function _receiptRowHtml(r, num) {
   const dA = attrEsc(r.date);
   const cA = attrEsc(r.code);
   const imgCount = (typeof getReceiptImgCount === 'function') ? getReceiptImgCount(receiptActiveClient, r.date, r.code) : 0;
+  const needScan = _receiptNeedsScan(receiptActiveClient, r.date);
   return `
-    <div style="display:grid;grid-template-columns:20px 1fr 32px 32px;gap:3px;align-items:center;padding:4px 3px;border-bottom:1px solid #f3f4f6">
+    <div style="display:grid;grid-template-columns:${needScan ? '20px 1fr 32px 32px' : '20px 1fr 48px'};gap:3px;align-items:center;padding:4px 3px;border-bottom:1px solid #f3f4f6">
       <span style="font-size:10px;color:#9ca3af;text-align:right">${num}</span>
       <div style="min-width:0">
         <div style="display:flex;align-items:center;gap:3px;line-height:1.2">
           <span style="font-family:monospace;font-size:11px;font-weight:700;color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">${r.code || '-'}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</span>
           <button onclick="event.stopPropagation();openReceiptImgManager('${attrEsc(receiptActiveClient)}','${dA}','${cA}')" title="📎 사진 첨부 / 보기" style="background:${imgCount > 0 ? '#dbeafe' : 'transparent'};border:none;color:${imgCount > 0 ? '#1e40af' : '#cbd5e1'};cursor:pointer;font-size:11px;padding:0 3px;line-height:1;flex-shrink:0;border-radius:3px;font-weight:700" onmouseover="this.style.color='#1e40af';this.style.background='#dbeafe'" onmouseout="this.style.color='${imgCount > 0 ? '#1e40af' : '#cbd5e1'}';this.style.background='${imgCount > 0 ? '#dbeafe' : 'transparent'}'">📎${imgCount > 0 ? imgCount : ''}</button>
-          <button onclick="onReceiptResetClick(this);event.stopPropagation()" data-d="${dA}" data-c="${cA}" title="${r.manual ? '(수동) 항목 삭제' : '회수/스캔/비고 초기화'}" style="background:transparent;border:none;color:#cbd5e1;cursor:pointer;font-size:11px;padding:0 3px;line-height:1;flex-shrink:0;border-radius:3px" onmouseover="this.style.color='#dc2626';this.style.background='#fef2f2'" onmouseout="this.style.color='#cbd5e1';this.style.background='transparent'">✕</button>
+          <button onclick="onReceiptResetClick(this);event.stopPropagation()" data-d="${dA}" data-c="${cA}" title="${r.manual ? '(수동) 항목 삭제' : (needScan ? '회수/스캔/비고 초기화' : '회수/비고 초기화')}" style="background:transparent;border:none;color:#cbd5e1;cursor:pointer;font-size:11px;padding:0 3px;line-height:1;flex-shrink:0;border-radius:3px" onmouseover="this.style.color='#dc2626';this.style.background='#fef2f2'" onmouseout="this.style.color='#cbd5e1';this.style.background='transparent'">✕</button>
         </div>
         <input type="text" value="${attrEsc(r.memo)}" data-d="${dA}" data-c="${cA}" onchange="onReceiptMemoChange(this)" placeholder="비고" style="width:100%;padding:1px 4px;border:1px solid transparent;background:transparent;font-size:10px;margin-top:1px" onfocus="this.style.background='#fff';this.style.borderColor='#d1d5db'" onblur="this.style.background='transparent';this.style.borderColor='transparent'">
       </div>
       <div data-d="${dA}" data-c="${cA}" data-f="received" onclick="onReceiptCellClick(this)" style="${cellStyle(r.received)};text-align:center;cursor:pointer;user-select:none;padding:6px 0;border-radius:4px;font-size:13px" title="회수 (클릭: 빈칸→O→X)">${r.received || '·'}</div>
-      <div data-d="${dA}" data-c="${cA}" data-f="scanned" onclick="onReceiptCellClick(this)" style="${cellStyle(r.scanned)};text-align:center;cursor:pointer;user-select:none;padding:6px 0;border-radius:4px;font-size:13px" title="스캔 (클릭: 빈칸→O→X)">${r.scanned || '·'}</div>
+      ${needScan ? `<div data-d="${dA}" data-c="${cA}" data-f="scanned" onclick="onReceiptCellClick(this)" style="${cellStyle(r.scanned)};text-align:center;cursor:pointer;user-select:none;padding:6px 0;border-radius:4px;font-size:13px" title="스캔 (클릭: 빈칸→O→X)">${r.scanned || '·'}</div>` : ''}
     </div>
   `;
 }
@@ -15431,10 +15445,11 @@ function renderReceiptCheck() {
         (r.clientName || '').toLowerCase().includes(search)
       );
     }
+    const cl = receiptActiveClient;
     if(filter === 'unreceived') rowsMap[d] = rowsMap[d].filter(r => r.received !== 'O');
-    else if(filter === 'unscanned') rowsMap[d] = rowsMap[d].filter(r => r.scanned !== 'O');
-    else if(filter === 'incomplete') rowsMap[d] = rowsMap[d].filter(r => r.received !== 'O' || r.scanned !== 'O');
-    else if(filter === 'complete') rowsMap[d] = rowsMap[d].filter(r => r.received === 'O' && r.scanned === 'O');
+    else if(filter === 'unscanned') rowsMap[d] = rowsMap[d].filter(r => _receiptNeedsScan(cl, r.date) && r.scanned !== 'O');
+    else if(filter === 'incomplete') rowsMap[d] = rowsMap[d].filter(r => !_receiptIsComplete(cl, r));
+    else if(filter === 'complete') rowsMap[d] = rowsMap[d].filter(r => _receiptIsComplete(cl, r));
     rowsMap[d].sort((a, b) => (a.code || '').localeCompare(b.code || ''));
   });
 
@@ -15442,11 +15457,13 @@ function renderReceiptCheck() {
   const allRows = dates.flatMap(d => rowsMap[d]);
   const total = allRows.length;
   const recv = allRows.filter(r => r.received === 'O').length;
-  const scn = allRows.filter(r => r.scanned === 'O').length;
+  const scanRows = allRows.filter(r => _receiptNeedsScan(receiptActiveClient, r.date));
+  const scn = scanRows.filter(r => r.scanned === 'O').length;
   const unrecv = allRows.filter(r => r.received !== 'O').length;
   const badge = document.getElementById('receiptStatBadge');
   if(badge) {
-    let bh = `<b style="color:#1e293b">${dates[0]} ~ ${dates[dates.length-1]}</b> · 총 <b style="color:#111827">${total}</b>건 · 회수 <b style="color:#059669">${recv}</b> · 스캔 <b style="color:#2563eb">${scn}</b>`;
+    let bh = `<b style="color:#1e293b">${dates[0]} ~ ${dates[dates.length-1]}</b> · 총 <b style="color:#111827">${total}</b>건 · 회수 <b style="color:#059669">${recv}</b>`;
+    if(scanRows.length > 0) bh += ` · 스캔 <b style="color:#2563eb">${scn}</b>`;
     if(unrecv > 0) bh += ` · <span style="color:#dc2626;font-weight:600">미회수 ${unrecv}</span>`;
     // 표시 기간에 데이터 없는데 정산엔 있으면 안내 + 점프 버튼
     if(total === 0) {
@@ -15479,7 +15496,8 @@ function renderReceiptCheck() {
     const dayRecv = rows.filter(r => r.received === 'O').length;
     const dayScn  = rows.filter(r => r.scanned === 'O').length;
     const dayTotal = rows.length;
-    const allDone = dayTotal > 0 && dayRecv === dayTotal && dayScn === dayTotal;
+    const dayNeedScan = _receiptNeedsScan(receiptActiveClient, d);
+    const allDone = dayTotal > 0 && rows.every(r => _receiptIsComplete(receiptActiveClient, r));
     const headerBorder = allDone ? '2px solid #10b981' : '2px solid #e2e8f0';
     return `
       <div class="receipt-day-col" data-date="${d}" style="min-width:300px;width:300px;flex-shrink:0;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;flex-direction:column;max-height:65vh;box-shadow:0 1px 2px rgba(0,0,0,0.04)">
@@ -15488,7 +15506,7 @@ function renderReceiptCheck() {
             <span style="font-size:13px;font-weight:700;color:#1e293b">${d.substring(5)} <span style="color:${isWeekend ? '#dc2626' : '#64748b'};font-weight:600">(${wd})</span></span>
             ${allDone ? '<span title="모두 완료" style="font-size:14px">✅</span>' : ''}
           </div>
-          <div style="font-size:10px;color:#64748b;margin-top:2px">${dayTotal === 0 ? '건 없음' : `${dayTotal}건 · 회수 <b style="color:#059669">${dayRecv}</b>/${dayTotal} · 스캔 <b style="color:#2563eb">${dayScn}</b>/${dayTotal}`}</div>
+          <div style="font-size:10px;color:#64748b;margin-top:2px">${dayTotal === 0 ? '건 없음' : `${dayTotal}건 · 회수 <b style="color:#059669">${dayRecv}</b>/${dayTotal}` + (dayNeedScan ? ` · 스캔 <b style="color:#2563eb">${dayScn}</b>/${dayTotal}` : '')}</div>
         </div>
         <div class="receipt-col-body" style="overflow-y:auto;padding:3px;flex:1">
           ${rows.length === 0 ? '<div style="padding:30px 10px;text-align:center;color:#9ca3af;font-size:11px">건 없음</div>' : rows.map((r, i) => _receiptRowHtml(r, i+1)).join('')}
@@ -15591,10 +15609,11 @@ function renderReceiptFocus() {
       (r.clientName || '').toLowerCase().includes(search)
     );
   }
+  const needScan = _receiptNeedsScan(receiptActiveClient, date);
   if(filter === 'unreceived') rows = rows.filter(r => r.received !== 'O');
-  else if(filter === 'unscanned') rows = rows.filter(r => r.scanned !== 'O');
-  else if(filter === 'incomplete') rows = rows.filter(r => r.received !== 'O' || r.scanned !== 'O');
-  else if(filter === 'complete') rows = rows.filter(r => r.received === 'O' && r.scanned === 'O');
+  else if(filter === 'unscanned') rows = rows.filter(r => needScan && r.scanned !== 'O');
+  else if(filter === 'incomplete') rows = rows.filter(r => !_receiptIsComplete(receiptActiveClient, r));
+  else if(filter === 'complete') rows = rows.filter(r => _receiptIsComplete(receiptActiveClient, r));
   rows.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
 
   // 헤더
@@ -15605,7 +15624,7 @@ function renderReceiptFocus() {
   const recv = rows.filter(r => r.received === 'O').length;
   const scn  = rows.filter(r => r.scanned === 'O').length;
   titleEl.innerHTML = `${date} <span style="color:${isWeekend ? '#dc2626' : '#64748b'};font-weight:500">(${wd})</span> · ${receiptActiveClient}
-    <div style="font-size:12px;color:#64748b;font-weight:400;margin-top:3px">${rows.length}건 · 회수 <b style="color:#059669">${recv}</b>/${rows.length} · 스캔 <b style="color:#2563eb">${scn}</b>/${rows.length}</div>`;
+    <div style="font-size:12px;color:#64748b;font-weight:400;margin-top:3px">${rows.length}건 · 회수 <b style="color:#059669">${recv}</b>/${rows.length}${needScan ? ` · 스캔 <b style="color:#2563eb">${scn}</b>/${rows.length}` : ''}</div>`;
 
   if(rows.length === 0) {
     bodyEl.innerHTML = '<div style="grid-column:1/-1;padding:60px 20px;text-align:center;color:#9ca3af;font-size:14px">이 날짜에 등록된 배차가 없습니다</div>';
@@ -15629,9 +15648,9 @@ function renderReceiptFocus() {
           <div style="font-family:monospace;font-size:16px;font-weight:700;color:#1e40af">${i+1}. ${r.code}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</div>
           ${r.clientName ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">${r.clientName}</div>` : ''}
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div style="display:grid;grid-template-columns:${needScan ? '1fr 1fr' : '1fr'};gap:8px">
           <button data-d="${dA}" data-c="${cA}" data-f="received" onclick="onReceiptCellClick(this)" style="${btnStyle(r.received)};padding:16px 0;font-size:18px;font-weight:700;border-radius:8px;cursor:pointer">회수 ${r.received || '·'}</button>
-          <button data-d="${dA}" data-c="${cA}" data-f="scanned" onclick="onReceiptCellClick(this)" style="${btnStyle(r.scanned)};padding:16px 0;font-size:18px;font-weight:700;border-radius:8px;cursor:pointer">스캔 ${r.scanned || '·'}</button>
+          ${needScan ? `<button data-d="${dA}" data-c="${cA}" data-f="scanned" onclick="onReceiptCellClick(this)" style="${btnStyle(r.scanned)};padding:16px 0;font-size:18px;font-weight:700;border-radius:8px;cursor:pointer">스캔 ${r.scanned || '·'}</button>` : ''}
         </div>
         <input type="text" value="${attrEsc(r.memo)}" data-d="${dA}" data-c="${cA}" onchange="onReceiptMemoChange(this)" placeholder="비고 입력..." style="padding:8px 10px;border:1px solid #d1d5db;border-radius:6px;font-size:13px">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
@@ -15944,23 +15963,29 @@ async function exportReceiptCheck() {
     c.border = thinBorder;
   });
   wsSum.getRow(5).height = 26;
-  let totalAll = 0, recvAll = 0, scnAll = 0;
+  let totalAll = 0, recvAll = 0, scnAll = 0, scnTotalAll = 0;
   allClients.forEach((cl, idx) => {
     const rows = dataByClient[cl];
     const total = rows.length;
     const recv = rows.filter(r => r.received === 'O').length;
-    const scn = rows.filter(r => r.scanned === 'O').length;
-    totalAll += total; recvAll += recv; scnAll += scn;
+    // 스캔은 스캔 대상 건만 집계 (락앤락 10/1~ 제외) — 대상 0건이면 '-' 표기
+    const scanRows = rows.filter(r => _receiptNeedsScan(cl, r.date));
+    const scnTotal = scanRows.length;
+    const scn = scanRows.filter(r => r.scanned === 'O').length;
+    totalAll += total; recvAll += recv; scnAll += scn; scnTotalAll += scnTotal;
     const rowNum = 6 + idx;
     const recvRate = total > 0 ? +((recv/total)*100).toFixed(1) : 0;
-    const scnRate = total > 0 ? +((scn/total)*100).toFixed(1) : 0;
-    const data = [cl, total, recv, total - recv, scn, total - scn, recvRate, scnRate];
+    const scnRate = scnTotal > 0 ? +((scn/scnTotal)*100).toFixed(1) : 0;
+    const data = scnTotal > 0
+      ? [cl, total, recv, total - recv, scn, scnTotal - scn, recvRate, scnRate]
+      : [cl, total, recv, total - recv, '-', '-', recvRate, '-'];
     data.forEach((v, i) => {
       const c = wsSum.getCell(rowNum, i + 1);
       c.value = v;
-      c.alignment = { horizontal: i === 0 ? 'center' : 'right', vertical:'middle' };
+      c.alignment = { horizontal: (i === 0 || v === '-') ? 'center' : 'right', vertical:'middle' };
       c.border = thinBorder;
       c.font = (i === 0) ? subFont : dataFont;
+      if(v === '-') { c.font = { ...dataFont, color:{argb:'FF9CA3AF'} }; return; }
       if(i === 0) c.fill = clientThemeFill[cl] || lightBlue;
       if((i === 3 || i === 5) && v > 0) { c.fill = redFill; c.font = { ...redFont, size: 10 }; }
       if((i === 2 || i === 4) && v > 0) { c.fill = greenFill; c.font = { ...greenFont, size: 10 }; }
@@ -15974,17 +15999,28 @@ async function exportReceiptCheck() {
   });
   const sumTotalRow = 6 + allClients.length;
   const tR = totalAll > 0 ? +((recvAll/totalAll)*100).toFixed(1) : 0;
-  const tS = totalAll > 0 ? +((scnAll/totalAll)*100).toFixed(1) : 0;
-  const tData = ['합계', totalAll, recvAll, totalAll - recvAll, scnAll, totalAll - scnAll, tR, tS];
+  const tS = scnTotalAll > 0 ? +((scnAll/scnTotalAll)*100).toFixed(1) : '-';
+  const tData = scnTotalAll > 0
+    ? ['합계', totalAll, recvAll, totalAll - recvAll, scnAll, scnTotalAll - scnAll, tR, tS]
+    : ['합계', totalAll, recvAll, totalAll - recvAll, '-', '-', tR, '-'];
   tData.forEach((v, i) => {
     const c = wsSum.getCell(sumTotalRow, i + 1);
     c.value = v;
-    c.alignment = { horizontal: i === 0 ? 'center' : 'right', vertical:'middle' };
+    c.alignment = { horizontal: (i === 0 || v === '-') ? 'center' : 'right', vertical:'middle' };
     c.fill = lightBlue;
     c.font = subFont;
     c.border = { top:{style:'medium',color:{argb:'FF1A365D'}}, bottom:{style:'medium',color:{argb:'FF1A365D'}}, left:{style:'thin',color:{argb:'FFD1D5DB'}}, right:{style:'thin',color:{argb:'FFD1D5DB'}}};
   });
   wsSum.getRow(sumTotalRow).height = 28;
+  // 락앤락 스캔 제외 안내 (스캔 제외 건이 포함된 경우만)
+  if(dataByClient['LNL'].some(r => !_receiptNeedsScan('LNL', r.date))) {
+    wsSum.mergeCells(sumTotalRow + 2, 1, sumTotalRow + 2, 8);
+    const nC = wsSum.getCell(sumTotalRow + 2, 1);
+    nC.value = `※ LNL(락앤락)은 ${RECEIPT_NO_SCAN_FROM['LNL']} 배송분부터 인수증 원본 회수만 관리합니다 (스캔 생략 — 스캔 집계에서 제외).`;
+    nC.font = { size:10, name:'맑은 고딕', color:{argb:'FF475569'} };
+    nC.alignment = { horizontal:'left', vertical:'middle', wrapText:true };
+    wsSum.getRow(sumTotalRow + 2).height = 20;
+  }
 
   // ─── 2. 거래처별 시트 (가로 3일 컬럼 — 가독성 우선, 폰트 확대) ───
   // 이전 6일 컬럼은 fitToWidth로 자동 축소되어 원청에서 알아보기 힘들다는 의견 → 3일로 줄임
@@ -16019,11 +16055,19 @@ async function exportReceiptCheck() {
       views: [{ showGridLines: false }]
     });
 
+    // 시트 전체가 스캔 불필요 건(락앤락 10/1~)이면 스캔 열 자체를 뺌 (NO/배차코드/회수/비고)
+    // 9월·10월이 섞인 '전체기간' 출력은 열 유지 + 스캔 불필요 건은 '-' 표기
+    const noScanSheet = rows.every(r => !_receiptNeedsScan(client, r.date));
+    const dayCols = noScanSheet ? COLS_PER_DAY - 1 : COLS_PER_DAY;
+    const sheetCols = PAGE_DAYS * dayCols + (PAGE_DAYS - 1) * SPACER;
+    const scanTotal = rows.filter(r => _receiptNeedsScan(client, r.date));
     // 컬럼 너비 (NO 6 / 코드 18 / 회수 8 / 스캔 8 / 비고 26 / spacer 2)
     // 3일 형식: (6+18+8+8+26)*3 + 2*2 = 198 + 4 = 202칸 → A4 가로에 적절히 fit (이전 6일 265칸 대비 자연스러움)
+    // 스캔 열 없을 때: (6+20+10+30)*3 + 4 = 202칸 (같은 폭 유지)
     const colWidths = [];
     for(let d = 0; d < PAGE_DAYS; d++) {
-      colWidths.push(6, 18, 8, 8, 26);
+      if(noScanSheet) colWidths.push(6, 20, 10, 30);
+      else colWidths.push(6, 18, 8, 8, 26);
       if(d < PAGE_DAYS - 1) colWidths.push(2);
     }
     ws.columns = colWidths.map(w => ({ width: w }));
@@ -16040,7 +16084,7 @@ async function exportReceiptCheck() {
       const pageDates = sortedDates.slice(p * PAGE_DAYS, (p + 1) * PAGE_DAYS);
 
       // 페이지 타이틀
-      ws.mergeCells(curRow, 1, curRow, TOTAL_COLS);
+      ws.mergeCells(curRow, 1, curRow, sheetCols);
       const tC = ws.getCell(curRow, 1);
       tC.value = '주식회사 씨엘피 (CLP)  ·  인수증 체크리스트';
       tC.font = rcTitleFont;
@@ -16048,13 +16092,13 @@ async function exportReceiptCheck() {
       ws.getRow(curRow).height = 44;
       curRow++;
       // 밑줄
-      ws.mergeCells(curRow, 1, curRow, TOTAL_COLS);
+      ws.mergeCells(curRow, 1, curRow, sheetCols);
       ws.getCell(curRow, 1).border = { bottom:{ style:'medium', color:{argb:'FF1A365D'}}};
       ws.getRow(curRow).height = 4;
       curRow++;
 
       // 정보바: 거래처 / 기간 / 페이지 (3분할)
-      const third = Math.floor(TOTAL_COLS / 3);
+      const third = Math.floor(sheetCols / 3);
       ws.mergeCells(curRow, 1, curRow, third);
       const cInfo = ws.getCell(curRow, 1);
       cInfo.value = `거래처: ${clientLabel[client] || client}`;
@@ -16065,13 +16109,13 @@ async function exportReceiptCheck() {
 
       ws.mergeCells(curRow, third + 1, curRow, third * 2);
       const pInfo = ws.getCell(curRow, third + 1);
-      pInfo.value = `정산 기간: ${monthLabel}    (총 ${rows.length}건  ·  회수 ${rows.filter(r=>r.received==='O').length}  ·  스캔 ${rows.filter(r=>r.scanned==='O').length})`;
+      pInfo.value = `정산 기간: ${monthLabel}    (총 ${rows.length}건  ·  회수 ${rows.filter(r=>r.received==='O').length}` + (scanTotal.length > 0 ? `  ·  스캔 ${scanTotal.filter(r=>r.scanned==='O').length})` : ')');
       pInfo.font = rcSubFont;
       pInfo.fill = lightBlue;
       pInfo.alignment = { horizontal:'center', vertical:'middle' };
       pInfo.border = thinBorder;
 
-      ws.mergeCells(curRow, third * 2 + 1, curRow, TOTAL_COLS);
+      ws.mergeCells(curRow, third * 2 + 1, curRow, sheetCols);
       const pgInfo = ws.getCell(curRow, third * 2 + 1);
       pgInfo.value = `페이지 ${p+1} / ${pageCount}    출력: ${_formatLoginTs(new Date())}`;
       pgInfo.font = rcSubFont;
@@ -16085,8 +16129,8 @@ async function exportReceiptCheck() {
 
       // 날짜 헤더 (각 날짜 5칸 merge, 요일 + 일계 표기)
       pageDates.forEach((d, dIdx) => {
-        const startCol = dIdx * (COLS_PER_DAY + SPACER) + 1;
-        const endCol = startCol + COLS_PER_DAY - 1;
+        const startCol = dIdx * (dayCols + SPACER) + 1;
+        const endCol = startCol + dayCols - 1;
         ws.mergeCells(curRow, startCol, curRow, endCol);
         const cell = ws.getCell(curRow, startCol);
         const dt = new Date(d);
@@ -16095,7 +16139,7 @@ async function exportReceiptCheck() {
         const dCnt = byDate[d].length;
         const dRecv = byDate[d].filter(r => r.received === 'O').length;
         const dScn = byDate[d].filter(r => r.scanned === 'O').length;
-        cell.value = `${d.substring(5)} (${wd})    ${dCnt}건 · 회수 ${dRecv} · 스캔 ${dScn}`;
+        cell.value = `${d.substring(5)} (${wd})    ${dCnt}건 · 회수 ${dRecv}` + (_receiptNeedsScan(client, d) ? ` · 스캔 ${dScn}` : '');
         cell.font = (dow === 0) ? dateHdrSunFont : (dow === 6 ? dateHdrSatFont : dateHdrFont);
         cell.fill = (dow === 0 || dow === 6) ? wkndFill : wkdFill;
         cell.alignment = { horizontal:'center', vertical:'middle' };
@@ -16105,9 +16149,9 @@ async function exportReceiptCheck() {
       curRow++;
 
       // 컬럼 서브 헤더 (NO/배차코드/회수/스캔/비고) × 3일
-      const subHdrs = ['NO', '배차코드', '회수', '스캔', '비고'];
+      const subHdrs = noScanSheet ? ['NO', '배차코드', '회수', '비고'] : ['NO', '배차코드', '회수', '스캔', '비고'];
       pageDates.forEach((_d, dIdx) => {
-        const startCol = dIdx * (COLS_PER_DAY + SPACER) + 1;
+        const startCol = dIdx * (dayCols + SPACER) + 1;
         subHdrs.forEach((h, i) => {
           const c = ws.getCell(curRow, startCol + i);
           c.value = h;
@@ -16124,13 +16168,21 @@ async function exportReceiptCheck() {
       const maxRows = Math.max(0, ...pageDates.map(d => byDate[d].length));
       for(let i = 0; i < maxRows; i++) {
         pageDates.forEach((d, dIdx) => {
-          const startCol = dIdx * (COLS_PER_DAY + SPACER) + 1;
+          const startCol = dIdx * (dayCols + SPACER) + 1;
           const rec = byDate[d][i];
-          const cells = [
+          const recNeedScan = _receiptNeedsScan(client, d);
+          const cells = noScanSheet ? [
             { c: 0, v: rec ? i+1 : '', font: rcDataFont, h:'center' },
             { c: 1, v: rec?.code || '', font: rcCodeFont, h:'center' },
             { c: 2, v: rec?.received || (rec ? '·' : ''), h:'center', status: rec?.received, isStatus: true },
-            { c: 3, v: rec?.scanned || (rec ? '·' : ''), h:'center', status: rec?.scanned, isStatus: true },
+            { c: 3, v: rec?.memo || '', font: rcDataFont, h:'left' }
+          ] : [
+            { c: 0, v: rec ? i+1 : '', font: rcDataFont, h:'center' },
+            { c: 1, v: rec?.code || '', font: rcCodeFont, h:'center' },
+            { c: 2, v: rec?.received || (rec ? '·' : ''), h:'center', status: rec?.received, isStatus: true },
+            recNeedScan
+              ? { c: 3, v: rec?.scanned || (rec ? '·' : ''), h:'center', status: rec?.scanned, isStatus: true }
+              : { c: 3, v: rec ? '-' : '', font: rcGrayFont, h:'center' },
             { c: 4, v: rec?.memo || '', font: rcDataFont, h:'left' }
           ];
           cells.forEach(({c, v, font, h, status, isStatus}) => {
@@ -16153,13 +16205,13 @@ async function exportReceiptCheck() {
 
       // 일계 행 (각 날짜 5칸 merge)
       pageDates.forEach((d, dIdx) => {
-        const startCol = dIdx * (COLS_PER_DAY + SPACER) + 1;
-        ws.mergeCells(curRow, startCol, curRow, startCol + COLS_PER_DAY - 1);
+        const startCol = dIdx * (dayCols + SPACER) + 1;
+        ws.mergeCells(curRow, startCol, curRow, startCol + dayCols - 1);
         const cell = ws.getCell(curRow, startCol);
         const dCnt = byDate[d].length;
         const dRecv = byDate[d].filter(r => r.received === 'O').length;
         const dScn = byDate[d].filter(r => r.scanned === 'O').length;
-        cell.value = `일계: ${dCnt}건  ·  회수 ${dRecv}  ·  스캔 ${dScn}`;
+        cell.value = `일계: ${dCnt}건  ·  회수 ${dRecv}` + (_receiptNeedsScan(client, d) ? `  ·  스캔 ${dScn}` : '');
         cell.font = rcSubFont;
         cell.fill = lightBlue;
         cell.alignment = { horizontal:'center', vertical:'middle' };
@@ -16228,7 +16280,8 @@ async function exportReceiptCheck() {
       if(r.received === 'X') { recvCell.fill = redFill; recvCell.font = { ...redFont, size:11 }; }
       else if(!r.received) { recvCell.fill = grayFill; recvCell.value = '·'; recvCell.font = grayFont; }
       const scnCell = wsU.getCell(6 + i, 6);
-      if(r.scanned === 'O') { scnCell.fill = greenFill; scnCell.font = { ...greenFont, size:11 }; }
+      if(!_receiptNeedsScan(r.client, r.date)) { scnCell.value = '-'; scnCell.font = grayFont; }
+      else if(r.scanned === 'O') { scnCell.fill = greenFill; scnCell.font = { ...greenFont, size:11 }; }
       else if(r.scanned === 'X') { scnCell.fill = redFill; scnCell.font = { ...redFont, size:11 }; }
       else if(!r.scanned) { scnCell.fill = grayFill; scnCell.value = '·'; scnCell.font = grayFont; }
     });
