@@ -15372,7 +15372,7 @@ function _receiptRowHtml(r, num) {
       <span style="font-size:10px;color:#9ca3af;text-align:right">${num}</span>
       <div style="min-width:0">
         <div style="display:flex;align-items:center;gap:3px;line-height:1.2">
-          <span style="font-family:monospace;font-size:11px;font-weight:700;color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0">${r.code || '-'}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</span>
+          <span style="font-family:monospace;font-size:11px;font-weight:700;color:#1e40af;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0"${r.dest ? ` title="${attrEsc(r.dest)}"` : ''}>${r.code || '-'}${r.dest ? ` <span style="font-family:sans-serif;font-weight:600;color:#334155">${attrEsc(r.dest).replace(/</g,'&lt;')}</span>` : ''}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</span>
           <button onclick="event.stopPropagation();openReceiptImgManager('${attrEsc(receiptActiveClient)}','${dA}','${cA}')" title="📎 사진 첨부 / 보기" style="background:${imgCount > 0 ? '#dbeafe' : 'transparent'};border:none;color:${imgCount > 0 ? '#1e40af' : '#cbd5e1'};cursor:pointer;font-size:11px;padding:0 3px;line-height:1;flex-shrink:0;border-radius:3px;font-weight:700" onmouseover="this.style.color='#1e40af';this.style.background='#dbeafe'" onmouseout="this.style.color='${imgCount > 0 ? '#1e40af' : '#cbd5e1'}';this.style.background='${imgCount > 0 ? '#dbeafe' : 'transparent'}'">📎${imgCount > 0 ? imgCount : ''}</button>
           <button onclick="onReceiptResetClick(this);event.stopPropagation()" data-d="${dA}" data-c="${cA}" title="${r.manual ? '(수동) 항목 삭제' : (needScan ? '회수/스캔/비고 초기화' : '회수/비고 초기화')}" style="background:transparent;border:none;color:#cbd5e1;cursor:pointer;font-size:11px;padding:0 3px;line-height:1;flex-shrink:0;border-radius:3px" onmouseover="this.style.color='#dc2626';this.style.background='#fef2f2'" onmouseout="this.style.color='#cbd5e1';this.style.background='transparent'">✕</button>
         </div>
@@ -15433,6 +15433,12 @@ function renderReceiptCheck() {
     rowsMap[date].push({ date, code: mainCode, clientName: '', manual: true });
   });
 
+  // 배송처명 (락앤락) — 표시 기간 전체를 한 번에 매칭
+  if(RECEIPT_SHOW_DEST[receiptActiveClient]) {
+    const flat = _attachReceiptDest(receiptActiveClient, dates.flatMap(d => rowsMap[d]));
+    dates.forEach(d => { rowsMap[d] = flat.filter(r => r.date === d); });
+  }
+
   // 3) 매칭 + 검색/필터
   Object.keys(rowsMap).forEach(d => {
     rowsMap[d] = rowsMap[d].map(row => {
@@ -15442,6 +15448,7 @@ function renderReceiptCheck() {
     if(search) {
       rowsMap[d] = rowsMap[d].filter(r =>
         (r.code || '').toLowerCase().includes(search) ||
+        (r.dest || '').toLowerCase().includes(search) ||
         (r.memo || '').toLowerCase().includes(search) ||
         (r.clientName || '').toLowerCase().includes(search)
       );
@@ -15596,7 +15603,7 @@ function renderReceiptFocus() {
     seen.add(key);
     rows.push({ date: c.date, code: mainCode, clientName: '', manual: true });
   });
-  rows = rows.map(row => {
+  rows = _attachReceiptDest(receiptActiveClient, rows).map(row => {
     const c = _findReceiptCheck(receiptActiveClient, row.date, row.code);
     return { ...row, received: c?.received || '', scanned: c?.scanned || '', memo: c?.memo || '' };
   });
@@ -15606,6 +15613,7 @@ function renderReceiptFocus() {
   if(search) {
     rows = rows.filter(r =>
       (r.code || '').toLowerCase().includes(search) ||
+      (r.dest || '').toLowerCase().includes(search) ||
       (r.memo || '').toLowerCase().includes(search) ||
       (r.clientName || '').toLowerCase().includes(search)
     );
@@ -15647,6 +15655,7 @@ function renderReceiptFocus() {
       <div style="border:1px solid #e5e7eb;border-radius:10px;padding:14px;background:#fff;display:flex;flex-direction:column;gap:10px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
         <div>
           <div style="font-family:monospace;font-size:16px;font-weight:700;color:#1e40af">${i+1}. ${r.code}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</div>
+          ${r.dest ? `<div style="font-size:14px;font-weight:600;color:#334155;margin-top:2px">${attrEsc(r.dest).replace(/</g,'&lt;')}</div>` : ''}
           ${r.clientName ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">${r.clientName}</div>` : ''}
         </div>
         <div style="display:grid;grid-template-columns:${needScan ? '1fr 1fr' : '1fr'};gap:8px">
@@ -15735,8 +15744,27 @@ function _iterReceiptFromSettlement(client, callback) {
     const key = date + '|' + mainCode;
     if(seen.has(key)) return;
     seen.add(key);
-    callback({ date, code: mainCode, clientName: s.client || '', manual: false });
+    callback({ date, code: mainCode, clientName: s.client || '', dest: String(s.dest || '').trim(), manual: false });
   });
+}
+
+// 락앤락은 스캔 대신 코드 옆에 배송처명 표시 (원청이 WMS로 대조)
+// 배차이력 거래처명(=배송처) 우선 — 코드는 날마다 재사용되므로 반드시 같은 날짜로만 매칭, 없으면 정산 dest
+const RECEIPT_SHOW_DEST = { 'LNL': true };
+function _attachReceiptDest(client, rows) {
+  if(!RECEIPT_SHOW_DEST[client] || !rows.length) return rows;
+  const map = {};
+  (Array.isArray(dispatchLog) ? dispatchLog : []).forEach(r => {
+    if(!r || !r.code || !r.clientName) return;
+    const code = _normalizeReceiptCode(r.code);
+    const name = String(r.clientName).trim();
+    if(!code || !name) return;
+    [r.deliveryDate, r.date].forEach(dv => {
+      const d = dv ? sanitizeDate(dv) : '';
+      if(d && !map[d + '|' + code]) map[d + '|' + code] = name;
+    });
+  });
+  return rows.map(r => ({ ...r, dest: map[r.date + '|' + r.code] || r.dest || '' }));
 }
 
 // 거래처별 인수증 데이터 수집 (기사정산 자동 + 수동 추가 통합)
@@ -16357,8 +16385,8 @@ function _receiptPrintPaginate(blocks, cols, rowsFor) {
   return { pages, split };
 }
 
-function _receiptPrintLayout(blocks, hasScan) {
-  const colEm = 9.2 + 2.4 + (hasScan ? 2.4 : 0);      // 코드(+각주번호) / 회수 / 스캔
+function _receiptPrintLayout(blocks, hasScan, hasDest) {
+  const colEm = 9.2 + (hasDest ? 11 : 0) + 2.4 + (hasScan ? 2.4 : 0);      // 코드(+각주번호) / 배송처 / 회수 / 스캔
   const sheets = [{ o:'landscape', w:277, h:190 }, { o:'portrait', w:190, h:277 }];
   const calc = (f, s) => {
     const em = f * _RP_PT;
@@ -16402,6 +16430,8 @@ function printReceiptOnePage() {
     periodLabel = `${dates[0]} ~ ${dates[dates.length - 1]}`;
   }
   if(rows.length === 0) { showToast('⚠ 인쇄할 항목이 없습니다 (기간 확인)'); return; }
+  rows = _attachReceiptDest(client, rows);
+  const hasDest = rows.some(r => r.dest);
 
   const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const hasScan = rows.some(r => _receiptNeedsScan(client, r.date));
@@ -16430,7 +16460,7 @@ function printReceiptOnePage() {
     });
   });
 
-  const L = _receiptPrintLayout(blocks, hasScan);
+  const L = _receiptPrintLayout(blocks, hasScan, hasDest);
   const pageCount = L.pages.length;
 
   // 상단 요약은 총 건수만 (보스 지시 — 회수/미회수 집계·스캔 생략 안내는 출력물에서 제외)
@@ -16439,7 +16469,7 @@ function printReceiptOnePage() {
   const summary = `총 <b>${total}</b>건`;
 
   const stCell = (v) => v === 'O' ? '<td class="st o">O</td>' : v === 'X' ? '<td class="st x">X</td>' : '<td class="st e">·</td>';
-  const span = hasScan ? 3 : 2;
+  const span = 2 + (hasScan ? 1 : 0) + (hasDest ? 1 : 0);
   const colHtml = (list) => {
     const body = list.map(it => {
       if(it.t === 'd') {
@@ -16448,10 +16478,10 @@ function printReceiptOnePage() {
       }
       const r = it.r;
       const scanTd = hasScan ? (_receiptNeedsScan(client, r.date) ? stCell(r.scanned) : '<td class="st e">-</td>') : '';
-      return `<tr><td class="cd">${esc(r.code)}${r.manual ? '*' : ''}${it.noteNo ? `<sup>${it.noteNo}</sup>` : ''}</td>${stCell(r.received)}${scanTd}</tr>`;
+      return `<tr><td class="cd">${esc(r.code)}${r.manual ? '*' : ''}${it.noteNo ? `<sup>${it.noteNo}</sup>` : ''}</td>${hasDest ? `<td class="ds">${esc(r.dest)}</td>` : ''}${stCell(r.received)}${scanTd}</tr>`;
     }).join('');
-    return `<table><colgroup><col><col style="width:2.4em">${hasScan ? '<col style="width:2.4em">' : ''}</colgroup>
-      <thead><tr><th>배차코드</th><th>회수</th>${hasScan ? '<th>스캔</th>' : ''}</tr></thead>
+    return `<table><colgroup>${hasDest ? '<col style="width:9.2em"><col>' : '<col>'}<col style="width:2.4em">${hasScan ? '<col style="width:2.4em">' : ''}</colgroup>
+      <thead><tr><th>배차코드</th>${hasDest ? '<th>배송처</th>' : ''}<th>회수</th>${hasScan ? '<th>스캔</th>' : ''}</tr></thead>
       <tbody>${body}</tbody></table>`;
   };
 
@@ -16497,6 +16527,7 @@ function printReceiptOnePage() {
   th { background: #1a365d; color: #fff; font-weight: 700; padding: 0.1em 0; border: 1px solid #1a365d; line-height: 1.35; }
   td { border: 1px solid #d1d5db; padding: 0 0.3em; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   td.cd { font-family: Consolas, monospace; font-weight: 700; }
+  td.ds { color: #1f2937; }
   td.cd sup { color: #b45309; font-family: sans-serif; font-size: 0.75em; line-height: 0; margin-left: 1px; }
   td.st { text-align: center; font-weight: 800; }
   td.o { background: #d1fae5; color: #065f46; } td.x { background: #fee2e2; color: #991b1b; } td.e { color: #cbd5e1; }
