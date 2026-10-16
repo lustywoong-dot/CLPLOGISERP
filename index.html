@@ -15385,7 +15385,7 @@ function _receiptRowHtml(r, num) {
       ? `<span style="font-size:12.5px;font-weight:800;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${destHtml}</span><span style="font-family:monospace;font-size:11.5px;font-weight:600;color:#475569;flex-shrink:0;margin-left:4px">${r.code || '-'}</span>`
       : `<span style="font-family:monospace;font-size:11.5px;font-weight:700;color:#1e40af;flex-shrink:0;margin-right:5px">${r.code || '-'}</span><span style="font-size:12px;font-weight:700;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${destHtml}</span>`;
   return `
-    <div class="receipt-row${r._hit === true ? ' receipt-hit' : ''}" style="display:grid;grid-template-columns:${needScan ? '20px 1fr 32px 32px' : '20px 1fr 48px'};gap:3px;align-items:center;padding:4px 3px;border-bottom:1px solid #f3f4f6;${hitStyle}">
+    <div class="receipt-row${r._hit === true ? ' receipt-hit' : ''}" data-qk="${attrEsc(_rqNorm(r.dest) + '|' + _rqNorm(r.code))}" data-d="${dA}" data-c="${cA}" data-recv="${attrEsc(r.received)}" data-label="${attrEsc((r.dest ? r.dest + ' ' : '') + '(' + r.code + ')')}" style="display:grid;grid-template-columns:${needScan ? '20px 1fr 32px 32px' : '20px 1fr 48px'};gap:3px;align-items:center;padding:4px 3px;border-bottom:1px solid #f3f4f6;${hitStyle}">
       <span style="font-size:10px;color:#9ca3af;text-align:right">${num}</span>
       <div style="min-width:0">
         <div style="display:flex;align-items:center;gap:3px;line-height:1.25">
@@ -15508,6 +15508,12 @@ function renderReceiptCheck() {
     badge.innerHTML = bh;
   }
 
+  // 날짜 검색창에 입력 중이었으면 다시 그린 뒤 커서 복원 (다른 PC 동기화 등으로 다시 그려질 때)
+  const _ae = document.activeElement;
+  let _dayFocus = (_ae && _ae.classList && _ae.classList.contains('receipt-day-q'))
+    ? { date: _ae.dataset.date, pos: _ae.selectionStart } : null;
+  if(_receiptRefocusDay) { _dayFocus = { date: _receiptRefocusDay, pos: 0 }; _receiptRefocusDay = null; }
+
   // ─── 렌더 직전 스크롤 위치 저장 (셀 클릭 후 위로 점프 방지) ───
   const _prevScrollLeft = grid.scrollLeft;
   const _prevColScroll = {};
@@ -15533,9 +15539,10 @@ function renderReceiptCheck() {
     return `
       <div class="receipt-day-col" data-date="${d}" style="min-width:340px;width:340px;flex-shrink:0;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;flex-direction:column;max-height:75vh;box-shadow:0 1px 2px rgba(0,0,0,0.04)">
         <div ondblclick="enterFocusMode('${d}')" title="더블클릭 → 집중 모드" style="padding:9px 10px;background:${headerBg};border-bottom:${headerBorder};cursor:pointer;border-radius:8px 8px 0 0;flex-shrink:0;user-select:none">
-          <div style="display:flex;align-items:center;justify-content:space-between">
-            <span style="font-size:13px;font-weight:700;color:#1e293b">${d.substring(5)} <span style="color:${isWeekend ? '#dc2626' : '#64748b'};font-weight:600">(${wd})</span></span>
-            <span style="display:flex;align-items:center;gap:4px">${search && rows.some(r => r._hit) ? `<span style="background:#fef08a;color:#713f12;font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px">🔍 ${rows.filter(r => r._hit).length}</span>` : ''}${allDone ? '<span title="모두 완료" style="font-size:14px">✅</span>' : ''}</span>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:6px">
+            <span style="font-size:13px;font-weight:700;color:#1e293b;flex-shrink:0">${d.substring(5)} <span style="color:${isWeekend ? '#dc2626' : '#64748b'};font-weight:600">(${wd})</span></span>
+            ${dayTotal > 0 ? `<input type="text" class="receipt-day-q" data-date="${d}" value="${String(_receiptDayQuery[receiptActiveClient + '|' + d] || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" placeholder="🔍 배송처명" autocomplete="off" oninput="onReceiptDayQuery(this)" onkeydown="onReceiptDayQueryKey(event)" onclick="event.stopPropagation()" ondblclick="event.stopPropagation()" title="이 날짜에서 배송처명·코드 찾기 — 1건만 맞으면 Enter = 회수 O, Esc = 지우기" style="flex:1;min-width:0;max-width:150px;padding:3px 7px;font-size:12px;border:1.5px solid #ca8a04;border-radius:4px;background:#fffbeb;cursor:text;user-select:text">` : ''}
+            <span style="display:flex;align-items:center;gap:4px;flex-shrink:0">${search && rows.some(r => r._hit) ? `<span style="background:#fef08a;color:#713f12;font-size:10px;font-weight:700;padding:1px 5px;border-radius:3px">🔍 ${rows.filter(r => r._hit).length}</span>` : ''}${allDone ? '<span title="모두 완료" style="font-size:14px">✅</span>' : ''}</span>
           </div>
           <div style="font-size:10px;color:#64748b;margin-top:2px">${dayTotal === 0 ? '건 없음' : `${dayTotal}건 · 회수 <b style="color:#059669">${dayRecv}</b>/${dayTotal}` + (dayNeedScan ? ` · 스캔 <b style="color:#2563eb">${dayScn}</b>/${dayTotal}` : '')}</div>
         </div>
@@ -15568,6 +15575,15 @@ function renderReceiptCheck() {
     if(firstCol) grid.scrollLeft = Math.max(0, firstCol.offsetLeft - grid.offsetLeft - 10);
   }
   _receiptLastSearch = search;
+
+  // 날짜 칸 검색어 다시 적용 (스크롤은 사용자가 보던 위치 유지) + 입력 커서 복원
+  grid.querySelectorAll('.receipt-day-col[data-date]').forEach(col => {
+    if(_receiptDayQuery[receiptActiveClient + '|' + col.dataset.date]) _applyReceiptDayQuery(col, false);
+  });
+  if(_dayFocus) {
+    const inp = grid.querySelector(`.receipt-day-q[data-date="${_dayFocus.date}"]`);
+    if(inp) { inp.focus(); try { inp.setSelectionRange(_dayFocus.pos, _dayFocus.pos); } catch(e) {} }
+  }
 
   // 집중 모드도 활성 상태면 동기화
   if(receiptFocusDate) renderReceiptFocus();
@@ -15870,9 +15886,68 @@ function _receiptRowCmp(a, b) {
 
 // 빠른 체크용 비교 — 공백 무시, 대소문자 무시 ('이마트동탄' = '이마트 동탄점' 일부)
 function _rqNorm(s) { return String(s || '').replace(/\s+/g, '').toLowerCase(); }
-let _receiptQuickMatches = [];
-let _receiptSearchHits = [];      // 그리드 검색에서 맞은 줄 (Enter 회수용)
-let _receiptLastSearch = '';      // 검색어 바뀔 때만 자동 스크롤
+var _receiptQuickMatches = [];
+var _receiptDayQuery = {};        // 날짜 칸 머리 검색어 { '거래처|날짜': 검색어 } — 화면 다시 그려도 유지
+
+// 날짜 칸 검색: 화면을 다시 그리지 않고 그 칸 안에서만 표시 (입력 중 커서 유지)
+// 맞는 줄 노랑 / 나머지 흐리게 / 첫 일치 줄로 스크롤. 반환: 맞은 줄 요소 배열
+function _applyReceiptDayQuery(col, scroll) {
+  if(!col) return [];
+  const d = col.dataset.date;
+  const q = _rqNorm(_receiptDayQuery[receiptActiveClient + '|' + d] || '');
+  const rowsEl = col.querySelectorAll('.receipt-row');
+  const hits = [];
+  rowsEl.forEach(el => {
+    const hit = !!q && (el.dataset.qk || '').includes(q);
+    if(q) {
+      el.style.background = hit ? '#fef08a' : '';
+      el.style.boxShadow = hit ? 'inset 3px 0 0 #ca8a04' : '';
+      el.style.opacity = hit ? '' : '0.35';
+      if(hit) hits.push(el);
+    } else if(el.dataset.dq) {
+      // 날짜 검색을 지웠으면 이 함수가 바꾼 표시만 되돌림 (상단 검색 표시는 다시 그릴 때 복원)
+      el.style.background = ''; el.style.boxShadow = ''; el.style.opacity = '';
+    }
+    el.dataset.dq = q ? '1' : '';
+  });
+  if(scroll && hits.length) {
+    const body = col.querySelector('.receipt-col-body');
+    if(body) body.scrollTop = Math.max(0, hits[0].offsetTop - 40);
+  }
+  return hits;
+}
+function onReceiptDayQuery(el) {
+  const col = el.closest('.receipt-day-col');
+  _receiptDayQuery[receiptActiveClient + '|' + el.dataset.date] = el.value;
+  if(!el.value.trim()) { renderReceiptCheck(); return; }   // 지우면 원래 표시로
+  _applyReceiptDayQuery(col, true);
+}
+function onReceiptDayQueryKey(e) {
+  const el = e.target;
+  const key = receiptActiveClient + '|' + el.dataset.date;
+  if(e.key === 'Escape') { e.preventDefault(); el.value = ''; _receiptDayQuery[key] = ''; renderReceiptCheck(); return; }
+  if(e.key !== 'Enter') return;
+  e.preventDefault();
+  // 한글 조합 중 Enter — 조합이 끝나 표시가 갱신된 뒤 처리 (두 번 누를 필요 없게)
+  if(e.isComposing || e.keyCode === 229) {
+    setTimeout(() => onReceiptDayQueryKey({ key: 'Enter', target: el, isComposing: false, keyCode: 13, preventDefault() {} }), 30);
+    return;
+  }
+  if(!el.value.trim()) return;
+  _receiptDayQuery[key] = el.value;
+  const hits = _applyReceiptDayQuery(el.closest('.receipt-day-col'), false);
+  if(hits.length === 0) { showToast('⚠ 이 날짜에 일치하는 배송처가 없습니다'); return; }
+  if(hits.length > 1) { showToast(`ℹ ${hits.length}건 일치 — 더 입력하거나 노란 줄의 회수 칸을 클릭하세요`); return; }
+  const h = hits[0].dataset;
+  if(h.recv === 'O') showToast(`ℹ 이미 회수 O — ${h.label}`);
+  else { upsertReceiptEntry(h.d, h.c, { received: 'O' }); showToast(`✅ 회수 O — ${el.dataset.date.substring(5)} ${h.label}`); }
+  _receiptDayQuery[key] = '';
+  _receiptRefocusDay = el.dataset.date;   // 다시 그린 뒤 같은 날짜 검색창에 커서
+  renderReceiptCheck();
+}
+var _receiptRefocusDay = null;
+var _receiptSearchHits = [];      // 그리드 검색에서 맞은 줄 (Enter 회수용)
+var _receiptLastSearch = '';      // 검색어 바뀔 때만 자동 스크롤
 
 // 상단 검색창: Enter = 맞는 줄이 딱 1건이면 회수 O 후 검색어 비움 / Esc = 지우기
 function onReceiptSearchKey(e) {
