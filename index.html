@@ -16333,7 +16333,7 @@ async function exportReceiptCheck() {
 // ─── 인수증 인쇄 (현재 거래처) ─────────────────────────
 // 엑셀 출력은 칸이 넓어 장수가 많고 하루치가 페이지 사이로 끊김 → 인쇄 전용 배치
 // 원칙: 하루 = 한 단, A4 가로 한 장에 3일씩. 하루치는 단·페이지 사이로 나뉘지 않음 (장수는 필요한 만큼)
-// 글자는 12pt부터, 가장 많은 날도 한 단에 들어가는 크기를 고름 (8pt로도 안 되는 날만 '(계속)'으로 나눔)
+// 글자는 12pt부터, 가장 많은 날도 한 단에 들어가는 크기를 고름 (8pt로도 안 되는 날만 나눠서 '1-2', '2-2' 표시)
 // 비고는 코드 옆 번호 + 그 페이지 하단 각주
 // 범위: 월 단위 (출력월 비어 있으면 화면에 보고 있는 달). 인쇄창에서 'PDF로 저장' 가능
 const RECEIPT_PRINT_DAYS_PER_PAGE = 3;
@@ -16361,17 +16361,20 @@ function _receiptPrintPaginate(blocks, cols, rowsFor) {
       page.notes += b.notes;
       return;
     }
-    // 한 단보다 큰 날 — 다음 단으로 이어서 '(계속)' 표시
+    // 한 단보다 큰 날 — 다음 단으로 이어서 날짜 줄에 '1-2', '2-2' 식으로 표시
     split = true;
-    let rest = b.rows.slice(), first = true;
+    let rest = b.rows.slice();
+    const heads = [];
     while(rest.length) {
       if(page.cols.length >= cols) newPage();
       const limit = Math.max(2, rowsFor(page.notes + b.notes));
       const part = rest.splice(0, limit - 1);
-      page.cols.push([{ t:'d', ...b.head, cont: !first }, ...part]);
+      const head = { t:'d', ...b.head };
+      heads.push(head);
+      page.cols.push([head, ...part]);
       page.notes += part.filter(it => it.noteNo).length;
-      first = false;
     }
+    heads.forEach((h, i) => { h.part = i + 1; h.parts = heads.length; });
   });
   return { pages, split };
 }
@@ -16400,8 +16403,15 @@ function _receiptPrintLayout(blocks, hasScan, hasDest) {
     if(!best || L.pages.length < best.pages.length) best = L;   // 같은 장수면 큰 글자 유지
   }
   if(best) return best;
-  // 8pt로도 한 단에 안 들어가는 날이 있으면 어차피 나눠야 함 → 글자는 크게 두고 그날만 '(계속)'
-  return calc(RECEIPT_PRINT_MAX_PT);
+  // 8pt로도 한 단에 안 들어가는 날이 있으면 어차피 나눠야 함 ('1-2', '2-2' 표시)
+  // → 조각 수(단 수)가 가장 적은 글자 크기, 같으면 장수 적은 쪽, 그것도 같으면 큰 글자
+  const colCount = (L) => L.pages.reduce((s, p) => s + p.cols.length, 0);
+  let fb = null;
+  for(let f = RECEIPT_PRINT_MAX_PT; f >= RECEIPT_PRINT_MIN_PT; f -= 0.5) {
+    const L = calc(f);
+    if(!fb || colCount(L) < colCount(fb) || (colCount(L) === colCount(fb) && L.pages.length < fb.pages.length)) fb = L;
+  }
+  return fb;
 }
 
 function printReceiptOnePage() {
@@ -16463,7 +16473,7 @@ function printReceiptOnePage() {
   const colHtml = (list) => {
     const body = list.map(it => {
       if(it.t === 'd') {
-        const tail = it.cont ? ' (계속)' : '';
+        const tail = it.parts > 1 ? ` (${it.part}-${it.parts})` : '';
         return `<tr class="dh"><td colspan="${span}">${esc(it.date.substring(5).replace('-', '/'))}(${it.wd}) ${it.cnt}건${tail}</td></tr>`;
       }
       const r = it.r;
