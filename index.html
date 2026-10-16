@@ -15467,8 +15467,8 @@ function renderReceiptCheck() {
     if(search) {
       const sq = _rqNorm(search);
       rowsMap[d] = rowsMap[d].map(r => ({ ...r, _hit:
-        _rqNorm(r.code).includes(sq) || _rqNorm(r.dest).includes(sq) ||
-        _rqNorm(r.memo).includes(sq) || _rqNorm(r.clientName).includes(sq) }));
+        _rqMatch(r.code, sq) || _rqMatch(r.dest, sq) ||
+        _rqMatch(r.memo, sq) || _rqMatch(r.clientName, sq) }));
     }
     const cl = receiptActiveClient;
     if(filter === 'unreceived') rowsMap[d] = rowsMap[d].filter(r => r.received !== 'O');
@@ -15725,7 +15725,7 @@ function renderReceiptFocus() {
   const qEl = document.getElementById('receiptQuickFind');
   const q = _rqNorm(qEl ? qEl.value : '');
   const dayTotal = rows.length;
-  if(q) rows = rows.filter(r => _rqNorm(r.dest).includes(q) || _rqNorm(r.code).includes(q));
+  if(q) rows = rows.filter(r => _rqMatch(r.dest, q) || _rqMatch(r.code, q));
   _receiptQuickMatches = q ? rows : [];
   const hintEl = document.getElementById('receiptQuickHint');
   if(hintEl) {
@@ -15886,6 +15886,39 @@ function _receiptRowCmp(a, b) {
 
 // 빠른 체크용 비교 — 공백 무시, 대소문자 무시 ('이마트동탄' = '이마트 동탄점' 일부)
 function _rqNorm(s) { return String(s || '').replace(/\s+/g, '').toLowerCase(); }
+
+// 한글 검색: 자모 단위로 풀어서 비교 → 입력 중간 글자('이맡', '이마ㅌ')도 '이마트'에 걸림
+// + 초성만 입력('ㅇㅁㅌ')하면 초성으로 비교. 겹받침·겹모음도 풀어서 입력 도중('달'→'닭', '오'→'와') 일치
+const _HJ_CHO = 'ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ';
+const _HJ_JUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅗㅏ','ㅗㅐ','ㅗㅣ','ㅛ','ㅜ','ㅜㅓ','ㅜㅔ','ㅜㅣ','ㅠ','ㅡ','ㅡㅣ','ㅣ'];
+const _HJ_JONG = ['','ㄱ','ㄲ','ㄱㅅ','ㄴ','ㄴㅈ','ㄴㅎ','ㄷ','ㄹ','ㄹㄱ','ㄹㅁ','ㄹㅂ','ㄹㅅ','ㄹㅌ','ㄹㅍ','ㄹㅎ','ㅁ','ㅂ','ㅂㅅ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+// 단독 겹자모(입력 중 'ㅘ', 'ㄺ' 등)도 같은 방식으로 풀기
+const _HJ_SPLIT = { 'ㅘ':'ㅗㅏ','ㅙ':'ㅗㅐ','ㅚ':'ㅗㅣ','ㅝ':'ㅜㅓ','ㅞ':'ㅜㅔ','ㅟ':'ㅜㅣ','ㅢ':'ㅡㅣ','ㄳ':'ㄱㅅ','ㄵ':'ㄴㅈ','ㄶ':'ㄴㅎ','ㄺ':'ㄹㄱ','ㄻ':'ㄹㅁ','ㄼ':'ㄹㅂ','ㄽ':'ㄹㅅ','ㄾ':'ㄹㅌ','ㄿ':'ㄹㅍ','ㅀ':'ㄹㅎ','ㅄ':'ㅂㅅ' };
+function _hjDecompose(s) {
+  let out = '';
+  for(const ch of String(s || '')) {
+    const c = ch.charCodeAt(0) - 0xAC00;
+    if(c >= 0 && c <= 11171) out += _HJ_CHO[Math.floor(c / 588)] + _HJ_JUNG[Math.floor((c % 588) / 28)] + _HJ_JONG[c % 28];
+    else out += _HJ_SPLIT[ch] || ch;
+  }
+  return out;
+}
+function _hjInitials(s) {
+  let out = '';
+  for(const ch of String(s || '')) {
+    const c = ch.charCodeAt(0) - 0xAC00;
+    out += (c >= 0 && c <= 11171) ? _HJ_CHO[Math.floor(c / 588)] : ch;
+  }
+  return out;
+}
+// text에 검색어 q가 들어 있나 (둘 다 공백 무시·소문자)
+function _rqMatch(text, q) {
+  const t = _rqNorm(text), k = _rqNorm(q);
+  if(!k) return false;
+  if(t.includes(k)) return true;
+  if(/^[ㄱ-ㅎ]+$/.test(k) && _hjInitials(t).includes(k)) return true;
+  return _hjDecompose(t).includes(_hjDecompose(k));
+}
 var _receiptQuickMatches = [];
 var _receiptDayQuery = {};        // 날짜 칸 머리 검색어 { '거래처|날짜': 검색어 } — 화면 다시 그려도 유지
 
@@ -15898,7 +15931,7 @@ function _applyReceiptDayQuery(col, scroll) {
   const rowsEl = col.querySelectorAll('.receipt-row');
   const hits = [];
   rowsEl.forEach(el => {
-    const hit = !!q && (el.dataset.qk || '').includes(q);
+    const hit = !!q && (el.dataset.qk || '').split('|').some(t => _rqMatch(t, q));   // 배송처명·코드 각각 비교
     if(q) {
       el.style.background = hit ? '#fef08a' : '';
       el.style.boxShadow = hit ? 'inset 3px 0 0 #ca8a04' : '';
