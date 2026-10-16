@@ -1701,8 +1701,8 @@ body.hide-cost-col .col-sensitive { display: none !important; }
         <input type="text" id="receiptSearch" placeholder="🔍 코드/비고 검색..." oninput="renderReceiptCheck()" style="padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:160px">
         <!-- 월 선택 (엑셀 출력용 + 호환) -->
         <div style="display:flex;gap:4px;align-items:center">
-          <label style="font-size:11px;font-weight:600;color:var(--text-light)" title="엑셀 출력 범위로 사용됨">엑셀월</label>
-          <input type="month" id="receiptMonth" onchange="onReceiptMonthChange()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" title="엑셀 출력 시 적용할 월 (빈칸=전체)">
+          <label style="font-size:11px;font-weight:600;color:var(--text-light)" title="엑셀 출력·인쇄 범위로 사용됨">출력월</label>
+          <input type="month" id="receiptMonth" onchange="onReceiptMonthChange()" style="padding:5px 8px;border:1px solid var(--border);border-radius:4px;font-size:12px" title="엑셀 출력·인쇄할 월 (인쇄는 빈칸이면 화면에 보고 있는 달, 엑셀은 빈칸=전체)">
         </div>
         <span style="margin-left:auto;display:flex;gap:6px">
           <button class="btn btn-sm" onclick="showReceiptSnapshotList()" title="시점별 자동 스냅샷에서 복원 (최근 7일 보관)" style="background:#fef3c7;border:1px solid #fbbf24;color:#92400e;padding:6px 10px;font-size:11px;cursor:pointer;font-weight:600">🔙 시점 복원</button>
@@ -1710,7 +1710,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <button class="btn btn-sm" onclick="cleanupManualReceipts()" title="현재 거래처 + 표시 기간의 (수동) 항목을 한 번에 정리" style="background:#fff7ed;border:1px solid #fdba74;color:#9a3412;padding:6px 10px;font-size:11px;cursor:pointer">🧹 (수동) 정리</button>
           <button class="btn btn-sm btn-primary" onclick="openAddReceiptDialog()" style="padding:6px 12px;font-size:12px" title="배차에 없는 옛 인수증 수동 등록용">+ 수동 추가</button>
           <button class="btn btn-sm" onclick="exportReceiptCheck()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:6px 10px;font-size:11px" title="전체요약 + 거래처별(LNL/덕평/여주) + 미회수 시트로 엑셀 다운로드">📥 엑셀 출력</button>
-          <button class="btn btn-sm" onclick="printReceiptOnePage()" style="background:#1e3a8a;border:1px solid #1e3a8a;color:#fff;padding:6px 12px;font-size:12px;font-weight:700" title="현재 거래처 인쇄 — 하루치는 끊기지 않게 배치 (엑셀월이 있으면 그 월, 없으면 화면 표시 기간). 인쇄창에서 PDF 저장도 가능">🖨 인쇄</button>
+          <button class="btn btn-sm" onclick="printReceiptOnePage()" style="background:#1e3a8a;border:1px solid #1e3a8a;color:#fff;padding:6px 12px;font-size:12px;font-weight:700" title="현재 거래처를 출력월 기준으로 인쇄 — A4 가로 한 장에 3일씩, 하루치는 끊기지 않음. 인쇄창에서 PDF 저장도 가능">🖨 인쇄</button>
         </span>
       </div>
       <!-- 추가 폼 (숨김 → 토글) -->
@@ -16332,52 +16332,43 @@ async function exportReceiptCheck() {
 
 // ─── 인수증 인쇄 (현재 거래처) ─────────────────────────
 // 엑셀 출력은 칸이 넓어 장수가 많고 하루치가 페이지 사이로 끊김 → 인쇄 전용 배치
-// 원칙: 하루치(날짜 줄 + 그날 건)는 한 단 안에 통째로 — 단·페이지 사이로 나뉘지 않음. 장수는 필요한 만큼
-// 글자는 11pt부터, 가장 많은 날도 한 단에 들어가는 크기를 고름 (8pt로도 안 되는 날만 '(계속)'으로 나눔)
+// 원칙: 하루 = 한 단, A4 가로 한 장에 3일씩. 하루치는 단·페이지 사이로 나뉘지 않음 (장수는 필요한 만큼)
+// 글자는 12pt부터, 가장 많은 날도 한 단에 들어가는 크기를 고름 (8pt로도 안 되는 날만 '(계속)'으로 나눔)
 // 비고는 코드 옆 번호 + 그 페이지 하단 각주
-// 범위: 엑셀월이 있으면 그 월, 없으면 화면에 표시 중인 기간. 인쇄창에서 'PDF로 저장' 가능
+// 범위: 월 단위 (출력월 비어 있으면 화면에 보고 있는 달). 인쇄창에서 'PDF로 저장' 가능
+const RECEIPT_PRINT_DAYS_PER_PAGE = 3;
+const RECEIPT_PRINT_MAX_PT = 12;
 const RECEIPT_PRINT_MIN_PT = 8;   // 이보다 작으면 읽기 힘듦
 const _RP_PT = 0.3528;            // 1pt = 0.3528mm
 const _RP_HEAD_MM = 24;           // 제목·요약 영역
-const _RP_GAP_MM = 4;             // 단 사이 간격
+const _RP_GAP_MM = 6;             // 단(날짜) 사이 간격
 const _RP_LINE = 1.55;            // 줄높이(em) — CSS line-height 1.35 + 테두리 여유
 const _RP_NOTE_EM = 36;           // 각주 한 단 너비(em)
 
-// blocks: [{ head, rows:[...], notes }] 하루 단위. rowsFor(각주수) = 그 페이지 한 단의 줄 수
+// blocks: [{ head, rows:[...], notes }] 하루 단위 → 하루 = 한 단, 한 장에 cols일
+// rowsFor(각주수) = 그 페이지 한 단의 줄 수
 // 반환: { pages:[{ cols:[[item...]], notes }], split } — split=true면 한 단보다 큰 날이 있어 나눔
 function _receiptPrintPaginate(blocks, cols, rowsFor) {
   const pages = [];
-  let split = false;
-  const newPage = () => { const p = { cols: [[]], notes: 0 }; pages.push(p); return p; };
-  let page = newPage();
-  const fits = (pg, addNotes, len) => {
-    const limit = rowsFor(pg.notes + addNotes);
-    if(pg.cols.some(c => c.length > limit)) return 0;              // 각주 늘면 기존 단이 넘침
-    const cur = pg.cols[pg.cols.length - 1];
-    if(cur.length + len <= limit) return 1;                         // 지금 단에 이어서
-    if(pg.cols.length < cols && len <= limit) return 2;             // 다음 단 첫머리
-    return 0;
-  };
+  let split = false, page = null;
+  const newPage = () => { page = { cols: [], notes: 0 }; pages.push(page); };
   blocks.forEach(b => {
     const len = 1 + b.rows.length;
-    let how = fits(page, b.notes, len);
-    if(!how && !(page.cols.length === 1 && page.cols[0].length === 0)) { page = newPage(); how = fits(page, b.notes, len); }
-    if(how) {
-      if(how === 2) page.cols.push([]);
-      page.cols[page.cols.length - 1].push({ t:'d', ...b.head }, ...b.rows);
+    // 단이 꽉 찼거나, 이 날 각주가 늘면 이미 놓인 날이 넘치는 경우 새 장
+    if(!page || page.cols.length >= cols || page.cols.some(c => c.length > rowsFor(page.notes + b.notes))) newPage();
+    if(len <= rowsFor(page.notes + b.notes)) {
+      page.cols.push([{ t:'d', ...b.head }, ...b.rows]);
       page.notes += b.notes;
       return;
     }
-    // 한 단보다 큰 날 — 단 단위로 나누고 '(계속)' 표시
+    // 한 단보다 큰 날 — 다음 단으로 이어서 '(계속)' 표시
     split = true;
     let rest = b.rows.slice(), first = true;
     while(rest.length) {
-      if(!(page.cols.length === 1 && page.cols[0].length === 0)) {
-        if(page.cols.length < cols) page.cols.push([]); else page = newPage();
-      }
+      if(page.cols.length >= cols) newPage();
       const limit = Math.max(2, rowsFor(page.notes + b.notes));
       const part = rest.splice(0, limit - 1);
-      page.cols[page.cols.length - 1].push({ t:'d', ...b.head, cont: !first }, ...part);
+      page.cols.push([{ t:'d', ...b.head, cont: !first }, ...part]);
       page.notes += part.filter(it => it.noteNo).length;
       first = false;
     }
@@ -16386,12 +16377,11 @@ function _receiptPrintPaginate(blocks, cols, rowsFor) {
 }
 
 function _receiptPrintLayout(blocks, hasScan, hasDest) {
-  const colEm = 9.2 + (hasDest ? 11 : 0) + 2.4 + (hasScan ? 2.4 : 0);      // 코드(+각주번호) / 배송처 / 회수 / 스캔
-  const sheets = [{ o:'landscape', w:277, h:190 }, { o:'portrait', w:190, h:277 }];
-  const calc = (f, s) => {
+  const s = { o:'landscape', w:277, h:190 };
+  const cols = RECEIPT_PRINT_DAYS_PER_PAGE;
+  const calc = (f) => {
     const em = f * _RP_PT;
     const rowMm = _RP_LINE * em;
-    const cols = Math.max(1, Math.floor((s.w + _RP_GAP_MM) / (colEm * em + _RP_GAP_MM)));
     const noteCols = Math.max(1, Math.floor(s.w / (_RP_NOTE_EM * em)));
     const rowsFor = (notes) => {
       const noteMm = notes > 0 ? (Math.ceil(notes / noteCols) + 1) * rowMm + 2 : 0;
@@ -16400,36 +16390,36 @@ function _receiptPrintLayout(blocks, hasScan, hasDest) {
     const res = _receiptPrintPaginate(blocks, cols, rowsFor);
     return { f, o: s.o, w: s.w, h: s.h, cols, noteCols, pages: res.pages, split: res.split };
   };
-  for(let f = 11; f >= RECEIPT_PRINT_MIN_PT; f -= 0.5) {
-    const ok = sheets.map(s => calc(f, s)).filter(L => !L.split).sort((a, b) => a.pages.length - b.pages.length);
-    if(ok.length) return ok[0];
+  // 목표: 모든 장에 3일씩 (각주가 많으면 단이 짧아져 2일·1일짜리 장이 생김 → 글자를 줄여 3일 유지)
+  const target = Math.ceil(blocks.length / cols);
+  let best = null;
+  for(let f = RECEIPT_PRINT_MAX_PT; f >= RECEIPT_PRINT_MIN_PT; f -= 0.5) {
+    const L = calc(f);
+    if(L.split) continue;
+    if(L.pages.length === target) return L;
+    if(!best || L.pages.length < best.pages.length) best = L;   // 같은 장수면 큰 글자 유지
   }
-  // 8pt로도 한 단에 안 들어가는 날이 있으면 어차피 나눠야 함 → 글자는 크게(11pt) 두고 그날만 '(계속)'
-  return sheets.map(s => calc(11, s)).sort((a, b) => a.pages.length - b.pages.length)[0];
+  if(best) return best;
+  // 8pt로도 한 단에 안 들어가는 날이 있으면 어차피 나눠야 함 → 글자는 크게 두고 그날만 '(계속)'
+  return calc(RECEIPT_PRINT_MAX_PT);
 }
 
 function printReceiptOnePage() {
   const client = receiptActiveClient;
-  const month = receiptActiveMonth || '';
-  let rows, periodLabel;
-  if(month) {
-    rows = _collectReceiptRows(client, month);
-    periodLabel = month;
-  } else {
+  // 월 단위 출력 — 출력월이 비어 있으면 화면에 보고 있는 달로 채움
+  let month = receiptActiveMonth || '';
+  if(!month) {
     const start = _ensureReceiptStartDate();
     if(!start) return;
-    const dayCount = parseInt(document.getElementById('receiptDayCount')?.value) || 7;
-    const [y, m, d] = start.split('-').map(Number);
-    const dates = [];
-    for(let i = 0; i < dayCount; i++) {
-      const dt = new Date(y, m - 1, d + i);
-      dates.push(dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0'));
-    }
-    const dateSet = new Set(dates);
-    rows = _collectReceiptRows(client, '').filter(r => dateSet.has(r.date));
-    periodLabel = `${dates[0]} ~ ${dates[dates.length - 1]}`;
+    month = start.substring(0, 7);
+    receiptActiveMonth = month;
+    const mEl = document.getElementById('receiptMonth');
+    if(mEl) mEl.value = month;
   }
-  if(rows.length === 0) { showToast('⚠ 인쇄할 항목이 없습니다 (기간 확인)'); return; }
+  let rows = _collectReceiptRows(client, month);
+  const [py, pm] = month.split('-');
+  const periodLabel = `${py}년 ${parseInt(pm, 10)}월`;
+  if(rows.length === 0) { showToast(`⚠ ${periodLabel} ${client} 인쇄할 항목이 없습니다 (출력월 확인)`); return; }
   rows = _attachReceiptDest(client, rows);
   const hasDest = rows.some(r => r.dest);
 
