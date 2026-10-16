@@ -1710,6 +1710,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <button class="btn btn-sm" onclick="cleanupManualReceipts()" title="현재 거래처 + 표시 기간의 (수동) 항목을 한 번에 정리" style="background:#fff7ed;border:1px solid #fdba74;color:#9a3412;padding:6px 10px;font-size:11px;cursor:pointer">🧹 (수동) 정리</button>
           <button class="btn btn-sm btn-primary" onclick="openAddReceiptDialog()" style="padding:6px 12px;font-size:12px" title="배차에 없는 옛 인수증 수동 등록용">+ 수동 추가</button>
           <button class="btn btn-sm" onclick="exportReceiptCheck()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:6px 10px;font-size:11px" title="전체요약 + 거래처별(LNL/덕평/여주) + 미회수 시트로 엑셀 다운로드">📥 엑셀 출력</button>
+          <button class="btn btn-sm" onclick="printReceiptOnePage()" style="background:#1e3a8a;border:1px solid #1e3a8a;color:#fff;padding:6px 12px;font-size:12px;font-weight:700" title="현재 거래처를 A4 한 장에 맞춰 인쇄 (엑셀월이 있으면 그 월, 없으면 화면 표시 기간). 인쇄창에서 PDF 저장도 가능">🖨 한 장 인쇄</button>
         </span>
       </div>
       <!-- 추가 폼 (숨김 → 토글) -->
@@ -16299,6 +16300,201 @@ async function exportReceiptCheck() {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
   showToast(`📥 엑셀 다운로드 완료! (총 ${grandTotal}건, 가로 6일 컬럼)`, 5000);
+}
+
+// ─── 인수증 한 장 인쇄 (현재 거래처) ─────────────────────────
+// 엑셀 출력은 건수가 많으면 여러 장 → 건수에 맞춰 글자크기·단 수·가로/세로를 자동 선택해 A4 한 장에 맞춤
+// 촘촘하게: 날짜는 칸 대신 구분 줄, 비고는 코드 옆 번호 + 하단 각주
+// 범위: 엑셀월이 있으면 그 월, 없으면 화면에 표시 중인 기간. 인쇄창에서 'PDF로 저장' 가능
+const RECEIPT_PRINT_MIN_PT = 6;   // 이보다 작으면 읽기 힘듦 → 여러 장으로 넘김
+const _RP_PT = 0.3528;            // 1pt = 0.3528mm
+const _RP_HEAD_MM = 24;           // 제목·요약 영역
+const _RP_GAP_MM = 3;             // 단 사이 간격
+const _RP_LINE = 1.55;            // 줄높이(em) — CSS line-height 1.35 + 테두리 여유
+const _RP_NOTE_EM = 36;           // 각주 한 단 너비(em)
+
+// items: [{t:'d'} 날짜줄 | {t:'r'} 건] 을 단(cols)×줄(rows)로 채워 페이지 배열 반환
+// 날짜줄이 단 맨 끝에 혼자 남지 않게 다음 단으로 넘김
+function _receiptPrintPaginate(items, cols, rows) {
+  const pages = [];
+  let page = [], col = [];
+  const pushCol = () => { page.push(col); col = []; if(page.length === cols) { pages.push(page); page = []; } };
+  items.forEach(it => {
+    if(col.length === rows || (it.t === 'd' && col.length >= rows - 1)) pushCol();
+    col.push(it);
+  });
+  if(col.length) pushCol();
+  if(page.length) pages.push(page);
+  return pages;
+}
+
+function _receiptPrintLayout(items, hasScan, memoCount) {
+  const colEm = 9.2 + 2.4 + (hasScan ? 2.4 : 0);      // 코드(+각주번호) / 회수 / 스캔
+  const sheets = [{ o:'landscape', w:277, h:190 }, { o:'portrait', w:190, h:277 }];
+  const calc = (f, s) => {
+    const em = f * _RP_PT;
+    const rowMm = _RP_LINE * em;
+    const cols = Math.max(1, Math.floor((s.w + _RP_GAP_MM) / (colEm * em + _RP_GAP_MM)));
+    const noteCols = Math.max(1, Math.floor(s.w / (_RP_NOTE_EM * em)));
+    const noteMm = memoCount > 0 ? (Math.ceil(memoCount / noteCols) + 1) * rowMm + 2 : 0;
+    const rows = Math.max(2, Math.floor((s.h - 1 - _RP_HEAD_MM - noteMm - rowMm * 1.3) / rowMm));
+    const pages = _receiptPrintPaginate(items, cols, rows);
+    return { f, o: s.o, w: s.w, h: s.h, cols, rows, noteCols, pages };
+  };
+  for(let f = 11; f >= RECEIPT_PRINT_MIN_PT; f -= 0.5) {
+    for(const s of sheets) {
+      const L = calc(f, s);
+      if(L.pages.length === 1) return L;
+    }
+  }
+  // 최소 글자로도 안 들어가면 장수가 적은 방향으로 여러 장
+  return sheets.map(s => calc(RECEIPT_PRINT_MIN_PT, s)).sort((a, b) => a.pages.length - b.pages.length)[0];
+}
+
+function printReceiptOnePage() {
+  const client = receiptActiveClient;
+  const month = receiptActiveMonth || '';
+  let rows, periodLabel;
+  if(month) {
+    rows = _collectReceiptRows(client, month);
+    periodLabel = month;
+  } else {
+    const start = _ensureReceiptStartDate();
+    if(!start) return;
+    const dayCount = parseInt(document.getElementById('receiptDayCount')?.value) || 7;
+    const [y, m, d] = start.split('-').map(Number);
+    const dates = [];
+    for(let i = 0; i < dayCount; i++) {
+      const dt = new Date(y, m - 1, d + i);
+      dates.push(dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0'));
+    }
+    const dateSet = new Set(dates);
+    rows = _collectReceiptRows(client, '').filter(r => dateSet.has(r.date));
+    periodLabel = `${dates[0]} ~ ${dates[dates.length - 1]}`;
+  }
+  if(rows.length === 0) { showToast('⚠ 인쇄할 항목이 없습니다 (기간 확인)'); return; }
+
+  const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const hasScan = rows.some(r => _receiptNeedsScan(client, r.date));
+  const wdays = ['일','월','화','수','목','금','토'];
+
+  // 날짜줄 + 건 목록, 비고는 각주 번호 부여
+  const items = [];
+  const notes = [];
+  const byDate = {};
+  rows.forEach(r => { (byDate[r.date] = byDate[r.date] || []).push(r); });
+  Object.keys(byDate).sort().forEach(date => {
+    const list = byDate[date];
+    const [yy, mm, dd] = date.split('-').map(Number);
+    const wd = wdays[new Date(yy, mm - 1, dd).getDay()];
+    const dRecv = list.filter(r => r.received === 'O').length;
+    items.push({ t:'d', date, wd, cnt: list.length, recv: dRecv, done: list.every(r => _receiptIsComplete(client, r)) });
+    list.forEach(r => {
+      const memo = String(r.memo || '').trim();
+      let noteNo = 0;
+      if(memo) { notes.push({ code: r.code, date, memo }); noteNo = notes.length; }
+      items.push({ t:'r', r, noteNo });
+    });
+  });
+
+  const L = _receiptPrintLayout(items, hasScan, notes.length);
+  const pageCount = L.pages.length;
+
+  // 요약
+  const total = rows.length;
+  const recv = rows.filter(r => r.received === 'O').length;
+  const unrecv = total - recv;
+  const scanRows = rows.filter(r => _receiptNeedsScan(client, r.date));
+  const scn = scanRows.filter(r => r.scanned === 'O').length;
+  const pct = (a, b) => b > 0 ? (a / b * 100).toFixed(1) : '0.0';
+  const clientLabel = { 'LNL':'LNL (락앤락)', '덕평':'덕평2', '여주':'여주', 'HJ':'HJ로지스', '일반':'일반' }[client] || client;
+  let summary = `총 <b>${total}</b>건 · 회수 <b class="g">${recv}</b> (${pct(recv, total)}%)`;
+  if(scanRows.length > 0) summary += ` · 스캔 <b class="b">${scn}</b>/${scanRows.length} (${pct(scn, scanRows.length)}%)`;
+  summary += unrecv > 0 ? ` · <b class="r">미회수 ${unrecv}</b>` : ' · <b class="g">미회수 0</b>';
+  const noScanNote = (RECEIPT_NO_SCAN_FROM[client] && rows.some(r => !_receiptNeedsScan(client, r.date)))
+    ? `<div class="note">※ ${RECEIPT_NO_SCAN_FROM[client]} 배송분부터 인수증 원본 회수만 관리 (스캔 생략)</div>` : '';
+
+  const stCell = (v) => v === 'O' ? '<td class="st o">O</td>' : v === 'X' ? '<td class="st x">X</td>' : '<td class="st e">·</td>';
+  const span = hasScan ? 3 : 2;
+  const colHtml = (list) => {
+    const body = list.map(it => {
+      if(it.t === 'd') {
+        return `<tr class="dh${it.done ? ' ok' : ''}"><td colspan="${span}">${esc(it.date.substring(5).replace('-', '/'))}(${it.wd}) ${it.cnt}건${it.done ? ' ✓' : (it.recv < it.cnt ? ` <span class="r">미${it.cnt - it.recv}</span>` : '')}</td></tr>`;
+      }
+      const r = it.r;
+      const scanTd = hasScan ? (_receiptNeedsScan(client, r.date) ? stCell(r.scanned) : '<td class="st e">-</td>') : '';
+      return `<tr><td class="cd">${esc(r.code)}${r.manual ? '*' : ''}${it.noteNo ? `<sup>${it.noteNo}</sup>` : ''}</td>${stCell(r.received)}${scanTd}</tr>`;
+    }).join('');
+    return `<table><colgroup><col><col style="width:2.4em">${hasScan ? '<col style="width:2.4em">' : ''}</colgroup>
+      <thead><tr><th>배차코드</th><th>회수</th>${hasScan ? '<th>스캔</th>' : ''}</tr></thead>
+      <tbody>${body}</tbody></table>`;
+  };
+
+  const printedAt = _formatLoginTs(new Date());
+  let pagesHtml = '';
+  L.pages.forEach((pageCols, p) => {
+    let cols = '';
+    for(let c = 0; c < L.cols; c++) cols += `<div class="col">${pageCols[c] ? colHtml(pageCols[c]) : ''}</div>`;
+    // 이 페이지에 나온 건의 각주만
+    const pageNotes = pageCols.flat().filter(it => it.t === 'r' && it.noteNo).map(it => it.noteNo);
+    const notesHtml = pageNotes.length ? `<div class="notes" style="column-count:${L.noteCols}">${pageNotes.map(no => {
+      const n = notes[no - 1];
+      return `<div><sup>${no}</sup> <b>${esc(n.code)}</b> (${esc(n.date.substring(5).replace('-', '/'))}) ${esc(n.memo)}</div>`;
+    }).join('')}</div>` : '';
+    pagesHtml += `<div class="page">
+      <div class="hd">
+        <div class="tt">주식회사 씨엘피 (CLP) · 인수증 체크리스트</div>
+        <div class="info"><span>거래처: <b>${esc(clientLabel)}</b></span><span>기간: <b>${esc(periodLabel)}</b></span><span>${summary}</span><span class="pg">${pageCount > 1 ? `${p + 1} / ${pageCount}쪽 · ` : ''}출력 ${esc(printedAt)}</span></div>
+        ${noScanNote}
+      </div>
+      <div class="cols">${cols}</div>
+      ${notesHtml}
+    </div>`;
+  });
+
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>인수증체크_${esc(clientLabel)}_${esc(periodLabel)}</title>
+<style>
+  @page { size: A4 ${L.o}; margin: 10mm; }
+  * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body { margin: 0; font-family: '맑은 고딕','Malgun Gothic',sans-serif; color: #111827; background: #e5e7eb; }
+  .bar { position: sticky; top: 0; background: #1e3a8a; color: #fff; padding: 10px 16px; display: flex; gap: 12px; align-items: center; font-size: 13px; z-index: 5; }
+  .bar button { padding: 7px 16px; font-size: 13px; font-weight: 700; border: none; border-radius: 6px; cursor: pointer; background: #fff; color: #1e3a8a; }
+  .page { width: ${L.w}mm; height: ${L.h - 1}mm; margin: 12px auto; background: #fff; overflow: hidden; display: flex; flex-direction: column; font-size: ${L.f}pt; }
+  .page + .page { page-break-before: always; }
+  .hd { height: 22mm; flex-shrink: 0; border-bottom: 2px solid #1a365d; margin-bottom: 1.5mm; display: flex; flex-direction: column; justify-content: center; gap: 1mm; }
+  .tt { font-size: 15pt; font-weight: 800; color: #1a365d; text-align: center; }
+  .info { display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 9pt; justify-content: center; }
+  .info .pg { color: #64748b; }
+  .note { font-size: 8pt; color: #475569; text-align: center; }
+  .g { color: #047857; } .b { color: #1d4ed8; } .r { color: #b91c1c; }
+  .cols { flex: 1; display: flex; gap: ${_RP_GAP_MM}mm; min-height: 0; align-items: flex-start; }
+  .col { flex: 1; min-width: 0; }
+  table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+  th { background: #1a365d; color: #fff; font-weight: 700; padding: 0.1em 0; border: 1px solid #1a365d; line-height: 1.35; }
+  td { border: 1px solid #d1d5db; padding: 0 0.3em; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  td.cd { font-family: Consolas, monospace; font-weight: 700; }
+  td.cd sup { color: #b45309; font-family: sans-serif; font-size: 0.75em; line-height: 0; margin-left: 1px; }
+  td.st { text-align: center; font-weight: 800; }
+  td.o { background: #d1fae5; color: #065f46; } td.x { background: #fee2e2; color: #991b1b; } td.e { color: #cbd5e1; }
+  tr.dh td { background: #e0e7ff; color: #1e293b; font-weight: 800; border-top: 1.5px solid #64748b; }
+  tr.dh.ok td { background: #dcfce7; color: #065f46; }
+  .notes { flex-shrink: 0; border-top: 1px solid #94a3b8; padding-top: 1mm; margin-top: 1mm; column-gap: 4mm; line-height: 1.35; }
+  .notes div { break-inside: avoid; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .notes sup { color: #b45309; font-weight: 700; }
+  @media print { body { background: #fff; } .bar { display: none; } .page { margin: 0; } }
+</style></head><body>
+<div class="bar"><span>🖨 ${esc(clientLabel)} · ${esc(periodLabel)} · ${total}건 → <b>${pageCount}장</b> (글자 ${L.f}pt · ${L.cols}단 · ${L.o === 'landscape' ? '가로' : '세로'})</span>
+  <button onclick="window.print()">인쇄 / PDF 저장</button><span style="opacity:.8;font-size:12px">PDF는 인쇄창에서 대상 → 'PDF로 저장'</span></div>
+${pagesHtml}
+<script>window.onload = function(){ setTimeout(function(){ window.print(); }, 300); };<\/script>
+</body></html>`;
+
+  const w = window.open('', '_blank');
+  if(!w) { showToast('⚠ 팝업이 차단됐습니다 — 브라우저 주소창 오른쪽에서 팝업 허용 후 다시 눌러주세요', 5000); return; }
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  if(pageCount > 1) showToast(`ℹ ${total}건은 한 장에 넣으면 글자가 너무 작아져 ${pageCount}장으로 나눴습니다`, 5000);
 }
 
 // v5 마이그레이션 완료 - 버전 체크 불필요
