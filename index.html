@@ -15379,14 +15379,14 @@ function _receiptRowHtml(r, num) {
   const destHtml = r.dest ? attrEsc(r.dest).replace(/</g,'&lt;') : '';
   // 배송처명이 있으면 이름을 앞에 굵게, 코드는 작게 (종이 인수증엔 코드가 없어 이름으로 찾음)
   const nameLine = r.dest
-    ? `<span style="font-size:12.5px;font-weight:800;color:#0f172a">${destHtml}</span> <span style="font-family:monospace;font-size:10px;color:#64748b">${r.code || '-'}</span>`
+    ? `<span style="font-size:12.5px;font-weight:800;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${destHtml}</span><span style="font-family:monospace;font-size:11.5px;font-weight:600;color:#475569;flex-shrink:0;margin-left:4px">${r.code || '-'}</span>`
     : `<span style="font-family:monospace;font-size:11px;font-weight:700;color:#1e40af">${r.code || '-'}</span>`;
   return `
     <div class="receipt-row${r._hit === true ? ' receipt-hit' : ''}" style="display:grid;grid-template-columns:${needScan ? '20px 1fr 32px 32px' : '20px 1fr 48px'};gap:3px;align-items:center;padding:4px 3px;border-bottom:1px solid #f3f4f6;${hitStyle}">
       <span style="font-size:10px;color:#9ca3af;text-align:right">${num}</span>
       <div style="min-width:0">
         <div style="display:flex;align-items:center;gap:3px;line-height:1.25">
-          <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0"${r.dest ? ` title="${attrEsc(r.dest)} · ${cA}"` : ''}>${nameLine}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</span>
+          <span style="${r.dest ? 'display:flex;align-items:baseline;' : ''}overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0"${r.dest ? ` title="${attrEsc(r.dest)} · ${cA}"` : ''}>${nameLine}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</span>
           <button onclick="event.stopPropagation();openReceiptImgManager('${attrEsc(receiptActiveClient)}','${dA}','${cA}')" title="📎 사진 첨부 / 보기" style="background:${imgCount > 0 ? '#dbeafe' : 'transparent'};border:none;color:${imgCount > 0 ? '#1e40af' : '#cbd5e1'};cursor:pointer;font-size:11px;padding:0 3px;line-height:1;flex-shrink:0;border-radius:3px;font-weight:700" onmouseover="this.style.color='#1e40af';this.style.background='#dbeafe'" onmouseout="this.style.color='${imgCount > 0 ? '#1e40af' : '#cbd5e1'}';this.style.background='${imgCount > 0 ? '#dbeafe' : 'transparent'}'">📎${imgCount > 0 ? imgCount : ''}</button>
           ${r.memo ? '' : `<button onclick="event.stopPropagation();const m=this.closest('.receipt-row').querySelector('.receipt-memo');m.style.display='';m.focus()" title="비고 쓰기" style="background:transparent;border:none;color:#cbd5e1;cursor:pointer;font-size:11px;padding:0 3px;line-height:1;flex-shrink:0;border-radius:3px" onmouseover="this.style.color='#1e40af';this.style.background='#dbeafe'" onmouseout="this.style.color='#cbd5e1';this.style.background='transparent'">✎</button>`}
           <button onclick="onReceiptResetClick(this);event.stopPropagation()" data-d="${dA}" data-c="${cA}" title="${r.manual ? '(수동) 항목 삭제' : (needScan ? '회수/스캔/비고 초기화' : '회수/비고 초기화')}" style="background:transparent;border:none;color:#cbd5e1;cursor:pointer;font-size:11px;padding:0 3px;line-height:1;flex-shrink:0;border-radius:3px" onmouseover="this.style.color='#dc2626';this.style.background='#fef2f2'" onmouseout="this.style.color='#cbd5e1';this.style.background='transparent'">✕</button>
@@ -15528,7 +15528,7 @@ function renderReceiptCheck() {
     const allDone = dayTotal > 0 && rows.every(r => _receiptIsComplete(receiptActiveClient, r));
     const headerBorder = allDone ? '2px solid #10b981' : '2px solid #e2e8f0';
     return `
-      <div class="receipt-day-col" data-date="${d}" style="min-width:300px;width:300px;flex-shrink:0;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;flex-direction:column;max-height:75vh;box-shadow:0 1px 2px rgba(0,0,0,0.04)">
+      <div class="receipt-day-col" data-date="${d}" style="min-width:340px;width:340px;flex-shrink:0;border:1px solid #e5e7eb;border-radius:8px;background:#fff;display:flex;flex-direction:column;max-height:75vh;box-shadow:0 1px 2px rgba(0,0,0,0.04)">
         <div ondblclick="enterFocusMode('${d}')" title="더블클릭 → 집중 모드" style="padding:9px 10px;background:${headerBg};border-bottom:${headerBorder};cursor:pointer;border-radius:8px 8px 0 0;flex-shrink:0;user-select:none">
           <div style="display:flex;align-items:center;justify-content:space-between">
             <span style="font-size:13px;font-weight:700;color:#1e293b">${d.substring(5)} <span style="color:${isWeekend ? '#dc2626' : '#64748b'};font-weight:600">(${wd})</span></span>
