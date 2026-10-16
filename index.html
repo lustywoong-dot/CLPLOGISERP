@@ -15377,10 +15377,13 @@ function _receiptRowHtml(r, num) {
   // 찾기: 맞는 줄은 노랑, 나머지는 흐리게 (숨기지 않음 — 한눈에 보이게)
   const hitStyle = r._hit === true ? 'background:#fef08a;box-shadow:inset 3px 0 0 #ca8a04;' : (r._hit === false ? 'opacity:0.35;' : '');
   const destHtml = r.dest ? attrEsc(r.dest).replace(/</g,'&lt;') : '';
-  // 배송처명이 있으면 이름을 앞에 굵게, 코드는 작게 (종이 인수증엔 코드가 없어 이름으로 찾음)
-  const nameLine = r.dest
-    ? `<span style="font-size:12.5px;font-weight:800;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${destHtml}</span><span style="font-family:monospace;font-size:11.5px;font-weight:600;color:#475569;flex-shrink:0;margin-left:4px">${r.code || '-'}</span>`
-    : `<span style="font-family:monospace;font-size:11px;font-weight:700;color:#1e40af">${r.code || '-'}</span>`;
+  // 락앤락('name'): 배송처명 앞 굵게 + 코드 뒤 (종이 인수증엔 코드가 없어 이름으로 찾음)
+  // 주류('code'): 코드 앞 + 배송처명 뒤 — 어느 쪽이든 코드는 안 잘리고 긴 배송처명만 말줄임
+  const nameLine = !r.dest
+    ? `<span style="font-family:monospace;font-size:11px;font-weight:700;color:#1e40af">${r.code || '-'}</span>`
+    : RECEIPT_SHOW_DEST[receiptActiveClient] === 'name'
+      ? `<span style="font-size:12.5px;font-weight:800;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${destHtml}</span><span style="font-family:monospace;font-size:11.5px;font-weight:600;color:#475569;flex-shrink:0;margin-left:4px">${r.code || '-'}</span>`
+      : `<span style="font-family:monospace;font-size:11.5px;font-weight:700;color:#1e40af;flex-shrink:0;margin-right:5px">${r.code || '-'}</span><span style="font-size:12px;font-weight:700;color:#0f172a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0">${destHtml}</span>`;
   return `
     <div class="receipt-row${r._hit === true ? ' receipt-hit' : ''}" style="display:grid;grid-template-columns:${needScan ? '20px 1fr 32px 32px' : '20px 1fr 48px'};gap:3px;align-items:center;padding:4px 3px;border-bottom:1px solid #f3f4f6;${hitStyle}">
       <span style="font-size:10px;color:#9ca3af;text-align:right">${num}</span>
@@ -15721,6 +15724,7 @@ function renderReceiptFocus() {
     return;
   }
   const single = q && rows.length === 1;
+  const nameFirst = RECEIPT_SHOW_DEST[receiptActiveClient] === 'name';
 
   const btnStyle = (v) => {
     if(v === 'O') return 'background:#d1fae5;color:#065f46;border:2px solid #10b981';
@@ -15736,8 +15740,9 @@ function renderReceiptFocus() {
     return `
       <div style="border:${single ? '3px solid #10b981' : '1px solid #e5e7eb'};border-radius:10px;padding:14px;background:#fff;display:flex;flex-direction:column;gap:10px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
         <div>
-          ${r.dest ? `<div style="font-size:18px;font-weight:800;color:#0f172a">${attrEsc(r.dest).replace(/</g,'&lt;')}</div>` : ''}
-          <div style="font-family:monospace;font-size:${r.dest ? '13px' : '16px'};font-weight:700;color:#1e40af;margin-top:2px">${i+1}. ${r.code}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</div>
+          ${r.dest && nameFirst ? `<div style="font-size:18px;font-weight:800;color:#0f172a">${attrEsc(r.dest).replace(/</g,'&lt;')}</div>` : ''}
+          <div style="font-family:monospace;font-size:${r.dest && nameFirst ? '13px' : '16px'};font-weight:700;color:#1e40af;margin-top:2px">${i+1}. ${r.code}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</div>
+          ${r.dest && !nameFirst ? `<div style="font-size:14px;font-weight:700;color:#0f172a;margin-top:2px">${attrEsc(r.dest).replace(/</g,'&lt;')}</div>` : ''}
           ${r.clientName ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">${r.clientName}</div>` : ''}
         </div>
         <div style="display:grid;grid-template-columns:${needScan ? '1fr 1fr' : '1fr'};gap:8px">
@@ -15830,9 +15835,11 @@ function _iterReceiptFromSettlement(client, callback) {
   });
 }
 
-// 락앤락은 스캔 대신 코드 옆에 배송처명 표시 (원청이 WMS로 대조)
-// 배차이력 거래처명(=배송처) 우선 — 코드는 날마다 재사용되므로 반드시 같은 날짜로만 매칭, 없으면 정산 dest
-const RECEIPT_SHOW_DEST = { 'LNL': true };
+// 화면에 코드와 함께 배송처명 표시 — 배차이력 거래처명(=배송처) 우선, 없으면 정산 dest
+// 코드는 날마다 재사용되므로 반드시 같은 날짜로만 매칭
+// 'name' = 배송처명 앞·가나다순 (락앤락: 종이 인수증에 코드 없음, 원청이 WMS로 대조) / 'code' = 코드 앞·코드순 (주류)
+// 인쇄물 배송처 칸은 'name'(락앤락)만
+const RECEIPT_SHOW_DEST = { 'LNL': 'name', '덕평': 'code', '여주': 'code', 'HJ': 'code' };
 function _attachReceiptDest(client, rows) {
   if(!RECEIPT_SHOW_DEST[client] || !rows.length) return rows;
   const map = {};
@@ -15849,10 +15856,10 @@ function _attachReceiptDest(client, rows) {
   return rows.map(r => ({ ...r, dest: map[r.date + '|' + r.code] || r.dest || '' }));
 }
 
-// 화면 정렬: 배송처명이 있으면 가나다순(종이 인수증엔 코드가 없어 이름으로 찾음), 없는 건 뒤로, 같으면 코드순
+// 화면 정렬: 배송처명 앞 거래처(락앤락)는 가나다순(이름 없는 건 뒤로, 같으면 코드순), 그 외는 코드순
 function _receiptRowCmp(a, b) {
   const da = a.dest || '', db = b.dest || '';
-  if(da || db) {
+  if(RECEIPT_SHOW_DEST[receiptActiveClient] === 'name' && (da || db)) {
     if(!da) return 1;
     if(!db) return -1;
     const c = da.localeCompare(db, 'ko');
@@ -16555,7 +16562,7 @@ function printReceiptOnePage() {
   const periodLabel = `${py}년 ${parseInt(pm, 10)}월`;
   if(rows.length === 0) { showToast(`⚠ ${periodLabel} ${client} 인쇄할 항목이 없습니다 (출력월 확인)`); return; }
   rows = _attachReceiptDest(client, rows);
-  const hasDest = rows.some(r => r.dest);
+  const hasDest = RECEIPT_SHOW_DEST[client] === 'name' && rows.some(r => r.dest);   // 인쇄 배송처 칸은 락앤락만
 
   const esc = (s) => String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   const hasScan = rows.some(r => _receiptNeedsScan(client, r.date));
