@@ -1710,7 +1710,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <button class="btn btn-sm" onclick="cleanupManualReceipts()" title="현재 거래처 + 표시 기간의 (수동) 항목을 한 번에 정리" style="background:#fff7ed;border:1px solid #fdba74;color:#9a3412;padding:6px 10px;font-size:11px;cursor:pointer">🧹 (수동) 정리</button>
           <button class="btn btn-sm btn-primary" onclick="openAddReceiptDialog()" style="padding:6px 12px;font-size:12px" title="배차에 없는 옛 인수증 수동 등록용">+ 수동 추가</button>
           <button class="btn btn-sm" onclick="exportReceiptCheck()" style="background:#fff;border:1px solid var(--border);color:#374151;padding:6px 10px;font-size:11px" title="전체요약 + 거래처별(LNL/덕평/여주) + 미회수 시트로 엑셀 다운로드">📥 엑셀 출력</button>
-          <button class="btn btn-sm" onclick="printReceiptOnePage()" style="background:#1e3a8a;border:1px solid #1e3a8a;color:#fff;padding:6px 12px;font-size:12px;font-weight:700" title="현재 거래처를 A4 한 장에 맞춰 인쇄 (엑셀월이 있으면 그 월, 없으면 화면 표시 기간). 인쇄창에서 PDF 저장도 가능">🖨 한 장 인쇄</button>
+          <button class="btn btn-sm" onclick="printReceiptOnePage()" style="background:#1e3a8a;border:1px solid #1e3a8a;color:#fff;padding:6px 12px;font-size:12px;font-weight:700" title="현재 거래처 인쇄 — 하루치는 끊기지 않게 배치 (엑셀월이 있으면 그 월, 없으면 화면 표시 기간). 인쇄창에서 PDF 저장도 가능">🖨 인쇄</button>
         </span>
       </div>
       <!-- 추가 폼 (숨김 → 토글) -->
@@ -16302,33 +16302,62 @@ async function exportReceiptCheck() {
   showToast(`📥 엑셀 다운로드 완료! (총 ${grandTotal}건, 가로 6일 컬럼)`, 5000);
 }
 
-// ─── 인수증 한 장 인쇄 (현재 거래처) ─────────────────────────
-// 엑셀 출력은 건수가 많으면 여러 장 → 건수에 맞춰 글자크기·단 수·가로/세로를 자동 선택해 A4 한 장에 맞춤
-// 촘촘하게: 날짜는 칸 대신 구분 줄, 비고는 코드 옆 번호 + 하단 각주
+// ─── 인수증 인쇄 (현재 거래처) ─────────────────────────
+// 엑셀 출력은 칸이 넓어 장수가 많고 하루치가 페이지 사이로 끊김 → 인쇄 전용 배치
+// 원칙: 하루치(날짜 줄 + 그날 건)는 한 단 안에 통째로 — 단·페이지 사이로 나뉘지 않음. 장수는 필요한 만큼
+// 글자는 11pt부터, 가장 많은 날도 한 단에 들어가는 크기를 고름 (8pt로도 안 되는 날만 '(계속)'으로 나눔)
+// 비고는 코드 옆 번호 + 그 페이지 하단 각주
 // 범위: 엑셀월이 있으면 그 월, 없으면 화면에 표시 중인 기간. 인쇄창에서 'PDF로 저장' 가능
-const RECEIPT_PRINT_MIN_PT = 6;   // 이보다 작으면 읽기 힘듦 → 여러 장으로 넘김
+const RECEIPT_PRINT_MIN_PT = 8;   // 이보다 작으면 읽기 힘듦
 const _RP_PT = 0.3528;            // 1pt = 0.3528mm
 const _RP_HEAD_MM = 24;           // 제목·요약 영역
-const _RP_GAP_MM = 3;             // 단 사이 간격
+const _RP_GAP_MM = 4;             // 단 사이 간격
 const _RP_LINE = 1.55;            // 줄높이(em) — CSS line-height 1.35 + 테두리 여유
 const _RP_NOTE_EM = 36;           // 각주 한 단 너비(em)
 
-// items: [{t:'d'} 날짜줄 | {t:'r'} 건] 을 단(cols)×줄(rows)로 채워 페이지 배열 반환
-// 날짜줄이 단 맨 끝에 혼자 남지 않게 다음 단으로 넘김
-function _receiptPrintPaginate(items, cols, rows) {
+// blocks: [{ head, rows:[...], notes }] 하루 단위. rowsFor(각주수) = 그 페이지 한 단의 줄 수
+// 반환: { pages:[{ cols:[[item...]], notes }], split } — split=true면 한 단보다 큰 날이 있어 나눔
+function _receiptPrintPaginate(blocks, cols, rowsFor) {
   const pages = [];
-  let page = [], col = [];
-  const pushCol = () => { page.push(col); col = []; if(page.length === cols) { pages.push(page); page = []; } };
-  items.forEach(it => {
-    if(col.length === rows || (it.t === 'd' && col.length >= rows - 1)) pushCol();
-    col.push(it);
+  let split = false;
+  const newPage = () => { const p = { cols: [[]], notes: 0 }; pages.push(p); return p; };
+  let page = newPage();
+  const fits = (pg, addNotes, len) => {
+    const limit = rowsFor(pg.notes + addNotes);
+    if(pg.cols.some(c => c.length > limit)) return 0;              // 각주 늘면 기존 단이 넘침
+    const cur = pg.cols[pg.cols.length - 1];
+    if(cur.length + len <= limit) return 1;                         // 지금 단에 이어서
+    if(pg.cols.length < cols && len <= limit) return 2;             // 다음 단 첫머리
+    return 0;
+  };
+  blocks.forEach(b => {
+    const len = 1 + b.rows.length;
+    let how = fits(page, b.notes, len);
+    if(!how && !(page.cols.length === 1 && page.cols[0].length === 0)) { page = newPage(); how = fits(page, b.notes, len); }
+    if(how) {
+      if(how === 2) page.cols.push([]);
+      page.cols[page.cols.length - 1].push({ t:'d', ...b.head }, ...b.rows);
+      page.notes += b.notes;
+      return;
+    }
+    // 한 단보다 큰 날 — 단 단위로 나누고 '(계속)' 표시
+    split = true;
+    let rest = b.rows.slice(), first = true;
+    while(rest.length) {
+      if(!(page.cols.length === 1 && page.cols[0].length === 0)) {
+        if(page.cols.length < cols) page.cols.push([]); else page = newPage();
+      }
+      const limit = Math.max(2, rowsFor(page.notes + b.notes));
+      const part = rest.splice(0, limit - 1);
+      page.cols[page.cols.length - 1].push({ t:'d', ...b.head, cont: !first }, ...part);
+      page.notes += part.filter(it => it.noteNo).length;
+      first = false;
+    }
   });
-  if(col.length) pushCol();
-  if(page.length) pages.push(page);
-  return pages;
+  return { pages, split };
 }
 
-function _receiptPrintLayout(items, hasScan, memoCount) {
+function _receiptPrintLayout(blocks, hasScan) {
   const colEm = 9.2 + 2.4 + (hasScan ? 2.4 : 0);      // 코드(+각주번호) / 회수 / 스캔
   const sheets = [{ o:'landscape', w:277, h:190 }, { o:'portrait', w:190, h:277 }];
   const calc = (f, s) => {
@@ -16336,19 +16365,19 @@ function _receiptPrintLayout(items, hasScan, memoCount) {
     const rowMm = _RP_LINE * em;
     const cols = Math.max(1, Math.floor((s.w + _RP_GAP_MM) / (colEm * em + _RP_GAP_MM)));
     const noteCols = Math.max(1, Math.floor(s.w / (_RP_NOTE_EM * em)));
-    const noteMm = memoCount > 0 ? (Math.ceil(memoCount / noteCols) + 1) * rowMm + 2 : 0;
-    const rows = Math.max(2, Math.floor((s.h - 1 - _RP_HEAD_MM - noteMm - rowMm * 1.3) / rowMm));
-    const pages = _receiptPrintPaginate(items, cols, rows);
-    return { f, o: s.o, w: s.w, h: s.h, cols, rows, noteCols, pages };
+    const rowsFor = (notes) => {
+      const noteMm = notes > 0 ? (Math.ceil(notes / noteCols) + 1) * rowMm + 2 : 0;
+      return Math.max(2, Math.floor((s.h - 1 - _RP_HEAD_MM - noteMm - rowMm * 1.3) / rowMm));
+    };
+    const res = _receiptPrintPaginate(blocks, cols, rowsFor);
+    return { f, o: s.o, w: s.w, h: s.h, cols, noteCols, pages: res.pages, split: res.split };
   };
   for(let f = 11; f >= RECEIPT_PRINT_MIN_PT; f -= 0.5) {
-    for(const s of sheets) {
-      const L = calc(f, s);
-      if(L.pages.length === 1) return L;
-    }
+    const ok = sheets.map(s => calc(f, s)).filter(L => !L.split).sort((a, b) => a.pages.length - b.pages.length);
+    if(ok.length) return ok[0];
   }
-  // 최소 글자로도 안 들어가면 장수가 적은 방향으로 여러 장
-  return sheets.map(s => calc(RECEIPT_PRINT_MIN_PT, s)).sort((a, b) => a.pages.length - b.pages.length)[0];
+  // 8pt로도 한 단에 안 들어가는 날이 있으면 어차피 나눠야 함 → 글자는 크게(11pt) 두고 그날만 '(계속)'
+  return sheets.map(s => calc(11, s)).sort((a, b) => a.pages.length - b.pages.length)[0];
 }
 
 function printReceiptOnePage() {
@@ -16378,8 +16407,8 @@ function printReceiptOnePage() {
   const hasScan = rows.some(r => _receiptNeedsScan(client, r.date));
   const wdays = ['일','월','화','수','목','금','토'];
 
-  // 날짜줄 + 건 목록, 비고는 각주 번호 부여
-  const items = [];
+  // 하루 단위 블록, 비고는 각주 번호 부여
+  const blocks = [];
   const notes = [];
   const byDate = {};
   rows.forEach(r => { (byDate[r.date] = byDate[r.date] || []).push(r); });
@@ -16388,38 +16417,34 @@ function printReceiptOnePage() {
     const [yy, mm, dd] = date.split('-').map(Number);
     const wd = wdays[new Date(yy, mm - 1, dd).getDay()];
     const dRecv = list.filter(r => r.received === 'O').length;
-    items.push({ t:'d', date, wd, cnt: list.length, recv: dRecv, done: list.every(r => _receiptIsComplete(client, r)) });
-    list.forEach(r => {
+    const bRows = list.map(r => {
       const memo = String(r.memo || '').trim();
       let noteNo = 0;
       if(memo) { notes.push({ code: r.code, date, memo }); noteNo = notes.length; }
-      items.push({ t:'r', r, noteNo });
+      return { t:'r', r, noteNo };
+    });
+    blocks.push({
+      head: { date, wd, cnt: list.length, recv: dRecv, done: list.every(r => _receiptIsComplete(client, r)) },
+      rows: bRows,
+      notes: bRows.filter(it => it.noteNo).length
     });
   });
 
-  const L = _receiptPrintLayout(items, hasScan, notes.length);
+  const L = _receiptPrintLayout(blocks, hasScan);
   const pageCount = L.pages.length;
 
-  // 요약
+  // 상단 요약은 총 건수만 (보스 지시 — 회수/미회수 집계·스캔 생략 안내는 출력물에서 제외)
   const total = rows.length;
-  const recv = rows.filter(r => r.received === 'O').length;
-  const unrecv = total - recv;
-  const scanRows = rows.filter(r => _receiptNeedsScan(client, r.date));
-  const scn = scanRows.filter(r => r.scanned === 'O').length;
-  const pct = (a, b) => b > 0 ? (a / b * 100).toFixed(1) : '0.0';
   const clientLabel = { 'LNL':'LNL (락앤락)', '덕평':'덕평2', '여주':'여주', 'HJ':'HJ로지스', '일반':'일반' }[client] || client;
-  let summary = `총 <b>${total}</b>건 · 회수 <b class="g">${recv}</b> (${pct(recv, total)}%)`;
-  if(scanRows.length > 0) summary += ` · 스캔 <b class="b">${scn}</b>/${scanRows.length} (${pct(scn, scanRows.length)}%)`;
-  summary += unrecv > 0 ? ` · <b class="r">미회수 ${unrecv}</b>` : ' · <b class="g">미회수 0</b>';
-  const noScanNote = (RECEIPT_NO_SCAN_FROM[client] && rows.some(r => !_receiptNeedsScan(client, r.date)))
-    ? `<div class="note">※ ${RECEIPT_NO_SCAN_FROM[client]} 배송분부터 인수증 원본 회수만 관리 (스캔 생략)</div>` : '';
+  const summary = `총 <b>${total}</b>건`;
 
   const stCell = (v) => v === 'O' ? '<td class="st o">O</td>' : v === 'X' ? '<td class="st x">X</td>' : '<td class="st e">·</td>';
   const span = hasScan ? 3 : 2;
   const colHtml = (list) => {
     const body = list.map(it => {
       if(it.t === 'd') {
-        return `<tr class="dh${it.done ? ' ok' : ''}"><td colspan="${span}">${esc(it.date.substring(5).replace('-', '/'))}(${it.wd}) ${it.cnt}건${it.done ? ' ✓' : (it.recv < it.cnt ? ` <span class="r">미${it.cnt - it.recv}</span>` : '')}</td></tr>`;
+        const tail = it.cont ? ' (계속)' : '';
+        return `<tr class="dh"><td colspan="${span}">${esc(it.date.substring(5).replace('-', '/'))}(${it.wd}) ${it.cnt}건${tail}</td></tr>`;
       }
       const r = it.r;
       const scanTd = hasScan ? (_receiptNeedsScan(client, r.date) ? stCell(r.scanned) : '<td class="st e">-</td>') : '';
@@ -16432,11 +16457,11 @@ function printReceiptOnePage() {
 
   const printedAt = _formatLoginTs(new Date());
   let pagesHtml = '';
-  L.pages.forEach((pageCols, p) => {
+  L.pages.forEach((pg, p) => {
     let cols = '';
-    for(let c = 0; c < L.cols; c++) cols += `<div class="col">${pageCols[c] ? colHtml(pageCols[c]) : ''}</div>`;
+    for(let c = 0; c < L.cols; c++) cols += `<div class="col">${pg.cols[c] && pg.cols[c].length ? colHtml(pg.cols[c]) : ''}</div>`;
     // 이 페이지에 나온 건의 각주만
-    const pageNotes = pageCols.flat().filter(it => it.t === 'r' && it.noteNo).map(it => it.noteNo);
+    const pageNotes = pg.cols.flat().filter(it => it.t === 'r' && it.noteNo).map(it => it.noteNo);
     const notesHtml = pageNotes.length ? `<div class="notes" style="column-count:${L.noteCols}">${pageNotes.map(no => {
       const n = notes[no - 1];
       return `<div><sup>${no}</sup> <b>${esc(n.code)}</b> (${esc(n.date.substring(5).replace('-', '/'))}) ${esc(n.memo)}</div>`;
@@ -16445,7 +16470,6 @@ function printReceiptOnePage() {
       <div class="hd">
         <div class="tt">주식회사 씨엘피 (CLP) · 인수증 체크리스트</div>
         <div class="info"><span>거래처: <b>${esc(clientLabel)}</b></span><span>기간: <b>${esc(periodLabel)}</b></span><span>${summary}</span><span class="pg">${pageCount > 1 ? `${p + 1} / ${pageCount}쪽 · ` : ''}출력 ${esc(printedAt)}</span></div>
-        ${noScanNote}
       </div>
       <div class="cols">${cols}</div>
       ${notesHtml}
@@ -16494,7 +16518,6 @@ ${pagesHtml}
   w.document.open();
   w.document.write(html);
   w.document.close();
-  if(pageCount > 1) showToast(`ℹ ${total}건은 한 장에 넣으면 글자가 너무 작아져 ${pageCount}장으로 나눴습니다`, 5000);
 }
 
 // v5 마이그레이션 완료 - 버전 체크 불필요
