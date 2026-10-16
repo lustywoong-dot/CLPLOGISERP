@@ -1698,7 +1698,7 @@ body.hide-cost-col .col-sensitive { display: none !important; }
             <option value="complete">완료(회수+스캔 모두 O)</option>
           </select>
         </div>
-        <input type="text" id="receiptSearch" placeholder="🔍 코드/비고 검색..." oninput="renderReceiptCheck()" style="padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:160px">
+        <input type="text" id="receiptSearch" placeholder="🔍 코드/배송처/비고 검색..." oninput="renderReceiptCheck()" style="padding:5px 10px;border:1px solid var(--border);border-radius:4px;font-size:12px;width:160px">
         <!-- 월 선택 (엑셀 출력용 + 호환) -->
         <div style="display:flex;gap:4px;align-items:center">
           <label style="font-size:11px;font-weight:600;color:var(--text-light)" title="엑셀 출력·인쇄 범위로 사용됨">출력월</label>
@@ -1742,6 +1742,12 @@ body.hide-cost-col .col-sensitive { display: none !important; }
           <div id="receiptFocusTitle" style="flex:1;text-align:center;font-size:18px;font-weight:700;color:#1e293b"></div>
           <button onclick="navigateFocus(1)" style="padding:8px 14px;border:1px solid var(--border);background:#fff;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600" title="다음 날짜 (→)">다음 ▶</button>
           <button onclick="exitFocusMode()" style="padding:8px 14px;border:1px solid #fca5a5;background:#fff;color:#dc2626;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600" title="ESC">✕ 닫기</button>
+        </div>
+        <!-- 빠른 체크: 종이 인수증엔 코드가 없어 배송처명으로 찾음 -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:10px 12px;background:#ecfdf5;border:1px solid #6ee7b7;border-radius:8px;flex-wrap:wrap">
+          <span style="font-size:14px;font-weight:800;color:#065f46">🔎 빠른 체크</span>
+          <input type="text" id="receiptQuickFind" placeholder="배송처명 입력 (예: 이마트동탄)" oninput="renderReceiptFocus()" onkeydown="onReceiptQuickKey(event)" autocomplete="off" style="flex:1;min-width:220px;padding:10px 12px;font-size:16px;border:2px solid #10b981;border-radius:6px">
+          <span id="receiptQuickHint" style="font-size:12px;color:#475569"></span>
         </div>
         <div id="receiptFocusBody" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px"></div>
       </div>
@@ -15458,7 +15464,7 @@ function renderReceiptCheck() {
     else if(filter === 'unscanned') rowsMap[d] = rowsMap[d].filter(r => _receiptNeedsScan(cl, r.date) && r.scanned !== 'O');
     else if(filter === 'incomplete') rowsMap[d] = rowsMap[d].filter(r => !_receiptIsComplete(cl, r));
     else if(filter === 'complete') rowsMap[d] = rowsMap[d].filter(r => _receiptIsComplete(cl, r));
-    rowsMap[d].sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+    rowsMap[d].sort(_receiptRowCmp);
   });
 
   // 통계 뱃지
@@ -15512,7 +15518,7 @@ function renderReceiptCheck() {
         <div ondblclick="enterFocusMode('${d}')" title="더블클릭 → 집중 모드" style="padding:9px 10px;background:${headerBg};border-bottom:${headerBorder};cursor:pointer;border-radius:8px 8px 0 0;flex-shrink:0;user-select:none">
           <div style="display:flex;align-items:center;justify-content:space-between">
             <span style="font-size:13px;font-weight:700;color:#1e293b">${d.substring(5)} <span style="color:${isWeekend ? '#dc2626' : '#64748b'};font-weight:600">(${wd})</span></span>
-            ${allDone ? '<span title="모두 완료" style="font-size:14px">✅</span>' : ''}
+            <span style="display:flex;align-items:center;gap:4px">${allDone ? '<span title="모두 완료" style="font-size:14px">✅</span>' : ''}<button onclick="event.stopPropagation();enterFocusMode('${d}')" title="이 날짜 빠른 체크 — 배송처명 입력 후 Enter로 회수 O" style="padding:2px 8px;border:1px solid #10b981;background:#ecfdf5;color:#065f46;border-radius:4px;cursor:pointer;font-size:11px;font-weight:700">🔎 빠른 체크</button></span>
           </div>
           <div style="font-size:10px;color:#64748b;margin-top:2px">${dayTotal === 0 ? '건 없음' : `${dayTotal}건 · 회수 <b style="color:#059669">${dayRecv}</b>/${dayTotal}` + (dayNeedScan ? ` · 스캔 <b style="color:#2563eb">${dayScn}</b>/${dayTotal}` : '')}</div>
         </div>
@@ -15544,8 +15550,11 @@ function enterFocusMode(date) {
   const focus = document.getElementById('receiptFocusView');
   if(grid) grid.style.display = 'none';
   if(focus) focus.style.display = '';
+  const q = document.getElementById('receiptQuickFind');
+  if(q) q.value = '';
   renderReceiptFocus();
   document.addEventListener('keydown', _receiptFocusKeyHandler);
+  if(q) setTimeout(() => q.focus(), 0);   // 바로 배송처명 입력
 }
 
 // 집중 모드 종료
@@ -15564,7 +15573,38 @@ function navigateFocus(dir) {
   const d = new Date(receiptFocusDate);
   d.setDate(d.getDate() + dir);
   receiptFocusDate = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  const q = document.getElementById('receiptQuickFind');
+  if(q) q.value = '';
   renderReceiptFocus();
+}
+
+// 빠른 체크 입력칸: Enter = 한 곳만 남았으면 회수 O / Esc = 지우기(비어 있으면 집중 모드 닫기)
+function onReceiptQuickKey(e) {
+  const el = e.target;
+  if(e.key === 'Escape') {
+    e.preventDefault();
+    if(el.value) { el.value = ''; renderReceiptFocus(); } else exitFocusMode();
+    return;
+  }
+  if(e.key !== 'Enter') return;
+  e.preventDefault();
+  // 한글 조합 중 Enter — 조합이 끝나 입력값·일치목록이 갱신된 뒤 한 번 더 처리 (Enter 두 번 누를 필요 없게)
+  // 브라우저가 Enter를 또 보내도 그땐 입력칸이 비어 있어 무시됨
+  if(e.isComposing || e.keyCode === 229) {
+    setTimeout(() => onReceiptQuickKey({ key: 'Enter', target: el, isComposing: false, keyCode: 13, preventDefault() {} }), 30);
+    return;
+  }
+  if(!el.value.trim()) return;
+  const list = _receiptQuickMatches || [];
+  if(list.length === 0) { showToast('⚠ 일치하는 배송처가 없습니다'); return; }
+  if(list.length > 1) { showToast(`ℹ ${list.length}곳 일치 — 더 입력하거나 카드에서 직접 클릭하세요`); return; }
+  const r = list[0];
+  const label = `${r.dest || ''} (${r.code})`;
+  if(r.received === 'O') showToast(`ℹ 이미 회수 O — ${label}`);
+  else { upsertReceiptEntry(r.date, r.code, { received: 'O' }); showToast(`✅ 회수 O — ${label}`); }
+  el.value = '';
+  renderReceiptCheck();   // 그리드 + 집중 모드 함께 갱신
+  el.focus();
 }
 
 // 키보드: ESC 종료 / ← → 이동 (입력 중에는 무시)
@@ -15623,9 +15663,9 @@ function renderReceiptFocus() {
   else if(filter === 'unscanned') rows = rows.filter(r => needScan && r.scanned !== 'O');
   else if(filter === 'incomplete') rows = rows.filter(r => !_receiptIsComplete(receiptActiveClient, r));
   else if(filter === 'complete') rows = rows.filter(r => _receiptIsComplete(receiptActiveClient, r));
-  rows.sort((a, b) => (a.code || '').localeCompare(b.code || ''));
+  rows.sort(_receiptRowCmp);
 
-  // 헤더
+  // 헤더 (건수는 빠른 찾기 전 기준)
   const days = ['일','월','화','수','목','금','토'];
   const dt = new Date(date);
   const wd = days[dt.getDay()];
@@ -15635,10 +15675,25 @@ function renderReceiptFocus() {
   titleEl.innerHTML = `${date} <span style="color:${isWeekend ? '#dc2626' : '#64748b'};font-weight:500">(${wd})</span> · ${receiptActiveClient}
     <div style="font-size:12px;color:#64748b;font-weight:400;margin-top:3px">${rows.length}건 · 회수 <b style="color:#059669">${recv}</b>/${rows.length}${needScan ? ` · 스캔 <b style="color:#2563eb">${scn}</b>/${rows.length}` : ''}</div>`;
 
+  // 빠른 찾기 (배송처명/코드, 공백 무시) — 한 곳만 남으면 Enter로 회수 O
+  const qEl = document.getElementById('receiptQuickFind');
+  const q = _rqNorm(qEl ? qEl.value : '');
+  const dayTotal = rows.length;
+  if(q) rows = rows.filter(r => _rqNorm(r.dest).includes(q) || _rqNorm(r.code).includes(q));
+  _receiptQuickMatches = q ? rows : [];
+  const hintEl = document.getElementById('receiptQuickHint');
+  if(hintEl) {
+    hintEl.innerHTML = !q ? '배송처명 몇 글자 입력 → 한 곳만 남으면 <b>Enter = 회수 O</b> · Esc 지우기'
+      : rows.length === 0 ? '<span style="color:#dc2626;font-weight:700">일치하는 배송처 없음</span>'
+      : rows.length === 1 ? (rows[0].received === 'O' ? '<span style="color:#059669;font-weight:700">이미 회수 O</span>' : '<span style="color:#059669;font-weight:700">↵ Enter 누르면 회수 O</span>')
+      : `<b>${rows.length}곳</b> 일치 (전체 ${dayTotal}) — 더 입력하거나 카드에서 클릭`;
+  }
+
   if(rows.length === 0) {
-    bodyEl.innerHTML = '<div style="grid-column:1/-1;padding:60px 20px;text-align:center;color:#9ca3af;font-size:14px">이 날짜에 등록된 배차가 없습니다</div>';
+    bodyEl.innerHTML = `<div style="grid-column:1/-1;padding:60px 20px;text-align:center;color:#9ca3af;font-size:14px">${q ? '일치하는 배송처가 없습니다' : '이 날짜에 등록된 배차가 없습니다'}</div>`;
     return;
   }
+  const single = q && rows.length === 1;
 
   const btnStyle = (v) => {
     if(v === 'O') return 'background:#d1fae5;color:#065f46;border:2px solid #10b981';
@@ -15652,10 +15707,10 @@ function renderReceiptFocus() {
     const cA = attrEsc(r.code);
     const imgCount = (typeof getReceiptImgCount === 'function') ? getReceiptImgCount(receiptActiveClient, r.date, r.code) : 0;
     return `
-      <div style="border:1px solid #e5e7eb;border-radius:10px;padding:14px;background:#fff;display:flex;flex-direction:column;gap:10px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+      <div style="border:${single ? '3px solid #10b981' : '1px solid #e5e7eb'};border-radius:10px;padding:14px;background:#fff;display:flex;flex-direction:column;gap:10px;box-shadow:0 1px 3px rgba(0,0,0,0.05)">
         <div>
-          <div style="font-family:monospace;font-size:16px;font-weight:700;color:#1e40af">${i+1}. ${r.code}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</div>
-          ${r.dest ? `<div style="font-size:14px;font-weight:600;color:#334155;margin-top:2px">${attrEsc(r.dest).replace(/</g,'&lt;')}</div>` : ''}
+          ${r.dest ? `<div style="font-size:18px;font-weight:800;color:#0f172a">${attrEsc(r.dest).replace(/</g,'&lt;')}</div>` : ''}
+          <div style="font-family:monospace;font-size:${r.dest ? '13px' : '16px'};font-weight:700;color:#1e40af;margin-top:2px">${i+1}. ${r.code}${r.manual ? ' <small style="color:#a16207;font-weight:400">(수동)</small>' : ''}</div>
           ${r.clientName ? `<div style="font-size:11px;color:#6b7280;margin-top:2px">${r.clientName}</div>` : ''}
         </div>
         <div style="display:grid;grid-template-columns:${needScan ? '1fr 1fr' : '1fr'};gap:8px">
@@ -15766,6 +15821,22 @@ function _attachReceiptDest(client, rows) {
   });
   return rows.map(r => ({ ...r, dest: map[r.date + '|' + r.code] || r.dest || '' }));
 }
+
+// 화면 정렬: 배송처명이 있으면 가나다순(종이 인수증엔 코드가 없어 이름으로 찾음), 없는 건 뒤로, 같으면 코드순
+function _receiptRowCmp(a, b) {
+  const da = a.dest || '', db = b.dest || '';
+  if(da || db) {
+    if(!da) return 1;
+    if(!db) return -1;
+    const c = da.localeCompare(db, 'ko');
+    if(c) return c;
+  }
+  return (a.code || '').localeCompare(b.code || '');
+}
+
+// 빠른 체크용 비교 — 공백 무시, 대소문자 무시 ('이마트동탄' = '이마트 동탄점' 일부)
+function _rqNorm(s) { return String(s || '').replace(/\s+/g, '').toLowerCase(); }
+let _receiptQuickMatches = [];
 
 // 거래처별 인수증 데이터 수집 (기사정산 자동 + 수동 추가 통합)
 function _collectReceiptRows(client, month) {
