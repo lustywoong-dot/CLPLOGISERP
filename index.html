@@ -3789,6 +3789,11 @@ function setInlineSortMode(mode) {
   renderInlineHistory();
 }
 
+// 덕평1센터가 가끔 주는 우리 고유 코드 (CLP_055_01) — ACLP와 똑같이 KCTC덕평·주류·덕평1로 취급
+// CLP 바로 뒤에 숫자(또는 _숫자)가 오는 형식만 해당, 그 밖의 CLP… 코드는 기존대로 씨엘피
+function _isDpOwnCode(code) { return /^CLP_?\d/i.test(String(code || '').trim()); }
+function _isDpCode(code) { const c = String(code || '').trim().toUpperCase(); return c.startsWith('ACLP') || _isDpOwnCode(c); }
+
 function getDispatchClient(code) {
   if(!code) return '기타';
   const upper = String(code).toUpperCase();  // 숫자형 코드 방어 (통계 탭 크래시 차단)
@@ -3796,7 +3801,7 @@ function getDispatchClient(code) {
   const checkCode = upper.startsWith('TEMP_') ? upper.substring(5) : upper;
   if(/^P[\d_]/i.test(checkCode)) return '락앤락';
   if(checkCode.startsWith('ECLP')) return 'KCTC여주';
-  if(checkCode.startsWith('ACLP')) return 'KCTC덕평';
+  if(_isDpCode(checkCode)) return 'KCTC덕평';
   // HJ-YYYYMMDD-NN(여주센터·실비건) / HJD-YYYYMMDD-NN(동부센터) — 청구처는 동일하게 HJ로지스
   if(checkCode.startsWith('HJ')) return 'HJ로지스';
   if(checkCode.startsWith('CLP')) return '씨엘피';
@@ -3991,7 +3996,7 @@ function loadRecord(id) {
   // 레코드의 거래처 코드로 배차 모드 자동 감지 및 전환
   const codeUpper = (r.code || '').replace(/[_\-]/g, '').toUpperCase();
   const codeRaw = (r.code || '').toUpperCase();
-  if(/^[EA]CLP/.test(codeUpper) && dispatchMode !== 'liquor') {
+  if((/^[EA]CLP/.test(codeUpper) || _isDpOwnCode(codeUpper)) && dispatchMode !== 'liquor') {
     setDispatchMode('liquor');
   } else if(/^P\d/.test(codeUpper) && dispatchMode !== 'locknlock') {
     setDispatchMode('locknlock');
@@ -4091,7 +4096,7 @@ function loadRecord(id) {
       } else {
         const _cu = (r.code || '').replace(/[_\-]/g, '').toUpperCase();
         if(_cu.startsWith('ECLP')) document.getElementById('lqCenter').value = 'yj';
-        else if(_cu.startsWith('ACLP')) document.getElementById('lqCenter').value = 'dp1';
+        else if(_isDpCode(_cu)) document.getElementById('lqCenter').value = 'dp1';
       }
     }
     // 상차지 입력요소 정리 — 실비건이면 드롭다운을 입력칸으로 바꾸고 저장된 주소를 다시 채움
@@ -8861,8 +8866,8 @@ function autoDetectCenter() {
       lqCenterEl.value = 'yj';
       onCenterChange();
     }
-  } else if(code.startsWith('ACLP')) {
-    // ACLP는 덕평1/2 중 사용자가 선택 — 이미 덕평이면 보존 (dp2 덮어쓰기 방지)
+  } else if(_isDpCode(code)) {
+    // ACLP(·CLP_)는 덕평1/2 중 사용자가 선택 — 이미 덕평이면 보존 (dp2 덮어쓰기 방지)
     if(currentCenter !== 'dp1' && currentCenter !== 'dp2') {
       lqCenterEl.value = 'dp1';
       onCenterChange();
@@ -9357,9 +9362,9 @@ function validateLiquorCodeCenter(showAlert) {
   if(firstCode.startsWith('ECLP') && center !== 'yj') {
     mismatch = true;
     msg = '⚠ ECLP 코드는 여주센터에서만 사용 가능합니다!';
-  } else if(firstCode.startsWith('ACLP') && center !== 'dp1' && center !== 'dp2') {
+  } else if(_isDpCode(firstCode) && center !== 'dp1' && center !== 'dp2') {
     mismatch = true;
-    msg = '⚠ ACLP 코드는 덕평센터에서만 사용 가능합니다!';
+    msg = '⚠ ' + (_isDpOwnCode(firstCode) ? 'CLP' : 'ACLP') + ' 코드는 덕평센터에서만 사용 가능합니다!';
   } else if(isHJD && center !== 'db') {
     mismatch = true;
     msg = '⚠ HJD 코드는 KCTC동부센터에서만 사용 가능합니다!';
@@ -9419,8 +9424,8 @@ function validateCodeMode(showAlert) {
     // 락앤락 모드: ECLP/ACLP 차단
     if(firstCode.startsWith('ECLP')) {
       msg = '⚠ ECLP는 주류(여주) 코드 — 🍷 주류 모드로 전환하세요';
-    } else if(firstCode.startsWith('ACLP')) {
-      msg = '⚠ ACLP는 주류(덕평) 코드 — 🍷 주류 모드로 전환하세요';
+    } else if(_isDpCode(firstCode)) {
+      msg = '⚠ ' + (_isDpOwnCode(firstCode) ? 'CLP' : 'ACLP') + '는 주류(덕평) 코드 — 🍷 주류 모드로 전환하세요';
     } else if(firstCode.startsWith('HJ')) {
       // 락앤락 요율로 계산되면서 거래처만 HJ로지스로 잡히는 금액 사고 차단
       msg = '⚠ HJ는 HJ로지스 코드 — 🍷 주류 모드 + 상차센터 HJ로지스로 전환하세요';
@@ -10416,7 +10421,7 @@ function parseExcelRow(raw) {
       const cu = erpCode.replace(/[_\-]/g, '').toUpperCase();
       if(/^P\d/.test(cu)) { parsedOrder.shipper = '락앤락'; parsedOrder._shipperMode = 'locknlock'; }
       else if(/^ECLP/.test(cu)) { parsedOrder.shipper = '주류 (여주센터)'; parsedOrder._shipperMode = 'liquor'; parsedOrder._lqCenter = 'yj'; }
-      else if(/^ACLP/.test(cu)) { parsedOrder.shipper = '주류 (덕평센터)'; parsedOrder._shipperMode = 'liquor'; parsedOrder._lqCenter = 'dp1'; }
+      else if(_isDpCode(cu)) { parsedOrder.shipper = '주류 (덕평센터)'; parsedOrder._shipperMode = 'liquor'; parsedOrder._lqCenter = 'dp1'; }
       // 코드에서 차량 추출
       const cleaned = erpCode.replace(/[_\-]/g, '');
       if(cleaned.length >= 4) {
@@ -10500,7 +10505,7 @@ function parseExcelRow(raw) {
     const codeUpper = vehicleCode.replace(/[_\-]/g, '').toUpperCase();
     if(/^P\d/.test(codeUpper)) { parsedOrder.shipper = '락앤락'; parsedOrder._shipperMode = 'locknlock'; }
     else if(/^ECLP/.test(codeUpper)) { parsedOrder.shipper = '주류 (여주센터)'; parsedOrder._shipperMode = 'liquor'; parsedOrder._lqCenter = 'yj'; }
-    else if(/^ACLP/.test(codeUpper)) { parsedOrder.shipper = '주류 (덕평센터)'; parsedOrder._shipperMode = 'liquor'; parsedOrder._lqCenter = 'dp1'; }
+    else if(_isDpCode(codeUpper)) { parsedOrder.shipper = '주류 (덕평센터)'; parsedOrder._shipperMode = 'liquor'; parsedOrder._lqCenter = 'dp1'; }
     const cleaned = vehicleCode.replace(/[_\-]/g, '');
     if(cleaned.length >= 4) {
       const tonCode = cleaned.replace(/^[A-Za-z]+/, '').substring(0, 3);
@@ -11681,7 +11686,7 @@ async function parseErpExcel(input) {
     // 배차코드 칼럼 찾기 - 여러 행을 확인하여 가장 많이 매칭되는 칼럼 선택
     let codeCol = -1;
     // 방법1: '차량' 헤더에서 시작, 데이터 패턴 검증 (여러 행)
-    const codePattern = /^(ECLP|ACLP|P[_\d])/i;
+    const codePattern = /^(ECLP|ACLP|CLP_?\d|P[_\d])/i;
     const candidateCols = [];
     for(let ci = 0; ci < hdr.length; ci++) {
       let matchCount = 0;
@@ -11721,6 +11726,7 @@ async function parseErpExcel(input) {
           const upper = code.toUpperCase();
           if(upper.startsWith('ECLP')) centerType = 'yj';
           else if(upper.startsWith('ACLP')) centerType = 'dp2';
+          else if(_isDpOwnCode(upper)) centerType = 'dp1';
           else if(/^P[_\d]/i.test(upper)) centerType = 'dp1';
         }
         
@@ -11798,7 +11804,7 @@ function renderErpPreview() {
     else if(d.center.includes('이천3') || d.center.includes('이천')) centerName = '락앤락';
     if(!centerName || centerName === 'None' || centerName === '') {
       if(d.code.toUpperCase().startsWith('ECLP')) centerName = '여주센터';
-      else if(d.code.toUpperCase().startsWith('ACLP')) centerName = '덕평센터';
+      else if(_isDpCode(d.code)) centerName = '덕평센터';
       else if(/^P[_\d]/i.test(d.code)) centerName = '락앤락';
     }
     // 거래처 판별
@@ -11806,7 +11812,7 @@ function renderErpPreview() {
     const upper = d.code.toUpperCase();
     if(/^P[_\d]/i.test(upper)) client = '락앤락';
     else if(upper.startsWith('ECLP')) client = 'KCTC여주';
-    else if(upper.startsWith('ACLP')) client = 'KCTC덕평';
+    else if(_isDpCode(upper)) client = 'KCTC덕평';
     else if(upper.startsWith('HJ')) client = 'HJ로지스';
     else if(/^CLP/i.test(upper)) client = '씨엘피';
     else if(/^(GN[-_]|TEMP_GN)/i.test(upper)) client = '기타';
@@ -14506,12 +14512,12 @@ function saveReceiptCheckLocal(opts) {
 
 // 코드 prefix로 거래처 자동 분류
 // LNL: P로 시작 (P_005_01 또는 P05502)
-// 덕평: ACLP로 시작 (ACLP_180_01)
+// 덕평: ACLP로 시작 (ACLP_180_01) + 덕평1 우리 고유 코드 CLP_055_01
 // 여주: ECLP로 시작 (ECLP_010_01)
 function getReceiptClient(code) {
   if(!code) return null;
   const c = String(code).toUpperCase().replace(/[_\-\s]/g, '');
-  if(c.startsWith('ACLP')) return '덕평';
+  if(c.startsWith('ACLP') || _isDpOwnCode(c)) return '덕평';
   if(c.startsWith('ECLP')) return '여주';
   if(c.startsWith('HJ')) return 'HJ';
   if(c.startsWith('P')) return 'LNL';
@@ -17028,7 +17034,7 @@ function parseStlPaste() {
     let client = '기타';
     if(/^P[_\d]/i.test(dispCode)) client = '락앤락';
     else if(/^ECLP/i.test(dispCode)) client = 'KCTC여주';
-    else if(/^ACLP/i.test(dispCode)) client = 'KCTC덕평';
+    else if(_isDpCode(dispCode)) client = 'KCTC덕평';
     else if(/^HJ/i.test(dispCode)) client = 'HJ로지스';
     else if(/^CLP/i.test(dispCode)) client = '씨엘피';
     else if(/^(GN[-_]|TEMP_GN)/i.test(dispCode)) client = '기타';
@@ -17255,7 +17261,7 @@ function autoImportFromDispatch() {
     let client = '기타';
     if(/^P[_\d]/i.test(d.code)) client = '락앤락';
     else if(/^ECLP/i.test(d.code)) client = 'KCTC여주';
-    else if(/^ACLP/i.test(d.code)) client = 'KCTC덕평';
+    else if(_isDpCode(d.code)) client = 'KCTC덕평';
     else if(/^HJ/i.test(d.code)) client = 'HJ로지스';
     else if(/^CLP/i.test(d.code)) client = '씨엘피';
     else if(/^(GN[-_]|TEMP_GN)/i.test(d.code)) client = '기타';
@@ -17358,7 +17364,7 @@ function addManualSettlement() {
   const clientCode = code.toUpperCase();
   let client = stlActiveClient === '전체' ? '락앤락' : stlActiveClient;
   if(clientCode.startsWith('ECLP')) client = 'KCTC여주';
-  else if(clientCode.startsWith('ACLP')) client = 'KCTC덕평';
+  else if(_isDpCode(clientCode)) client = 'KCTC덕평';
   else if(clientCode.startsWith('HJ')) client = 'HJ로지스';
   else if(/^CLP/i.test(clientCode)) client = '씨엘피';
   else if(/^(GN[-_]|TEMP_GN)/i.test(clientCode)) client = '기타';
@@ -17578,7 +17584,7 @@ async function exportReceiptChecklist() {
   filtered.forEach(d => {
     const code = (d.dispCode || '').toUpperCase();
     if(code.startsWith('ECLP')) clientMap['KCTC여주'].push(d);
-    else if(code.startsWith('ACLP')) clientMap['KCTC덕평'].push(d);
+    else if(_isDpCode(code)) clientMap['KCTC덕평'].push(d);
     else if(code.startsWith('HJ')) clientMap['HJ로지스'].push(d);
     else if(/^P[_\d]/i.test(code)) clientMap['락앤락'].push(d);
     else if(/^CLP/i.test(code)) clientMap['씨엘피'].push(d);
@@ -18080,6 +18086,7 @@ function updateStlFooter() {
     if(stlCodeFilterMode !== 'all') {
       if(stlCodeFilterMode === 'P') { if(!d.dispCode || !/^P[_\d]/i.test(d.dispCode)) return; }
       else if(stlCodeFilterMode === 'GN') { if(!d.dispCode || !/^(GN[-_]|TEMP_GN)/i.test(d.dispCode)) return; }
+      else if(stlCodeFilterMode === 'ACLP') { if(!_isDpCode(d.dispCode)) return; }
       else { if(!d.dispCode || !d.dispCode.toUpperCase().startsWith(stlCodeFilterMode)) return; }
     }
     totalPay += parseInt(d.payment) || 0;
@@ -18463,6 +18470,7 @@ function renderSettlementCalendar() {
   if(stlCodeFilterMode !== 'all') {
     if(stlCodeFilterMode === 'P') filtered = filtered.filter(d => d.dispCode && /^P[_\d]/i.test(d.dispCode));
     else if(stlCodeFilterMode === 'GN') filtered = filtered.filter(d => d.dispCode && /^(GN[-_]|TEMP_GN)/i.test(d.dispCode));
+    else if(stlCodeFilterMode === 'ACLP') filtered = filtered.filter(d => _isDpCode(d.dispCode));
     else filtered = filtered.filter(d => d.dispCode && d.dispCode.toUpperCase().startsWith(stlCodeFilterMode));
   }
 
@@ -18558,6 +18566,7 @@ function selectCalDate(dateStr) {
   if(stlCodeFilterMode !== 'all') {
     if(stlCodeFilterMode === 'P') filtered = filtered.filter(d => d.dispCode && /^P[_\d]/i.test(d.dispCode));
     else if(stlCodeFilterMode === 'GN') filtered = filtered.filter(d => d.dispCode && /^(GN[-_]|TEMP_GN)/i.test(d.dispCode));
+    else if(stlCodeFilterMode === 'ACLP') filtered = filtered.filter(d => _isDpCode(d.dispCode));
     else filtered = filtered.filter(d => d.dispCode && d.dispCode.toUpperCase().startsWith(stlCodeFilterMode));
   }
 
@@ -18822,6 +18831,8 @@ function renderSettlement() {
       filtered = filtered.filter(d => d.dispCode && /^P[_\d]/i.test(d.dispCode));
     } else if(stlCodeFilterMode === 'GN') {
       filtered = filtered.filter(d => d.dispCode && /^(GN[-_]|TEMP_GN)/i.test(d.dispCode));
+    } else if(stlCodeFilterMode === 'ACLP') {
+      filtered = filtered.filter(d => _isDpCode(d.dispCode));
     } else {
       filtered = filtered.filter(d => d.dispCode && d.dispCode.toUpperCase().startsWith(stlCodeFilterMode));
     }
@@ -19348,6 +19359,7 @@ async function downloadDailyReport() {
   if(stlCodeFilterMode !== 'all') {
     if(stlCodeFilterMode === 'P') filtered = filtered.filter(d => d.dispCode && /^P[_\d]/i.test(d.dispCode));
     else if(stlCodeFilterMode === 'GN') filtered = filtered.filter(d => d.dispCode && /^(GN[-_]|TEMP_GN)/i.test(d.dispCode));
+    else if(stlCodeFilterMode === 'ACLP') filtered = filtered.filter(d => _isDpCode(d.dispCode));
     else filtered = filtered.filter(d => d.dispCode && d.dispCode.toUpperCase().startsWith(stlCodeFilterMode));
   }
   
