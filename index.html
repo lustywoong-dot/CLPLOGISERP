@@ -15864,18 +15864,25 @@ function _iterReceiptFromSettlement(client, callback) {
 const RECEIPT_SHOW_DEST = { 'LNL': 'name', '덕평': 'code', '여주': 'code', 'HJ': 'code' };
 function _attachReceiptDest(client, rows) {
   if(!RECEIPT_SHOW_DEST[client] || !rows.length) return rows;
-  const map = {};
+  // 인수증 날짜 = 배송일(WMS 날짜) → 배차이력은 배송일로만 매칭
+  // 배차일(date)로도 찾던 예전 방식은 다음날 배송된 같은 코드를 엉뚱하게 붙였음
+  // (10/19 ECLP_055_02 파주 건에 10/19 배차·10/20 배송 '트레이더스 평택'이 붙음)
+  // 배차이력에 없으면 정산 배송처(dest), 배송일 없는 옛 기록만 배차일로 보조
+  const byDelivery = {}, byDateOld = {};
   (Array.isArray(dispatchLog) ? dispatchLog : []).forEach(r => {
     if(!r || !r.code || !r.clientName) return;
     const code = _normalizeReceiptCode(r.code);
     const name = String(r.clientName).trim();
     if(!code || !name) return;
-    [r.deliveryDate, r.date].forEach(dv => {
-      const d = dv ? sanitizeDate(dv) : '';
-      if(d && !map[d + '|' + code]) map[d + '|' + code] = name;
-    });
+    const dd = r.deliveryDate ? sanitizeDate(r.deliveryDate) : '';
+    if(dd) { if(!byDelivery[dd + '|' + code]) byDelivery[dd + '|' + code] = name; return; }
+    const d = r.date ? sanitizeDate(r.date) : '';
+    if(d && !byDateOld[d + '|' + code]) byDateOld[d + '|' + code] = name;
   });
-  return rows.map(r => ({ ...r, dest: map[r.date + '|' + r.code] || r.dest || '' }));
+  return rows.map(r => {
+    const k = r.date + '|' + r.code;
+    return { ...r, dest: byDelivery[k] || r.dest || byDateOld[k] || '' };
+  });
 }
 
 // 화면 정렬: 배송처명 앞 거래처(락앤락)는 가나다순(이름 없는 건 뒤로, 같으면 코드순), 그 외는 코드순
