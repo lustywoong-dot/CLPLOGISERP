@@ -6917,9 +6917,18 @@ function checkCodeDuplicate() {
   const code = rawCode.replace(/,/g, '').trim();
 
   // 수정 모드면 현재 레코드는 제외
-  const existing = code ? dispatchLog.find(r => r.code === code && r.id !== selectedRecordId) : null;
+  // 같은 배송일 건을 먼저 찾음 (예전엔 아무 날짜나 처음 걸린 건을 보여줘서, 같은 날 중복이 있어도 '4/22에 있음'처럼 안내됨)
+  const _formDD = sanitizeDate(document.getElementById('deliveryDate')?.value || '');
+  const sameDay = (code && _formDD) ? dispatchLog.find(r => r.code === code && r.id !== selectedRecordId && sanitizeDate(r.deliveryDate || r.date || '') === _formDD) : null;
+  const existing = sameDay || (code ? dispatchLog.find(r => r.code === code && r.id !== selectedRecordId) : null);
 
-  if(existing) {
+  if(sameDay) {
+    errEl.innerHTML = '⛔ <b>같은 배송일 [' + _formDD + ']에 이 코드가 이미 있음</b>' + (sameDay.driverName ? ' (기사 ' + sameDay.driverName + ')' : ' (기사 미배정)')
+      + ' — 새로 만들지 말고 그 건을 열어 수정하세요 <button onclick="loadRecord(' + sameDay.id + ')" style="background:#dc2626;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:10px;cursor:pointer;margin-left:4px">📋 그 건 열기</button>';
+    errEl.style.display = 'block';
+    errEl.style.color = '#b91c1c';
+    inputEl.style.borderColor = '#dc2626';
+  } else if(existing) {
     // 기존 건 존재 → 배송일 표시 + 자동 별건 저장 안내 (UX 명확화)
     const existDate = sanitizeDate(existing.deliveryDate || existing.date || '') || '(날짜없음)';
     errEl.innerHTML = 'ℹ <b>[' + existDate + ']</b>에 같은 코드 있음 — <span style="color:#059669;font-weight:700">다른 배송일로 입력하면 신규 별건 저장 ✅</span> <span style="color:#dc2626;font-weight:700">(아래 버튼은 [' + existDate + '] 건을 직접 수정 — 신규 저장 아님!)</span> <button onclick="loadRecord(' + existing.id + ')" style="background:#3b82f6;color:white;border:none;border-radius:3px;padding:2px 8px;font-size:10px;cursor:pointer;margin-left:4px">📋 [' + existDate + '] 건 열기</button>';
@@ -20981,8 +20990,20 @@ async function saveDispatch(closeAfter) {
   if(isUpdate) {
     const _ex = dispatchLog.find(r => r.id === selectedRecordId);
     const _used = new Set();
+    // 🛡 기사 행에 남은 recId가 다른 오더 건이면 무시 (모드 전환·이전 편집에서 넘어온 연결)
+    // 예전엔 그 엉뚱한 건을 이 폼 내용으로 덮어써서 같은 코드·배송일이 두 줄로 생겼음 (2026-10-30 ECLP_050_01)
+    // 같은 오더 = 편집 중인 건 자신, 또는 본코드·배송일이 폼(새 값) 또는 편집 중인 건(원래 값)과 같은 건
+    const _ordBase = c => /^HJD?-/i.test(String(c || '')) ? _hjBaseCode(c) : String(c || '').replace(/-\d+$/, '');
+    const _exBase = _ex ? _ordBase(_ex.code) : '';
+    const _exDD = _ex ? sanitizeDate(_ex.deliveryDate || _ex.date || '') : '';
+    const _sameOrder = t => {
+      if(_ex && t.id === _ex.id) return true;
+      const tb = _ordBase(t.code), td = sanitizeDate(t.deliveryDate || t.date || '');
+      return (tb === baseCode && td === mainDeliveryDate) || (_ex && tb === _exBase && td === _exDD);
+    };
     driverList.forEach((drv, di) => {
       let t = drv.recId ? dispatchLog.find(r => String(r.id) === String(drv.recId)) : null;
+      if(t && !_sameOrder(t)) { console.warn('[저장] 다른 오더 건 연결 무시:', t.code, t.deliveryDate, t.id); t = null; }
       if(!t && di === 0) t = _ex;
       if(t && !_used.has(t.id)) { _rowTargets[di] = t; _used.add(t.id); }
     });
@@ -21139,6 +21160,21 @@ async function saveDispatch(closeAfter) {
       if(!_usedIds.has(existing.id)) {
         const _rec0 = records.find(r => !_assign.has(r));
         if(_rec0) { _assign.set(_rec0, existing); _usedIds.add(existing.id); }
+      }
+      // 🛡 최종 중복 차단: 고칠 건이 다른 건과 '코드+배송일'이 겹치게 되면 아무것도 안 바꾸고 멈춤
+      // (어떤 경로로든 같은 코드·같은 배송일 두 줄이 생기지 않게 — 덮어쓰기 전에 검사)
+      let _clash = null;
+      _assign.forEach((t, rec) => {
+        if(_clash) return;
+        const dd = sanitizeDate(rec.deliveryDate || rec.date || '');
+        const hit = dispatchLog.find(r => !_usedIds.has(r.id) && r.code === rec.code && sanitizeDate(r.deliveryDate || r.date || '') === dd);
+        if(hit) _clash = { code: rec.code, dd, hit };
+      });
+      if(_clash) {
+        showToast('⛔ 저장 안 됨 — ' + _clash.dd + ' 에 [' + _clash.code + '] 가 이미 있습니다'
+          + (_clash.hit.driverName ? ' (기사 ' + _clash.hit.driverName + ')' : ' (기사 미배정)')
+          + ' · 배차내역에서 그 건을 열어 수정하세요', 7000);
+        return;
       }
       const updatedSiblings = [];
       _assign.forEach((t, rec) => {
